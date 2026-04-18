@@ -1,0 +1,59 @@
+﻿import Link from "next/link";
+import { cn } from "@/lib/utils";
+
+type WeekCardProps = {
+  href: string;
+  weekLabelZh: string;
+  weekLabelEn: string;
+  zhTitle: string;
+  enTitle: string;
+  descriptionZh: string;
+  descriptionEn: string;
+  className?: string;
+};
+
+export function WeekCard({
+  href,
+  weekLabelZh,
+  weekLabelEn,
+  zhTitle,
+  enTitle,
+  descriptionZh,
+  descriptionEn,
+  className,
+}: WeekCardProps) {
+  return (
+    <article
+      className={cn(
+        "group flex h-full flex-col justify-between rounded-apple bg-white px-5 py-5 shadow-card transition dark:bg-[#272729]",
+        className,
+      )}
+    >
+      <div className="space-y-3">
+        <p className="font-text text-[12px] font-semibold tracking-[0.08em] text-black/55 dark:text-white/55">
+          {weekLabelZh}
+          <span className="ui-en ml-1 uppercase">{weekLabelEn}</span>
+        </p>
+        <h3 className="font-display text-[28px] font-normal leading-[1.14] tracking-[0.196px] text-[#1d1d1f] dark:text-white">
+          {zhTitle}
+          <span className="ui-en mt-1 block font-text text-[15px] leading-[1.43] tracking-tightCaption text-black/62 dark:text-white/65">{enTitle}</span>
+        </h3>
+        <p className="font-text text-[14px] leading-[1.45] tracking-tightCaption text-black/75 dark:text-white/75">
+          {descriptionZh}
+          <span className="ui-en mt-1 block text-black/62 dark:text-white/66">{descriptionEn}</span>
+        </p>
+      </div>
+
+      <div className="mt-6">
+        <Link
+          href={href}
+          className="inline-flex items-center rounded-capsule border border-[#0066cc] px-4 py-1.5 font-text text-[14px] tracking-tightCaption text-[#0066cc] transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent dark:border-[#2997ff] dark:text-[#2997ff]"
+        >
+          打开笔记
+          <span className="ui-en ml-1">Open Note</span>
+          <span className="ml-1">&gt;</span>
+        </Link>
+      </div>
+    </article>
+  );
+}

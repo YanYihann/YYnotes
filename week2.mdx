@@ -1,0 +1,193 @@
+---
+title: Week 2 - Secant, Muller, and Divided Differences
+description: Bilingual notes on derivative-free root finding and interpolation structure.
+---
+
+# Week 2: Secant, Muller, and Divided Differences
+# 第2周：割线法、Muller法与差商结构
+
+These notes formalize Week 2 topics on derivative-free iteration and polynomial reconstruction.
+本笔记将第2周关于无导数迭代与多项式重构的内容进行规范化整理。
+
+## Learning Objectives
+## 学习目标
+
+Interpret Newton error behavior and explain why local convergence is quadratic.
+理解牛顿法误差行为，并解释其局部二次收敛原因。
+
+Use the secant method when derivatives are unavailable or expensive.
+在导数不可得或计算代价高时使用割线法。
+
+Construct second-order models for Muller-type updates.
+构造二阶模型并用于 Muller 型更新。
+
+Use Newton divided differences to build interpolation polynomials.
+使用牛顿差商构造插值多项式。
+
+## Key Concepts
+## 关键概念
+
+Standard error notation: $e_n=x_n-\alpha$.
+统一误差记号：$e_n=x_n-\alpha$。
+
+Secant method approximates derivative by slope between two points.
+割线法用两点斜率近似导数。
+
+Divided difference notation: $f[x_i,x_j]=\dfrac{f(x_j)-f(x_i)}{x_j-x_i}$.
+差商记号：$f[x_i,x_j]=\dfrac{f(x_j)-f(x_i)}{x_j-x_i}$。
+
+Second divided difference gives quadratic leading coefficient in Newton form.
+二阶差商给出牛顿形式二次项的主系数。
+
+## Definitions and Formulas
+## 定义与公式
+
+Newton error model near a simple root: $e_{n+1}\approx \dfrac{f''(\alpha)}{2f'(\alpha)}e_n^2$.
+简单根附近的牛顿误差模型：$e_{n+1}\approx \dfrac{f''(\alpha)}{2f'(\alpha)}e_n^2$。
+
+Secant iteration:
+割线迭代公式：
+
+$ x_{n+1}=x_n-f(x_n)\dfrac{x_n-x_{n-1}}{f(x_n)-f(x_{n-1})}. $
+$ x_{n+1}=x_n-f(x_n)\dfrac{x_n-x_{n-1}}{f(x_n)-f(x_{n-1})}. $
+
+Quadratic interpolation (Muller model): $p_2(x)=c_0+c_1x+c_2x^2$ fitted to three samples.
+二次插值（Muller 模型）：用三点拟合 $p_2(x)=c_0+c_1x+c_2x^2$。
+
+Newton interpolation (quadratic form):
+牛顿插值（二次形式）：
+
+$ p_2(x)=f[x_0]+f[x_0,x_1](x-x_0)+f[x_0,x_1,x_2](x-x_0)(x-x_1). $
+$ p_2(x)=f[x_0]+f[x_0,x_1](x-x_0)+f[x_0,x_1,x_2](x-x_0)(x-x_1). $
+
+## Derivations
+## 推导
+
+### Newton Error Estimate (Lecture Review)
+### 牛顿误差估计（课堂回顾）
+
+Starting from $x_{n+1}=x_n-\dfrac{f(x_n)}{f'(x_n)}$, expand $f(\alpha)=0$ by Taylor around $x_n$.
+由 $x_{n+1}=x_n-\dfrac{f(x_n)}{f'(x_n)}$ 出发，在 $x_n$ 附近对 $f(\alpha)=0$ 作泰勒展开。
+
+After cancellation of first-order terms, the dominant term is proportional to $e_n^2$.
+一阶项相消后，主导项与 $e_n^2$ 成正比。
+
+Hence Newton has second-order precision near a simple root.
+因此牛顿法在简单根附近具有二阶精度。
+
+### Secant Update from Line Through Two Points
+### 由两点连线推导割线更新
+
+Use points $(x_{n-1},f_{n-1})$ and $(x_n,f_n)$ to define a line.
+用两点 $(x_{n-1},f_{n-1})$ 与 $(x_n,f_n)$ 定义直线。
+
+Set the line value to zero to approximate the next root estimate.
+令直线值为零，得到下一次根估计。
+
+This yields the secant formula above.
+即可得到上面的割线公式。
+
+### Leading Coefficient via Divided Differences
+### 用差商得到主系数
+
+For $f(x)=a+bx+cx^2$, we have $f[x_0,x_1,x_2]=c$.
+对 $f(x)=a+bx+cx^2$，有 $f[x_0,x_1,x_2]=c$。
+
+This explains why second divided difference encodes quadratic curvature.
+这说明二阶差商刻画了二次曲率信息。
+
+## Worked Examples
+## 例题精讲
+
+> **Example Block 1: Newton Error for $\sqrt{2}$**
+> **例题模块1：$\sqrt{2}$ 的牛顿误差**
+
+Take $f(x)=x^2-2$ with $x_0=1.4$.
+取 $f(x)=x^2-2$，初值 $x_0=1.4$。
+
+Then $x_1=1.4-\dfrac{1.4^2-2}{2(1.4)}=1.4+\dfrac{1}{70}\approx1.4142857$.
+则 $x_1=1.4-\dfrac{1.4^2-2}{2(1.4)}=1.4+\dfrac{1}{70}\approx1.4142857$。
+
+The correction magnitude is consistent with a quadratic error drop.
+修正量与二次误差下降规律一致。
+
+> **Example Block 2: Secant Step for $x^2-2=0$**
+> **例题模块2：$x^2-2=0$ 的割线一步**
+
+Use $x_0=1.8$ and $x_1=1.6$.
+取 $x_0=1.8$、$x_1=1.6$。
+
+Compute $x_2=x_1-f(x_1)\dfrac{x_1-x_0}{f(x_1)-f(x_0)}\approx1.4137931$.
+计算得 $x_2=x_1-f(x_1)\dfrac{x_1-x_0}{f(x_1)-f(x_0)}\approx1.4137931$。
+
+> **Example Block 3: Recover Quadratic from Data**
+> **例题模块3：由数据恢复二次多项式**
+
+Given $(3,7)$, $(4,6)$, $(5,9)$, solve for $f(x)=a+bx+cx^2$.
+给定 $(3,7)$、$(4,6)$、$(5,9)$，求 $f(x)=a+bx+cx^2$。
+
+Using divided differences, $f[3,4]=-1$, $f[4,5]=3$, $f[3,4,5]=2$.
+用差商得 $f[3,4]=-1$、$f[4,5]=3$、$f[3,4,5]=2$。
+
+Newton form is $f(x)=7-(x-3)+2(x-3)(x-4)$.
+牛顿形式为 $f(x)=7-(x-3)+2(x-3)(x-4)$。
+
+## Error Analysis
+## 误差分析
+
+Bisection: first-order linear convergence with guaranteed bracketing.
+二分法：一阶线性收敛且区间包根有保证。
+
+Newton: second-order local convergence but derivative-dependent.
+牛顿法：局部二阶收敛，但依赖导数。
+
+Secant: superlinear convergence in many smooth cases, usually slower than Newton but derivative-free.
+割线法：在光滑情形下常为超线性收敛，通常慢于牛顿法但不需导数。
+
+Quadratic interpolation methods can be accurate but are more sensitive to data geometry and rounding.
+二次插值类方法精度高，但对采样点分布与舍入误差更敏感。
+
+## Common Mistakes
+## 常见错误
+
+> **Warning Block**
+> **警示模块**
+
+Switching denominator order in the secant formula.
+在割线公式中把分母顺序写反。
+
+Confusing divided differences with ordinary finite differences.
+将差商与普通差分混淆。
+
+Using nearly identical sample points, causing catastrophic cancellation.
+采样点过近导致灾难性消去误差。
+
+Assuming every three-point quadratic model gives a stable Muller update.
+误以为任意三点二次模型都能稳定地产生 Muller 更新。
+
+## Summary
+## 总结
+
+> **Summary Block**
+> **总结模块**
+
+Week 2 extends root-finding from derivative-based Newton to derivative-free secant and quadratic-model ideas.
+第2周将求根从依赖导数的牛顿法扩展到无导数的割线法和二次模型方法。
+
+The divided-difference framework unifies interpolation construction and coefficient interpretation.
+差商框架统一了插值构造与系数解释。
+
+These tools connect root-finding and interpolation as two views of local modeling.
+这些工具将求根与插值统一为“局部模型”思想的两种表现。
+
+## Practice Questions
+## 练习题
+
+Derive the secant formula directly from the two-point line equation.
+从两点直线方程直接推导割线公式。
+
+For $f(x)=x^2-5$, perform three secant iterations from $x_0=2$, $x_1=3$.
+对 $f(x)=x^2-5$，以 $x_0=2$、$x_1=3$ 进行三步割线迭代。
+
+Using Newton divided differences, reconstruct the cubic through $(2,1),(3,6),(4,5),(5,7)$.
+用牛顿差商重构经过 $(2,1),(3,6),(4,5),(5,7)$ 的三次多项式。

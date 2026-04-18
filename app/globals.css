@@ -1,0 +1,245 @@
+﻿@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-light: #f5f5f7;
+  --bg-dark: #000000;
+  --text-primary: #1d1d1f;
+  --text-secondary: rgba(0, 0, 0, 0.8);
+  --text-inverse: #ffffff;
+  --interactive: #0071e3;
+  --interactive-hover: #0066cc;
+  --interactive-soft: #2997ff;
+}
+
+.dark {
+  --bg-light: #161617;
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.84);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--bg-light);
+  color: var(--text-primary);
+  font-family: "SF Pro Text", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  letter-spacing: -0.374px;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.ui-en {
+  font-family: "SF Pro Text", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+.hide-english .ui-en {
+  display: none !important;
+}
+
+.font-display {
+  font-family: "SF Pro Display", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+.font-text {
+  font-family: "SF Pro Text", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+.section-dark {
+  background: #000000;
+  color: #ffffff;
+}
+
+.section-light {
+  background: #f5f5f7;
+  color: #1d1d1f;
+}
+
+.dark .section-light {
+  background: #111113;
+  color: #ffffff;
+}
+
+.dark .section-dark {
+  background: #000000;
+  color: #ffffff;
+}
+
+.anchor-link {
+  margin-left: 0.5rem;
+  font-size: 0.8em;
+  text-decoration: none;
+  color: #0066cc;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.dark .anchor-link {
+  color: #2997ff;
+}
+
+h2:hover .anchor-link,
+h3:hover .anchor-link {
+  opacity: 1;
+}
+
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.5rem 0;
+}
+
+.note-prose h1 {
+  font-family: "SF Pro Display", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: clamp(2rem, 3.8vw, 3.5rem);
+  font-weight: 600;
+  line-height: 1.07;
+  letter-spacing: -0.28px;
+  color: #1d1d1f;
+}
+
+.dark .note-prose h1 {
+  color: #ffffff;
+}
+
+.note-prose hr {
+  margin: 2rem 0;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.dark .note-prose hr {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.note-prose .line-zh {
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.dark .note-prose .line-zh {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.note-prose .line-en {
+  color: rgba(0, 0, 0, 0.62);
+  font-size: 0.94em;
+}
+
+.dark .note-prose .line-en {
+  color: rgba(255, 255, 255, 0.66);
+}
+
+.note-prose h2.line-en {
+  font-size: clamp(1.15rem, 2vw, 1.55rem);
+  font-weight: 400;
+  line-height: 1.3;
+  margin-top: 0.5rem;
+}
+
+.note-prose h3.line-en {
+  font-size: clamp(1.05rem, 1.9vw, 1.3rem);
+  font-weight: 400;
+  line-height: 1.32;
+  margin-top: 0.4rem;
+}
+
+.note-prose h4.line-en {
+  font-size: 1rem;
+  font-weight: 400;
+  margin-top: 0.35rem;
+}
+
+.hide-english .note-prose .line-en {
+  display: none !important;
+}
+
+.note-prose .term-highlight {
+  color: #b4232f;
+  font-weight: 700;
+}
+
+.dark .note-prose .term-highlight {
+  color: #ff6a77;
+}
+
+.assistant-prose :first-child {
+  margin-top: 0;
+}
+
+.assistant-prose :last-child {
+  margin-bottom: 0;
+}
+
+.assistant-prose p {
+  margin: 0.45rem 0;
+}
+
+.assistant-prose h1,
+.assistant-prose h2,
+.assistant-prose h3 {
+  margin: 0.72rem 0 0.35rem;
+  font-family: "SF Pro Display", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.18px;
+}
+
+.assistant-prose h1 {
+  font-size: 1.05rem;
+}
+
+.assistant-prose h2 {
+  font-size: 0.98rem;
+}
+
+.assistant-prose h3 {
+  font-size: 0.92rem;
+}
+
+.assistant-prose ul,
+.assistant-prose ol {
+  margin: 0.45rem 0;
+  padding-left: 1.05rem;
+}
+
+.assistant-prose li {
+  margin: 0.24rem 0;
+}
+
+.assistant-prose hr {
+  margin: 0.7rem 0;
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+.dark .assistant-prose hr {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.assistant-prose code {
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.06);
+  padding: 0.05rem 0.25rem;
+  font-size: 0.92em;
+}
+
+.dark .assistant-prose code {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.assistant-prose .katex-display {
+  margin: 0.55rem 0;
+}
+
+::selection {
+  background: rgba(0, 113, 227, 0.24);
+  color: inherit;
+}
+
+@media (max-width: 834px) {
+  body {
+    letter-spacing: -0.24px;
+  }
+}

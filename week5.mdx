@@ -1,0 +1,187 @@
+---
+title: Week 5 - Numerical Differentiation
+description: Bilingual notes on finite-difference derivative formulas.
+---
+
+# Week 5: Numerical Differentiation
+# 第5周：数值微分
+
+Week 5 introduces derivative approximation from sampled function values.
+第5周介绍如何由采样函数值近似导数。
+
+## Learning Objectives
+## 学习目标
+
+Use forward, backward, and central differences for first derivatives.
+使用前向、后向和中心差分近似一阶导数。
+
+Derive the three-point formulas from quadratic interpolation.
+由二次插值推导三点公式。
+
+Handle both non-uniform and uniform grids in derivative estimation.
+在非均匀与均匀网格上进行导数估计。
+
+Compute second derivatives from divided-difference structure.
+利用差商结构计算二阶导数近似。
+
+## Key Concepts
+## 关键概念
+
+Finite differences approximate derivatives using nearby function values.
+差分法通过邻近函数值近似导数。
+
+Grid notation: step size $h$, nodes $x_i=x_0+ih$ (uniform case).
+网格记号：步长 $h$，节点 $x_i=x_0+ih$（均匀网格）。
+
+Divided differences provide a model-based path to derivative formulas.
+差商提供了从模型出发推导导数公式的路径。
+
+Central formulas are often more accurate than one-sided formulas at interior points.
+在内点处，中心公式通常比单边公式更精确。
+
+## Definitions and Formulas
+## 定义与公式
+
+Forward difference:
+前向差分：
+
+$D^+f(x)=\dfrac{f(x+h)-f(x)}{h}$.
+$D^+f(x)=\dfrac{f(x+h)-f(x)}{h}$。
+
+Backward difference:
+后向差分：
+
+$D^-f(x)=\dfrac{f(x)-f(x-h)}{h}$.
+$D^-f(x)=\dfrac{f(x)-f(x-h)}{h}$。
+
+Three-point central first derivative (uniform grid):
+三点中心一阶导（均匀网格）：
+
+$f'(x)\approx \dfrac{f(x+h)-f(x-h)}{2h}$.
+$f'(x)\approx \dfrac{f(x+h)-f(x-h)}{2h}$。
+
+Three-point second derivative:
+三点二阶导：
+
+$f''(x)\approx \dfrac{f(x+h)-2f(x)+f(x-h)}{h^2}$.
+$f''(x)\approx \dfrac{f(x+h)-2f(x)+f(x-h)}{h^2}$。
+
+Non-uniform three-point model: if nodes are $p,q,r$, use
+非均匀三点模型：若节点为 $p,q,r$，使用
+
+$p_2(x)=f[p]+f[p,q](x-p)+f[p,q,r](x-p)(x-q)$ and evaluate $p_2'(p),p_2'(q),p_2'(r)$.
+$p_2(x)=f[p]+f[p,q](x-p)+f[p,q,r](x-p)(x-q)$，再计算 $p_2'(p),p_2'(q),p_2'(r)$。
+
+## Derivations
+## 推导
+
+### Central Difference as Average of Forward and Backward
+### 中心差分是前向与后向的平均
+
+$\dfrac{D^+f(x)+D^-f(x)}{2}=\dfrac{f(x+h)-f(x-h)}{2h}$.
+$\dfrac{D^+f(x)+D^-f(x)}{2}=\dfrac{f(x+h)-f(x-h)}{2h}$。
+
+This cancels first-order bias terms in Taylor expansion.
+该表达在泰勒展开中会抵消一阶偏差项。
+
+### Three-Point Formula from Newton Quadratic
+### 由牛顿二次插值推导三点公式
+
+Fit $p_2(x)$ through $(p,P),(q,Q),(r,R)$.
+通过 $(p,P),(q,Q),(r,R)$ 拟合 $p_2(x)$。
+
+Differentiate $p_2$ and evaluate at each node to approximate derivatives.
+对 $p_2$ 求导并在各节点取值以近似导数。
+
+For uniform spacing $p=x-h,q=x,r=x+h$, formulas simplify to central differences.
+当间距均匀且 $p=x-h,q=x,r=x+h$ 时，公式化简为中心差分形式。
+
+## Worked Examples
+## 例题精讲
+
+> **Example Block 1: $f(x)=x^2$ at $x=1$, $h=0.1$**
+> **例题模块1：$f(x)=x^2$ 在 $x=1,h=0.1$ 的估计**
+
+Forward difference: $\dfrac{1.21-1}{0.1}=2.1$.
+前向差分：$\dfrac{1.21-1}{0.1}=2.1$。
+
+Backward difference: $\dfrac{1-0.81}{0.1}=1.9$.
+后向差分：$\dfrac{1-0.81}{0.1}=1.9$。
+
+Central difference: $\dfrac{1.21-0.81}{0.2}=2.0$ (exact here).
+中心差分：$\dfrac{1.21-0.81}{0.2}=2.0$（本例恰为精确值）。
+
+> **Example Block 2: Exponential Samples at $-0.1,0,0.1$**
+> **例题模块2：$-0.1,0,0.1$ 的指数函数样本**
+
+Use non-uniform/three-point framework to estimate $f'(-0.1),f'(0),f'(0.1)$.
+使用三点框架估计 $f'(-0.1),f'(0),f'(0.1)$。
+
+Compared with one-sided differences, central estimates better match true value $e^x$ at interior point.
+与单边差分相比，中心估计在内点更接近真值 $e^x$。
+
+> **Example Block 3: Three-Point Polynomial Recovery at $0.9,1.0,1.1$**
+> **例题模块3：在 $0.9,1.0,1.1$ 的三点多项式恢复**
+
+For $f(x)=x^2$, reconstructed quadratic gives exact derivatives $f'(0.9)=1.8$, $f'(1)=2$, $f'(1.1)=2.2$.
+对 $f(x)=x^2$，重构二次模型可得精确导数 $f'(0.9)=1.8$、$f'(1)=2$、$f'(1.1)=2.2$。
+
+## Error Analysis
+## 误差分析
+
+Forward/backward differences are first-order accurate: error $O(h)$.
+前向/后向差分是一阶精度：误差 $O(h)$。
+
+Central first-derivative formula is second-order accurate: error $O(h^2)$.
+中心一阶导公式是二阶精度：误差 $O(h^2)$。
+
+Three-point second-derivative formula is also second-order accurate on uniform grids.
+在均匀网格上，三点二阶导公式同样是二阶精度。
+
+Too small $h$ can increase round-off error even if truncation error decreases.
+即使截断误差随 $h$ 减小，过小 $h$ 也会放大舍入误差。
+
+## Common Mistakes
+## 常见错误
+
+> **Warning Block**
+> **警示模块**
+
+Using $2h$ incorrectly in central denominator.
+在中心差分分母中误写 $2h$。
+
+Applying uniform-grid formulas on non-uniform nodes.
+在非均匀节点上误用均匀网格公式。
+
+Mixing index order in divided differences.
+在差商中混淆索引顺序。
+
+Ignoring unit/scale of $h$ when interpreting derivative magnitude.
+解释导数量级时忽略 $h$ 的单位与尺度。
+
+## Summary
+## 总结
+
+> **Summary Block**
+> **总结模块**
+
+Week 5 established practical derivative estimation from tabulated data.
+第5周建立了由离散数据进行导数估计的实用方法。
+
+The three-point framework unifies non-uniform and uniform formulas.
+三点框架统一了非均匀与均匀情形。
+
+Central differences are a key accuracy upgrade over one-sided approximations.
+中心差分是相对于单边差分的重要精度提升。
+
+## Practice Questions
+## 练习题
+
+Estimate $f'(2)$ for $f(x)=\ln x$ using forward, backward, and central differences with $h=0.1$.
+对 $f(x)=\ln x$，取 $h=0.1$，分别用前向、后向、中心差分估计 $f'(2)$。
+
+Using nodes $p=1$, $q=1.4$, $r=2$, derive $p_2'(q)$ in divided-difference form.
+给定节点 $p=1,q=1.4,r=2$，用差商形式推导 $p_2'(q)$。
+
+Compare numerical and exact second derivatives for $f(x)=e^x$ at $x=0$ for several $h$ values.
+在 $x=0$ 处比较 $f(x)=e^x$ 的数值二阶导与精确值，并测试多个 $h$。
