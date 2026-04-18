@@ -3,8 +3,6 @@ import { WeekNoteGenerator } from "@/components/home/week-note-generator";
 import { WeekCard } from "@/components/week-card";
 import { getKeyTopics, getWeekNotes } from "@/lib/content";
 
-export const dynamic = "force-dynamic";
-
 export default async function HomePage() {
   const notes = await getWeekNotes();
   const topics = await getKeyTopics();
