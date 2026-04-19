@@ -290,6 +290,54 @@ function splitMixedQuoteLine(line: string): string[] | null {
   return null;
 }
 
+function wrapStandaloneFormulaLines(markdown: string): string {
+  const lines = markdown.split(/\r?\n/);
+  const output: string[] = [];
+  let inCodeFence = false;
+  let inMathBlock = false;
+
+  for (const line of lines) {
+    if (/^\s*```/.test(line)) {
+      inCodeFence = !inCodeFence;
+      output.push(line);
+      continue;
+    }
+
+    if (!inCodeFence && /^\s*\$\$/.test(line)) {
+      inMathBlock = !inMathBlock;
+      output.push(line);
+      continue;
+    }
+
+    if (inCodeFence || inMathBlock) {
+      output.push(line);
+      continue;
+    }
+
+    const trimmed = line.trim();
+    if (!trimmed || lineType(line) !== "plain" || isTableLine(line)) {
+      output.push(line);
+      continue;
+    }
+
+    if (/^\$[^$\n]+\$$/.test(trimmed) || /^\\\([\s\S]*\\\)$/.test(trimmed) || /^\\\[[\s\S]*\\\]$/.test(trimmed)) {
+      output.push(line);
+      continue;
+    }
+
+    if (isFormulaOnlyLine(line)) {
+      output.push("$$");
+      output.push(trimmed);
+      output.push("$$");
+      continue;
+    }
+
+    output.push(line);
+  }
+
+  return output.join("\n");
+}
+
 function normalizeMathDelimiters(source: string): string {
   let output = source;
 
@@ -323,7 +371,7 @@ function normalizeMathDelimiters(source: string): string {
   // Unescape over-escaped LaTeX commands inside math expressions.
   output = output.replace(/\$\$[\s\S]*?\$\$|\$[^$\n]+\$/g, (segment) => segment.replace(/\\\\([A-Za-z])/g, "\\$1"));
 
-  return output;
+  return wrapStandaloneFormulaLines(output);
 }
 
 function pushParagraphLine(output: string[], line: string) {

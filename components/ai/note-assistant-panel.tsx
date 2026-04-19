@@ -69,12 +69,72 @@ function serializeHistory(messages: AssistantMessage[]): AssistantMessage[] {
   return clean.slice(clean.length - maxMessages);
 }
 
+function isStandaloneAssistantFormulaLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  if (/^(```|\$\$|#{1,6}\s|>\s|[-*+]\s|\d+\.\s)/.test(trimmed)) {
+    return false;
+  }
+
+  if (/^\$[^$\n]+\$$/.test(trimmed) || /^\\\([\s\S]*\\\)$/.test(trimmed) || /^\\\[[\s\S]*\\\]$/.test(trimmed)) {
+    return false;
+  }
+
+  const hasChinese = /[\u4e00-\u9fff]/.test(trimmed);
+  const hasLetters = /[A-Za-z]/.test(trimmed);
+  const hasMathSignal = /[=+\-*/^<>_{}()[\]\\]|∑|∫|√|≈|≤|≥|±|\d/.test(trimmed);
+
+  return !hasChinese && hasLetters && hasMathSignal && !/[A-Za-z]{3,}\s+[A-Za-z]{3,}/.test(trimmed);
+}
+
+function wrapAssistantFormulaLines(markdown: string): string {
+  const lines = markdown.split(/\r?\n/);
+  const output: string[] = [];
+  let inCodeFence = false;
+  let inMathBlock = false;
+
+  for (const line of lines) {
+    if (/^\s*```/.test(line)) {
+      inCodeFence = !inCodeFence;
+      output.push(line);
+      continue;
+    }
+
+    if (!inCodeFence && /^\s*\$\$/.test(line)) {
+      inMathBlock = !inMathBlock;
+      output.push(line);
+      continue;
+    }
+
+    if (inCodeFence || inMathBlock) {
+      output.push(line);
+      continue;
+    }
+
+    if (isStandaloneAssistantFormulaLine(line)) {
+      output.push("$$");
+      output.push(line.trim());
+      output.push("$$");
+      continue;
+    }
+
+    output.push(line);
+  }
+
+  return output.join("\n");
+}
+
 function normalizeAssistantMarkdown(text: string): string {
-  return text
+  const normalized = text
     .replace(/\\\[/g, "$$")
     .replace(/\\\]/g, "$$")
     .replace(/\\\(/g, "$")
     .replace(/\\\)/g, "$");
+
+  return wrapAssistantFormulaLines(normalized);
 }
 
 function buildRecordTitle(question: string): string {
