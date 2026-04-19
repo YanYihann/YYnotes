@@ -1,5 +1,6 @@
 name = "yynotes"
 compatibility_date = "2026-04-19"
+main = "cloud/check-worker.ts"
 pages_build_output_dir = "out"
 
 [env.production.vars]
