@@ -12,6 +12,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import allComponents from "@/components/mdx/mdx-components";
 import { ReadingWorkspace } from "@/components/notes/reading-workspace";
+import { prepareNoteMarkdown } from "@/lib/mdx";
 
 type CloudNote = {
   slug: string;
@@ -27,6 +28,30 @@ type CloudNoteResponse = {
   success?: boolean;
   note?: CloudNote;
   error?: string;
+};
+
+type FrontmatterData = {
+  title?: string;
+  enTitle?: string;
+  zhTitle?: string;
+  description?: string;
+  descriptionEn?: string;
+  descriptionZh?: string;
+  topic?: string;
+  topicEn?: string;
+  topicZh?: string;
+  tags?: string[] | string;
+};
+
+type NoteMeta = {
+  zhTitle: string;
+  enTitle: string;
+  descriptionZh: string;
+  descriptionEn: string;
+  topicZh: string;
+  topicEn: string;
+  tags: string[];
+  source: string;
 };
 
 type Heading = {
@@ -58,13 +83,25 @@ function normalizeApiBase(input: string): string {
   return input.replace(/\/+$/, "");
 }
 
-function parseTags(tags: CloudNote["tags"]): string[] {
-  if (Array.isArray(tags)) {
-    return tags.map((item) => String(item).trim()).filter(Boolean);
+function normalizeNewlines(text: string): string {
+  return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+function parseScalar(raw: string): string {
+  const value = raw.trim();
+  const quoted =
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"));
+  return quoted ? value.slice(1, -1).trim() : value;
+}
+
+function normalizeTags(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
   }
 
-  if (typeof tags === "string") {
-    return tags
+  if (typeof value === "string") {
+    return value
       .split(/[，,、|]/)
       .map((item) => item.trim().replace(/^#+/, ""))
       .filter(Boolean);
@@ -73,18 +110,135 @@ function parseTags(tags: CloudNote["tags"]): string[] {
   return [];
 }
 
-function stripFrontmatter(content: string): string {
-  const source = content.trim();
+function parseFrontmatterAndBody(content: string): { body: string; data: FrontmatterData } {
+  const source = normalizeNewlines(content).trim();
   if (!source.startsWith("---\n")) {
-    return source;
+    return { body: source, data: {} };
   }
 
-  const closingIndex = source.indexOf("\n---\n", 4);
-  if (closingIndex === -1) {
-    return source;
+  const end = source.indexOf("\n---\n", 4);
+  if (end === -1) {
+    return { body: source, data: {} };
   }
 
-  return source.slice(closingIndex + 5).trim();
+  const frontmatterBlock = source.slice(4, end);
+  const body = source.slice(end + 5).trim();
+  const lines = frontmatterBlock.split("\n");
+
+  const data: Record<string, unknown> = {};
+  let currentArrayKey = "";
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      continue;
+    }
+
+    const itemMatch = trimmed.match(/^- (.+)$/);
+    if (itemMatch && currentArrayKey) {
+      const current = data[currentArrayKey];
+      if (Array.isArray(current)) {
+        current.push(parseScalar(itemMatch[1]));
+      } else {
+        data[currentArrayKey] = [parseScalar(itemMatch[1])];
+      }
+      continue;
+    }
+
+    const kvMatch = line.match(/^([A-Za-z0-9_]+):\s*(.*)$/);
+    if (!kvMatch) {
+      continue;
+    }
+
+    const key = kvMatch[1];
+    const rawValue = kvMatch[2].trim();
+
+    if (!rawValue) {
+      data[key] = [];
+      currentArrayKey = key;
+      continue;
+    }
+
+    currentArrayKey = "";
+
+    if (rawValue.startsWith("[") && rawValue.endsWith("]")) {
+      const items = rawValue
+        .slice(1, -1)
+        .split(/[，,]/)
+        .map((item) => parseScalar(item))
+        .filter(Boolean);
+      data[key] = items;
+      continue;
+    }
+
+    data[key] = parseScalar(rawValue);
+  }
+
+  return {
+    body,
+    data: data as FrontmatterData,
+  };
+}
+
+function asText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function deriveMeta(note: CloudNote | null): NoteMeta {
+  if (!note) {
+    return {
+      zhTitle: "云端笔记",
+      enTitle: "Cloud Note",
+      descriptionZh: "云端笔记内容。",
+      descriptionEn: "Cloud note content.",
+      topicZh: "未分类",
+      topicEn: "General",
+      tags: [],
+      source: "",
+    };
+  }
+
+  const { body, data } = parseFrontmatterAndBody(note.mdx_content || "");
+  const fallbackTitle = asText(note.title) || "未命名笔记";
+
+  const zhTitle = asText(data.zhTitle) || asText(data.title) || fallbackTitle;
+  const enTitle = asText(data.enTitle) || asText(data.title) || fallbackTitle;
+
+  const descriptionZh =
+    asText(data.descriptionZh) ||
+    asText(data.description) ||
+    `关于“${zhTitle}”的双语学习笔记。`;
+  const descriptionEn =
+    asText(data.descriptionEn) ||
+    asText(data.description) ||
+    `Bilingual study note on ${enTitle}.`;
+
+  const topicZh =
+    asText(data.topicZh) ||
+    asText(data.topic) ||
+    asText(note.topic_zh) ||
+    "未分类";
+  const topicEn =
+    asText(data.topicEn) ||
+    asText(data.topic) ||
+    asText(note.topic_en) ||
+    "General";
+
+  const tags = normalizeTags(data.tags).length
+    ? normalizeTags(data.tags)
+    : normalizeTags(note.tags);
+
+  return {
+    zhTitle,
+    enTitle,
+    descriptionZh,
+    descriptionEn,
+    topicZh,
+    topicEn,
+    tags,
+    source: body,
+  };
 }
 
 function normalizeHeadingText(rawTitle: string): string {
@@ -171,150 +325,123 @@ export function CloudNoteViewer() {
     loadNote();
   }, [slug]);
 
-  const renderedContent = useMemo(() => {
-    if (!note?.mdx_content) {
-      return "";
-    }
-    return stripFrontmatter(note.mdx_content);
-  }, [note]);
+  const meta = useMemo(() => deriveMeta(note), [note]);
+  const renderedSource = useMemo(() => prepareNoteMarkdown(meta.source), [meta.source]);
+  const headings = useMemo(() => extractHeadings(meta.source), [meta.source]);
 
-  const tags = useMemo(() => parseTags(note?.tags), [note]);
-  const topicZh = note?.topic_zh?.trim() || "未分类";
-  const topicEn = note?.topic_en?.trim() || "General";
-  const headings = useMemo(() => extractHeadings(renderedContent), [renderedContent]);
-
-  const noteContext = useMemo(
-    () => ({
-      slug: slug || "",
-      weekLabelZh: topicZh,
-      weekLabelEn: topicEn,
-      zhTitle: note?.title || "云端笔记",
-      enTitle: note?.title || "Cloud Note",
-      noteContent: renderedContent,
-    }),
-    [slug, topicZh, topicEn, note?.title, renderedContent],
-  );
-
-  if (!loading && !error && renderedContent) {
+  if (loading) {
     return (
-      <ReadingWorkspace headings={headings} noteContext={noteContext}>
-        <article className="rounded-apple bg-white px-5 py-8 shadow-card dark:bg-[#272729] sm:px-8 md:px-10">
-          <header className="mb-8 border-b border-black/10 pb-6 dark:border-white/10">
-            <div className="flex flex-wrap items-center gap-2">
-              <Link
-                href="/notes"
-                className="inline-flex rounded-capsule border border-[#0066cc] px-4 py-1.5 text-[14px] tracking-tightCaption text-[#0066cc] transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-[#2997ff] dark:text-[#2997ff]"
-              >
-                返回列表
-              </Link>
-              {slug ? (
-                <span className="rounded-capsule border border-black/15 px-3 py-1 text-[12px] text-black/62 dark:border-white/18 dark:text-white/66">
-                  slug: {slug}
-                </span>
-              ) : null}
-            </div>
+      <article className="rounded-apple bg-white px-5 py-8 shadow-card dark:bg-[#272729] sm:px-8 md:px-10">
+        <p className="font-text text-[15px] text-black/72 dark:text-white/75">正在加载云端笔记...</p>
+      </article>
+    );
+  }
 
-            <p className="mt-4 font-text text-[12px] font-semibold uppercase tracking-[0.1em] text-black/55 dark:text-white/55">
-              {topicZh}
-              <span className="ui-en ml-1">{topicEn} - Cloud Note</span>
-            </p>
+  if (error) {
+    return (
+      <article className="rounded-apple bg-white px-5 py-8 shadow-card dark:bg-[#272729] sm:px-8 md:px-10">
+        <p className="rounded-apple border border-[#b4232f]/30 bg-[#b4232f]/[0.08] px-3 py-2 font-text text-[13px] leading-[1.4] text-[#7f1820] dark:border-[#ff6a77]/35 dark:bg-[#ff6a77]/[0.12] dark:text-[#ffd5da]">
+          {error}
+        </p>
+      </article>
+    );
+  }
 
-            <h1 className="mt-3 font-display text-[clamp(2rem,5vw,3.5rem)] font-semibold leading-[1.07] tracking-tightDisplay text-[#1d1d1f] dark:text-white">
-              {note?.title || "云端笔记"}
-            </h1>
-
-            {tags.length ? (
-              <div className="mt-4 flex flex-wrap gap-2">
-                {tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="rounded-capsule border border-black/15 px-2 py-0.5 font-text text-[12px] tracking-tightCaption text-black/63 dark:border-white/20 dark:text-white/66"
-                  >
-                    #{tag}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-          </header>
-
-          <div className="note-prose" data-note-content>
-            <ReactMarkdown
-              components={markdownComponents}
-              remarkPlugins={[remarkGfm, remarkMath]}
-              rehypePlugins={[
-                rehypeKatex,
-                rehypeSlug,
-                [
-                  rehypeAutolinkHeadings,
-                  {
-                    behavior: "append",
-                    properties: {
-                      className: ["anchor-link"],
-                      "aria-label": "Anchor",
-                    },
-                  },
-                ],
-              ]}
-            >
-              {renderedContent}
-            </ReactMarkdown>
-          </div>
-        </article>
-      </ReadingWorkspace>
+  if (!renderedSource) {
+    return (
+      <article className="rounded-apple bg-white px-5 py-8 shadow-card dark:bg-[#272729] sm:px-8 md:px-10">
+        <p className="font-text text-[15px] text-black/72 dark:text-white/75">笔记内容为空。</p>
+      </article>
     );
   }
 
   return (
-    <article className="rounded-apple bg-white px-5 py-8 shadow-card dark:bg-[#272729] sm:px-8 md:px-10">
-      <header className="mb-8 border-b border-black/10 pb-6 dark:border-white/10">
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href="/notes"
-            className="inline-flex rounded-capsule border border-[#0066cc] px-4 py-1.5 text-[14px] tracking-tightCaption text-[#0066cc] transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-[#2997ff] dark:text-[#2997ff]"
-          >
-            返回列表
-          </Link>
-          {slug ? (
-            <span className="rounded-capsule border border-black/15 px-3 py-1 text-[12px] text-black/62 dark:border-white/18 dark:text-white/66">
-              slug: {slug}
-            </span>
+    <ReadingWorkspace
+      headings={headings}
+      noteContext={{
+        slug: slug || "",
+        weekLabelZh: meta.topicZh,
+        weekLabelEn: meta.topicEn,
+        zhTitle: meta.zhTitle,
+        enTitle: meta.enTitle,
+        noteContent: meta.source,
+      }}
+    >
+      <article className="rounded-apple bg-white px-5 py-8 shadow-card dark:bg-[#272729] sm:px-8 md:px-10">
+        <header className="mb-8 border-b border-black/10 pb-6 dark:border-white/10">
+          <p className="font-text text-[12px] font-semibold uppercase tracking-[0.1em] text-black/55 dark:text-white/55">
+            {meta.topicZh}
+            <span className="ui-en ml-1">{meta.topicEn} - Note</span>
+          </p>
+          {meta.tags.length ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {meta.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-capsule border border-black/15 px-2 py-0.5 font-text text-[12px] tracking-tightCaption text-black/63 dark:border-white/20 dark:text-white/66"
+                >
+                  #{tag}
+                </span>
+              ))}
+            </div>
           ) : null}
+          <h1 className="mt-3 font-display text-[clamp(2rem,5vw,3.5rem)] font-semibold leading-[1.07] tracking-tightDisplay text-[#1d1d1f] dark:text-white">
+            {meta.zhTitle}
+            <span className="ui-en mt-1 block font-text text-[0.36em] font-normal leading-[1.35] tracking-tightBody text-black/72 dark:text-white/74">
+              {meta.enTitle}
+            </span>
+          </h1>
+          <p className="mt-3 font-text text-[17px] leading-[1.47] tracking-tightBody text-black/80 dark:text-white/80">
+            {meta.descriptionZh}
+            <span className="ui-en mt-1 block text-black/68 dark:text-white/72">{meta.descriptionEn}</span>
+          </p>
+        </header>
+
+        <div className="note-prose" data-note-content>
+          <ReactMarkdown
+            components={markdownComponents}
+            remarkPlugins={[remarkGfm, remarkMath]}
+            rehypePlugins={[
+              rehypeKatex,
+              rehypeSlug,
+              [
+                rehypeAutolinkHeadings,
+                {
+                  behavior: "append",
+                  properties: {
+                    className: ["anchor-link"],
+                    "aria-label": "Anchor",
+                  },
+                },
+              ],
+            ]}
+          >
+            {renderedSource}
+          </ReactMarkdown>
         </div>
 
-        <p className="mt-4 font-text text-[12px] font-semibold uppercase tracking-[0.1em] text-black/55 dark:text-white/55">
-          {topicZh}
-          <span className="ui-en ml-1">{topicEn} - Cloud Note</span>
-        </p>
-
-        <h1 className="mt-3 font-display text-[clamp(2rem,5vw,3.5rem)] font-semibold leading-[1.07] tracking-tightDisplay text-[#1d1d1f] dark:text-white">
-          {note?.title || "云端笔记"}
-        </h1>
-
-        {tags.length ? (
-          <div className="mt-4 flex flex-wrap gap-2">
-            {tags.map((tag) => (
-              <span
-                key={tag}
-                className="rounded-capsule border border-black/15 px-2 py-0.5 font-text text-[12px] tracking-tightCaption text-black/63 dark:border-white/20 dark:text-white/66"
-              >
-                #{tag}
-              </span>
-            ))}
+        <nav className="mt-14 grid gap-4 border-t border-black/10 pt-6 dark:border-white/10 sm:grid-cols-2">
+          <div>
+            <Link
+              href="/notes"
+              className="inline-flex rounded-capsule border border-[#0066cc] px-4 py-1.5 text-[14px] tracking-tightCaption text-[#0066cc] transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-[#2997ff] dark:text-[#2997ff]"
+            >
+              ← 返回列表
+              <span className="ui-en ml-1">All Notes</span>
+            </Link>
           </div>
-        ) : null}
-      </header>
-
-      {loading ? <p className="font-text text-[15px] text-black/72 dark:text-white/75">正在加载云端笔记...</p> : null}
-
-      {error ? (
-        <p className="rounded-apple border border-[#b4232f]/30 bg-[#b4232f]/[0.08] px-3 py-2 font-text text-[13px] leading-[1.4] text-[#7f1820] dark:border-[#ff6a77]/35 dark:bg-[#ff6a77]/[0.12] dark:text-[#ffd5da]">
-          {error}
-        </p>
-      ) : null}
-
-      {!loading && !error && !renderedContent ? (
-        <p className="font-text text-[15px] text-black/72 dark:text-white/75">笔记内容为空。</p>
-      ) : null}
-    </article>
+          <div className="sm:text-right">
+            <Link
+              href={`/notes/cloud?slug=${encodeURIComponent(slug)}`}
+              className="inline-flex rounded-capsule border border-[#0066cc] px-4 py-1.5 text-[14px] tracking-tightCaption text-[#0066cc] transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-[#2997ff] dark:text-[#2997ff]"
+            >
+              重新加载
+              <span className="ui-en ml-1">Reload</span>
+              <span className="ml-1">→</span>
+            </Link>
+          </div>
+        </nav>
+      </article>
+    </ReadingWorkspace>
   );
 }

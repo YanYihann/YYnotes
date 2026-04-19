@@ -511,8 +511,12 @@ function applySectionLists(markdown: string): string {
   return output.join("\n");
 }
 
+export function prepareNoteMarkdown(source: string): string {
+  return applySectionLists(preprocessBilingualMarkdown(source));
+}
+
 export async function renderWeekContent(note: WeekNote) {
-  const preparedSource = applySectionLists(preprocessBilingualMarkdown(note.source));
+  const preparedSource = prepareNoteMarkdown(note.source);
 
   return (
     <ReactMarkdown
