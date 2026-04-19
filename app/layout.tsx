@@ -1,6 +1,7 @@
 ﻿import type { Metadata } from "next";
 import "katex/dist/katex.min.css";
 import "./globals.css";
+import "./drake-note.css";
 import { LanguageProvider } from "@/components/language-provider";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";

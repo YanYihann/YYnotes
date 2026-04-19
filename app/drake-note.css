@@ -1,0 +1,256 @@
+/*
+ * Adapted from Drake Typora Theme (MIT): https://github.com/liangjingkanji/DrakeTyporaTheme
+ * Scope: note reading container only (.note-prose.drake-theme)
+ */
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: local("JetBrains Mono"), url("/drake/JetBrainsMono-Regular.woff2") format("woff2");
+  font-display: swap;
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: local("JetBrains Mono"), url("/drake/JetBrainsMono-Italic.woff2") format("woff2");
+  font-display: swap;
+  font-weight: 400;
+  font-style: italic;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: local("JetBrains Mono"), url("/drake/JetBrainsMono-Bold.woff2") format("woff2");
+  font-display: swap;
+  font-weight: 700;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: local("JetBrains Mono"), url("/drake/JetBrainsMono-BoldItalic.woff2") format("woff2");
+  font-display: swap;
+  font-weight: 700;
+  font-style: italic;
+}
+
+.note-prose.drake-theme {
+  --drake-text-color: #333333;
+  --drake-bg-color: #ffffff;
+  --drake-accent: #e95f59;
+  --drake-highlight: #d63200;
+  --drake-title-color: #273849;
+  --drake-blockquote-bg: #fdefee;
+  --drake-table-border: #dfe2e5;
+  --drake-table-header-bg: #f8f8f8;
+  --drake-table-stripe-bg: #f8f8f8;
+  --drake-code-bg: #2b2b2b;
+  --drake-code-color: #a9b7c6;
+  --drake-inline-code-bg: rgba(0, 0, 0, 0.05);
+  --drake-inline-code-color: var(--drake-highlight);
+  --drake-line-height: 1.65;
+  --drake-paragraph-space: 0.8rem;
+
+  color: var(--drake-text-color);
+  font-family:
+    "JetBrains Mono",
+    "Iosevka Curly",
+    "Fira Code",
+    "Cascadia Code",
+    Menlo,
+    "Ubuntu Mono",
+    Consolas,
+    monospace;
+  letter-spacing: 0;
+  text-rendering: optimizeLegibility;
+  -webkit-font-feature-settings: "liga" on, "calt" on;
+  -webkit-font-smoothing: subpixel-antialiased;
+}
+
+.dark .note-prose.drake-theme {
+  --drake-text-color: #acb7c4;
+  --drake-bg-color: #2b2b2b;
+  --drake-accent: #3473b0;
+  --drake-highlight: #58a1d6;
+  --drake-title-color: #bbc9d7;
+  --drake-blockquote-bg: rgba(52, 115, 176, 0.1);
+  --drake-table-border: #383838;
+  --drake-table-header-bg: #222222;
+  --drake-table-stripe-bg: #222222;
+  --drake-code-bg: #222222;
+  --drake-code-color: #a9b7c6;
+  --drake-inline-code-bg: rgba(255, 255, 255, 0.06);
+  --drake-inline-code-color: var(--drake-highlight);
+}
+
+.note-prose.drake-theme p,
+.note-prose.drake-theme li,
+.note-prose.drake-theme blockquote,
+.note-prose.drake-theme td,
+.note-prose.drake-theme th {
+  font-size: 1rem !important;
+  line-height: var(--drake-line-height) !important;
+}
+
+.note-prose.drake-theme p {
+  margin: var(--drake-paragraph-space) 0 !important;
+}
+
+.note-prose.drake-theme h1,
+.note-prose.drake-theme h2,
+.note-prose.drake-theme h3,
+.note-prose.drake-theme h4,
+.note-prose.drake-theme h5,
+.note-prose.drake-theme h6 {
+  color: var(--drake-title-color) !important;
+  font-family:
+    "JetBrains Mono",
+    "Iosevka Curly",
+    "Fira Code",
+    "Cascadia Code",
+    Menlo,
+    Consolas,
+    monospace !important;
+  font-weight: 700 !important;
+  line-height: 1.4 !important;
+  letter-spacing: 0 !important;
+}
+
+.note-prose.drake-theme h1 {
+  font-size: 2rem !important;
+}
+
+.note-prose.drake-theme h2 {
+  font-size: 1.6rem !important;
+  border-bottom: 1px solid var(--drake-title-color) !important;
+  padding-bottom: 0.2rem !important;
+}
+
+.note-prose.drake-theme h3 {
+  font-size: 1.3rem !important;
+}
+
+.note-prose.drake-theme h4 {
+  font-size: 1.1rem !important;
+}
+
+.note-prose.drake-theme a {
+  color: var(--drake-highlight) !important;
+  text-decoration: none !important;
+  border-bottom: 1px dotted var(--drake-highlight);
+}
+
+.note-prose.drake-theme a:hover {
+  border-bottom-style: solid;
+}
+
+.note-prose.drake-theme strong {
+  color: var(--drake-title-color) !important;
+}
+
+.note-prose.drake-theme em {
+  color: var(--drake-highlight) !important;
+}
+
+.note-prose.drake-theme blockquote {
+  margin: 1.2rem 0 !important;
+  padding: 0.7rem 1rem !important;
+  border-left: 4px solid var(--drake-accent) !important;
+  border-radius: 2px !important;
+  background: var(--drake-blockquote-bg) !important;
+  color: var(--drake-text-color) !important;
+  font-style: normal !important;
+}
+
+.note-prose.drake-theme ul,
+.note-prose.drake-theme ol {
+  margin: 1rem 0 !important;
+  padding-left: 1.5rem !important;
+}
+
+.note-prose.drake-theme li + li {
+  margin-top: 0.35rem !important;
+}
+
+.note-prose.drake-theme pre {
+  margin: 1rem 0 !important;
+  border: none !important;
+  border-radius: 2px !important;
+  background: var(--drake-code-bg) !important;
+  color: var(--drake-code-color) !important;
+  padding: 0.75rem !important;
+  line-height: 1.6 !important;
+}
+
+.note-prose.drake-theme pre code {
+  background: transparent !important;
+  color: var(--drake-code-color) !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
+
+.note-prose.drake-theme :not(pre) > code {
+  margin: 0 2px !important;
+  border-radius: 2px !important;
+  background: var(--drake-inline-code-bg) !important;
+  color: var(--drake-inline-code-color) !important;
+  padding: 0.1rem 0.3rem !important;
+  font-size: 0.92em !important;
+}
+
+.note-prose.drake-theme hr {
+  margin: 2rem 0 !important;
+  border: 0 !important;
+  border-top: 1px solid var(--drake-title-color) !important;
+}
+
+.note-prose.drake-theme table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  border-spacing: 0 !important;
+  background: var(--drake-bg-color) !important;
+}
+
+.note-prose.drake-theme table tr {
+  border-top: 1px solid var(--drake-table-border) !important;
+}
+
+.note-prose.drake-theme table thead {
+  background: var(--drake-table-header-bg) !important;
+}
+
+.note-prose.drake-theme table tr:nth-child(2n) {
+  background: var(--drake-table-stripe-bg) !important;
+}
+
+.note-prose.drake-theme th,
+.note-prose.drake-theme td {
+  border: 1px solid var(--drake-table-border) !important;
+  padding: 0.45rem 0.65rem !important;
+  text-align: left !important;
+  color: var(--drake-text-color) !important;
+}
+
+.note-prose.drake-theme mark {
+  background: transparent !important;
+  border-bottom: 2px solid var(--drake-highlight) !important;
+  color: inherit !important;
+  padding: 0 !important;
+}
+
+.note-prose.drake-theme del {
+  text-decoration-color: var(--drake-accent) !important;
+}
+
+.note-prose.drake-theme .line-en {
+  opacity: 0.78;
+}
+
+.dark .note-prose.drake-theme .line-en {
+  opacity: 0.72;
+}
+
+.note-prose.drake-theme .anchor-link {
+  color: var(--drake-highlight) !important;
+}

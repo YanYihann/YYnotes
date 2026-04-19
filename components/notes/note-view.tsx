@@ -93,7 +93,7 @@ export function NoteView({ note, headings, nav }: NoteViewProps) {
           </p>
         </header>
 
-        <div className="note-prose" data-note-content>
+        <div className="note-prose drake-theme" data-note-content>
           <NoteMarkdown source={renderedSource} />
         </div>
 
@@ -107,4 +107,3 @@ export function NoteView({ note, headings, nav }: NoteViewProps) {
     </ReadingWorkspace>
   );
 }
-
