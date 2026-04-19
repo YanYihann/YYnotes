@@ -1,0 +1,7 @@
+name = "yynotes"
+compatibility_date = "2026-04-19"
+pages_build_output_dir = "out"
+
+[env.production.vars]
+DEPLOY_TARGET = "cloudflare-pages"
+NEXT_PUBLIC_NOTES_API_BASE = "https://neon-notes-worker.yynotes-api.workers.dev"

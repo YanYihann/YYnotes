@@ -40,51 +40,43 @@ OPENAI_BASE_URL=https://api.openai.com/v1
 `prompt.md` in project root is the generation instruction source.
 Generation must follow this prompt strictly.
 
-## GitHub Pages + Neon (cloud mode)
+## Cloudflare Pages Functions + Neon (cloud mode)
 
-GitHub Pages is static, so it cannot write files directly.
-Use an external API backend to generate and store notes.
+Cloudflare Pages serves the static front-end, and Neon + Worker handles note generation/storage.
 
-This repo includes a Cloudflare Worker template + Neon integration:
+This repo includes the Cloudflare Worker backend:
 
 - `cloud/neon-notes-worker/README.md`
 - `cloud/neon-notes-worker/schema.sql`
 - `cloud/neon-notes-worker/src/index.js`
 
-### Connect Pages to cloud API
+And a Pages Functions directory (example endpoint):
 
-1. Deploy the worker backend.
-2. In GitHub repo settings, add Actions variable:
-   - `NEXT_PUBLIC_NOTES_API_BASE=https://<your-worker-domain>`
-3. Re-run Pages deployment.
+- `functions/api/health.js`
 
-When this variable is set, the front-end generator switches to cloud mode automatically.
+### Required GitHub repo settings for auto deploy
 
-## GitHub Pages workflow
-
-Pages workflow file:
-
-- `.github/workflows/deploy-pages.yml`
-
-It injects:
-
-- `NEXT_PUBLIC_NOTES_API_BASE` (from GitHub Actions Variables)
-
-## Auto deploy (recommended)
-
-This repo now has 2 automatic deployment workflows:
-
-1. `deploy-pages.yml`
-   - Trigger: push to `master`
-   - Result: auto deploy GitHub Pages
-2. `deploy-worker.yml`
-   - Trigger: push to `master` and changes under `cloud/neon-notes-worker/**`
-   - Result: auto deploy Cloudflare Worker
-
-Before worker auto deploy can run, add these repository secrets:
+Secrets:
 
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
+
+Variables:
+
+- `CLOUDFLARE_PAGES_PROJECT_NAME` (your Cloudflare Pages project name)
+- `NEXT_PUBLIC_NOTES_API_BASE=https://<your-worker-domain>`
+- `NEXT_PUBLIC_NOTES_WRITE_KEY` (optional, only if worker uses `WRITE_API_KEY`)
+
+## Workflows
+
+This repo has two deployment workflows:
+
+1. `.github/workflows/deploy-pages.yml`
+   - Deploy static site to Cloudflare Pages
+   - Trigger: push to `master`
+2. `.github/workflows/deploy-worker.yml`
+   - Deploy Worker backend
+   - Trigger: push to `master` and changes under `cloud/neon-notes-worker/**`
 
 ## Main routes
 

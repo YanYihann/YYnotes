@@ -1,22 +1,35 @@
-﻿name: Deploy to GitHub Pages
+name: Deploy to Cloudflare Pages Functions
 
 on:
   push:
     branches:
       - master
+    paths:
+      - "app/**"
+      - "components/**"
+      - "lib/**"
+      - "public/**"
+      - "**/*.mdx"
+      - "prompt.md"
+      - "next.config.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - "tailwind.config.ts"
+      - "postcss.config.mjs"
+      - "tsconfig.json"
+      - "functions/**"
+      - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
+  group: cloudflare-pages
   cancel-in-progress: true
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -28,36 +41,37 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-
       - name: Install dependencies
         run: npm ci
 
-      - name: Disable API routes for static export
+      - name: Check Cloudflare Pages config
+        id: cf-pages-config
+        run: |
+          if [ -z "${CLOUDFLARE_API_TOKEN}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID}" ] || [ -z "${CLOUDFLARE_PAGES_PROJECT_NAME}" ]; then
+            echo "missing=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Cloudflare Pages deploy skipped. Please set secrets CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID and variable CLOUDFLARE_PAGES_PROJECT_NAME."
+          else
+            echo "missing=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_PAGES_PROJECT_NAME: ${{ vars.CLOUDFLARE_PAGES_PROJECT_NAME }}
+
+      - name: Disable Next.js API routes for static export
         run: rm -rf app/api
 
       - name: Build static site
         env:
-          GITHUB_ACTIONS: "true"
-          NEXT_PUBLIC_NOTES_API_BASE: ${{ vars.NEXT_PUBLIC_NOTES_API_BASE }}
+          DEPLOY_TARGET: ${{ vars.DEPLOY_TARGET || 'cloudflare-pages' }}
+          NEXT_PUBLIC_NOTES_API_BASE: ${{ vars.NEXT_PUBLIC_NOTES_API_BASE || 'https://neon-notes-worker.yynotes-api.workers.dev' }}
+          NEXT_PUBLIC_NOTES_WRITE_KEY: ${{ vars.NEXT_PUBLIC_NOTES_WRITE_KEY }}
         run: npm run build
 
-      - name: Add nojekyll marker
-        run: touch out/.nojekyll
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./out
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Deploy to Cloudflare Pages
+        if: steps.cf-pages-config.outputs.missing == 'false'
+        run: npx wrangler pages deploy out --project-name "$CLOUDFLARE_PAGES_PROJECT_NAME" --branch "$GITHUB_REF_NAME"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_PAGES_PROJECT_NAME: ${{ vars.CLOUDFLARE_PAGES_PROJECT_NAME }}
