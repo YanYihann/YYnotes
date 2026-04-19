@@ -5,6 +5,7 @@ compatibility_date = "2026-04-19"
 [vars]
 OPENAI_MODEL = "gpt-4.1-mini"
 ALLOWED_ORIGIN = "https://yanyihann.github.io"
+OPENAI_BASE_URL = "https://api.openai-proxy.org/v1"
 
 # Set these with:
 # wrangler secret put DATABASE_URL

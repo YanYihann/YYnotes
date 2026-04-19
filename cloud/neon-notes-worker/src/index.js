@@ -5,6 +5,7 @@ const MAX_FILE_SIZE_BYTES = 4 * 1024 * 1024;
 const MAX_SOURCE_CHARS = 35_000;
 const MAX_EXTRA_INSTRUCTION_CHARS = 1_500;
 const SUPPORTED_TEXT_EXTENSIONS = new Set(["txt", "md", "markdown", "tex", "csv", "rst"]);
+const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
 
 function jsonResponse(data, status = 200, origin = "*") {
   return new Response(JSON.stringify(data), {
@@ -75,6 +76,14 @@ function fileExtension(name) {
 
 function normalizeNewlines(text) {
   return String(text ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+function normalizeApiBase(input, fallback = DEFAULT_OPENAI_BASE_URL) {
+  const raw = String(input ?? "").trim();
+  if (!raw) {
+    return fallback;
+  }
+  return raw.replace(/\/+$/, "");
 }
 
 function clampText(value, max) {
@@ -297,7 +306,10 @@ function buildUserPrompt({ title, topic, tags, sourceText, extraInstruction }) {
 }
 
 async function generateMdx({ env, title, topic, tags, sourceText, extraInstruction, promptTemplate }) {
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const openaiBaseUrl = normalizeApiBase(env.OPENAI_BASE_URL);
+  const responsesEndpoint = `${openaiBaseUrl}/responses`;
+
+  const response = await fetch(responsesEndpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
