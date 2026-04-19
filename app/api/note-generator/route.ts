@@ -1,6 +1,7 @@
 ﻿import fs from "node:fs/promises";
 import path from "node:path";
 import matter from "gray-matter";
+import JSZip from "jszip";
 import mammoth from "mammoth";
 import { NextResponse } from "next/server";
 import { getWeekNotes } from "@/lib/content";
@@ -20,7 +21,6 @@ const MAX_SOURCE_CHARS = 35_000;
 const MAX_STYLE_CONTEXT_CHARS = 16_000;
 const MAX_EXTRA_INSTRUCTION_CHARS = 1_500;
 const SUPPORTED_TEXT_EXTENSIONS = new Set(["txt", "md", "markdown", "tex", "csv", "rst"]);
-const SUPPORTED_DOC_EXTENSIONS = new Set(["docx"]);
 
 type AssistantRole = "system" | "user" | "assistant";
 
@@ -240,6 +240,61 @@ function detectLanguage(text: string): "zh" | "en" | "mixed" {
   return "mixed";
 }
 
+function decodeXmlEntities(text: string): string {
+  return text
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(Number.parseInt(dec, 10)));
+}
+
+function compressBlankLines(text: string): string {
+  return text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+async function extractPptxText(bytes: Buffer): Promise<string> {
+  const zip = await JSZip.loadAsync(bytes);
+  const slideNames = Object.keys(zip.files)
+    .filter((name) => /^ppt\/slides\/slide\d+\.xml$/i.test(name))
+    .sort((a, b) => {
+      const aNum = Number.parseInt(a.match(/slide(\d+)\.xml/i)?.[1] ?? "0", 10);
+      const bNum = Number.parseInt(b.match(/slide(\d+)\.xml/i)?.[1] ?? "0", 10);
+      return aNum - bNum;
+    });
+
+  const slides: string[] = [];
+
+  for (const slideName of slideNames) {
+    const file = zip.file(slideName);
+    if (!file) {
+      continue;
+    }
+
+    const xml = await file.async("string");
+    const plain = decodeXmlEntities(
+      xml
+        .replace(/<a:tab[^>]*\/>/gi, "\t")
+        .replace(/<a:br[^>]*\/>/gi, "\n")
+        .replace(/<\/a:p>/gi, "\n")
+        .replace(/<[^>]+>/g, ""),
+    );
+
+    const cleaned = compressBlankLines(normalizeNewlines(plain));
+    if (cleaned) {
+      slides.push(cleaned);
+    }
+  }
+
+  if (!slides.length) {
+    throw new Error("未能从 PPTX 中提取到文本内容，请检查文件是否为可编辑的 .pptx。");
+  }
+
+  return clampText(slides.join("\n\n"), MAX_SOURCE_CHARS);
+}
+
 function slugifyTitle(input: string): string {
   const base = input
     .trim()
@@ -309,11 +364,20 @@ function splitTopic(topicInput: string, title: string): { topicZh: string; topic
 async function extractSourceText(file: File): Promise<string> {
   const extension = fileExtension(file.name);
 
-  if (SUPPORTED_DOC_EXTENSIONS.has(extension)) {
+  if (extension === "docx") {
     const bytes = Buffer.from(await file.arrayBuffer());
     const extracted = await mammoth.extractRawText({ buffer: bytes });
     const text = normalizeNewlines(extracted.value || "");
     return clampText(text, MAX_SOURCE_CHARS);
+  }
+
+  if (extension === "pptx") {
+    const bytes = Buffer.from(await file.arrayBuffer());
+    return extractPptxText(bytes);
+  }
+
+  if (extension === "doc" || extension === "ppt") {
+    throw new Error("暂不支持旧版 .doc / .ppt，请先另存为 .docx / .pptx 后再上传。");
   }
 
   if (SUPPORTED_TEXT_EXTENSIONS.has(extension) || file.type.startsWith("text/")) {
@@ -323,7 +387,7 @@ async function extractSourceText(file: File): Promise<string> {
 
   const fallback = normalizeNewlines(await file.text());
   if (!looksLikeReadableText(fallback)) {
-    throw new Error("无法解析该文件类型。当前建议上传 txt / md / markdown / docx。");
+    throw new Error("无法解析该文件类型。当前支持 txt / md / markdown / docx / pptx。");
   }
   return clampText(fallback, MAX_SOURCE_CHARS);
 }

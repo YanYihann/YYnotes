@@ -65,17 +65,27 @@ function fileExtension(fileName: string): string {
 }
 
 async function loadPromptTemplateFromSite(): Promise<string> {
-  const response = await fetch("/prompt.md", { cache: "no-store" });
-  if (!response.ok) {
-    throw new Error("无法读取 prompt.md，请确认该文件已发布到站点根目录。");
+  const candidates = ["/prompt.md"];
+  if (typeof window !== "undefined") {
+    const segment = window.location.pathname.split("/").filter(Boolean)[0];
+    if (segment) {
+      candidates.push(`/${segment}/prompt.md`);
+    }
   }
 
-  const content = (await response.text()).trim();
-  if (!content) {
-    throw new Error("prompt.md 内容为空，无法生成笔记。");
+  for (const candidate of candidates) {
+    const response = await fetch(candidate, { cache: "no-store" });
+    if (!response.ok) {
+      continue;
+    }
+
+    const content = (await response.text()).trim();
+    if (content) {
+      return content;
+    }
   }
 
-  return content;
+  throw new Error("无法读取 prompt.md，请确认该文件已发布到站点根目录。");
 }
 
 async function callLocalGenerator(params: {
@@ -123,32 +133,26 @@ async function callCloudGenerator(params: {
   extraInstruction: string;
 }): Promise<GenerationResult> {
   const extension = fileExtension(params.sourceFile.name);
-  if (extension === "docx") {
-    throw new Error("云端模式暂不支持 .docx，请先转换为 .md 或 .txt 后再上传。");
-  }
-
-  const sourceText = (await params.sourceFile.text()).trim();
-  if (!sourceText) {
-    throw new Error("上传文件内容为空，请检查后重试。");
+  if (extension === "doc" || extension === "ppt") {
+    throw new Error("暂不支持旧版 .doc / .ppt，请先另存为 .docx / .pptx 后再上传。");
   }
 
   const promptTemplate = await loadPromptTemplateFromSite();
   const apiBase = normalizeApiBase(CLOUD_API_BASE);
+  const body = new FormData();
+  body.append("title", params.title);
+  body.append("topic", params.topic);
+  body.append("tags", params.tags);
+  body.append("sourceFile", params.sourceFile);
+  body.append("overwrite", params.overwrite ? "true" : "false");
+  body.append("promptTemplate", promptTemplate);
+  if (params.extraInstruction) {
+    body.append("extraInstruction", params.extraInstruction);
+  }
 
   const response = await fetch(`${apiBase}/notes/generate`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      title: params.title,
-      topic: params.topic,
-      tags: params.tags,
-      sourceText,
-      overwrite: params.overwrite,
-      extraInstruction: params.extraInstruction,
-      promptTemplate,
-    }),
+    body,
   });
 
   const json = (await response.json().catch(() => null)) as { error?: string } & Partial<GenerationResult> | null;
@@ -280,7 +284,7 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
           <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/60 dark:text-white/60">原始资料文件</span>
           <input
             type="file"
-            accept=".txt,.md,.markdown,.docx,.tex,.csv"
+            accept=".txt,.md,.markdown,.doc,.docx,.ppt,.pptx,.tex,.csv"
             onChange={(event) => setSourceFile(event.target.files?.[0] ?? null)}
             className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[14px] text-black/80 outline-none file:mr-3 file:rounded-capsule file:border-0 file:bg-[#0071e3] file:px-3 file:py-1 file:text-[12px] file:text-white hover:file:bg-[#0066cc] focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/82"
           />

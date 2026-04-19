@@ -70,6 +70,22 @@ It injects:
 
 - `NEXT_PUBLIC_NOTES_API_BASE` (from GitHub Actions Variables)
 
+## Auto deploy (recommended)
+
+This repo now has 2 automatic deployment workflows:
+
+1. `deploy-pages.yml`
+   - Trigger: push to `master`
+   - Result: auto deploy GitHub Pages
+2. `deploy-worker.yml`
+   - Trigger: push to `master` and changes under `cloud/neon-notes-worker/**`
+   - Result: auto deploy Cloudflare Worker
+
+Before worker auto deploy can run, add these repository secrets:
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+
 ## Main routes
 
 - `/` home

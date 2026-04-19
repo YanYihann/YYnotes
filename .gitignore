@@ -1,5 +1,7 @@
 # dependencies
 /node_modules
+**/node_modules/
+**/.wrangler/
 
 # next.js
 /.next

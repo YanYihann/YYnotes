@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "neon-notes-worker",
   "private": true,
   "type": "module",
@@ -7,7 +7,8 @@
     "dev": "wrangler dev"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^0.10.4"
+    "@neondatabase/serverless": "^0.10.4",
+    "jszip": "^3.10.1"
   },
   "devDependencies": {
     "wrangler": "^4.16.0"

@@ -1,4 +1,10 @@
 ﻿import { neon } from "@neondatabase/serverless";
+import JSZip from "jszip";
+
+const MAX_FILE_SIZE_BYTES = 4 * 1024 * 1024;
+const MAX_SOURCE_CHARS = 35_000;
+const MAX_EXTRA_INSTRUCTION_CHARS = 1_500;
+const SUPPORTED_TEXT_EXTENSIONS = new Set(["txt", "md", "markdown", "tex", "csv", "rst"]);
 
 function jsonResponse(data, status = 200, origin = "*") {
   return new Response(JSON.stringify(data), {
@@ -34,6 +40,171 @@ function slugifyTitle(input) {
   }
 
   return `note-${Date.now()}`;
+}
+
+function fileExtension(name) {
+  const normalized = String(name ?? "");
+  const index = normalized.lastIndexOf(".");
+  if (index === -1) {
+    return "";
+  }
+
+  return normalized.slice(index + 1).toLowerCase();
+}
+
+function normalizeNewlines(text) {
+  return String(text ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+function clampText(value, max) {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  return trimmed.length > max ? `${trimmed.slice(0, max)}\n...[truncated]` : trimmed;
+}
+
+function compressBlankLines(text) {
+  return text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function looksLikeReadableText(value) {
+  const text = String(value ?? "").replace(/\s+/g, "");
+  if (!text) {
+    return false;
+  }
+
+  const sample = text.slice(0, 800);
+  const readable = sample.match(/[A-Za-z0-9\u4e00-\u9fff.,;:!?()[\]{}'"`~+\-*/=<>_%$#@&\\|]/g)?.length ?? 0;
+  return readable / sample.length > 0.45;
+}
+
+function decodeXmlEntities(text) {
+  return String(text ?? "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(Number.parseInt(dec, 10)));
+}
+
+async function extractDocxTextFromZip(bytes) {
+  const zip = await JSZip.loadAsync(bytes);
+  const xmlNames = Object.keys(zip.files)
+    .filter((name) => /^word\/(document|header\d+|footer\d+|footnotes|endnotes)\.xml$/i.test(name))
+    .sort((a, b) => a.localeCompare(b));
+
+  const chunks = [];
+
+  for (const xmlName of xmlNames) {
+    const file = zip.file(xmlName);
+    if (!file) {
+      continue;
+    }
+
+    const xml = await file.async("string");
+    const plain = decodeXmlEntities(
+      xml
+        .replace(/<w:tab[^>]*\/>/gi, "\t")
+        .replace(/<w:br[^>]*\/>/gi, "\n")
+        .replace(/<w:cr[^>]*\/>/gi, "\n")
+        .replace(/<\/w:p>/gi, "\n")
+        .replace(/<[^>]+>/g, ""),
+    );
+
+    const cleaned = compressBlankLines(normalizeNewlines(plain));
+    if (cleaned) {
+      chunks.push(cleaned);
+    }
+  }
+
+  if (!chunks.length) {
+    throw new Error("未能从 DOCX 中提取到文本内容，请检查文件是否为可编辑的 .docx。");
+  }
+
+  return clampText(chunks.join("\n\n"), MAX_SOURCE_CHARS);
+}
+
+async function extractPptxTextFromZip(bytes) {
+  const zip = await JSZip.loadAsync(bytes);
+  const slideNames = Object.keys(zip.files)
+    .filter((name) => /^ppt\/slides\/slide\d+\.xml$/i.test(name))
+    .sort((a, b) => {
+      const aNum = Number.parseInt(a.match(/slide(\d+)\.xml/i)?.[1] ?? "0", 10);
+      const bNum = Number.parseInt(b.match(/slide(\d+)\.xml/i)?.[1] ?? "0", 10);
+      return aNum - bNum;
+    });
+
+  const slides = [];
+
+  for (const slideName of slideNames) {
+    const file = zip.file(slideName);
+    if (!file) {
+      continue;
+    }
+
+    const xml = await file.async("string");
+    const plain = decodeXmlEntities(
+      xml
+        .replace(/<a:tab[^>]*\/>/gi, "\t")
+        .replace(/<a:br[^>]*\/>/gi, "\n")
+        .replace(/<\/a:p>/gi, "\n")
+        .replace(/<[^>]+>/g, ""),
+    );
+
+    const cleaned = compressBlankLines(normalizeNewlines(plain));
+    if (cleaned) {
+      slides.push(cleaned);
+    }
+  }
+
+  if (!slides.length) {
+    throw new Error("未能从 PPTX 中提取到文本内容，请检查文件是否为可编辑的 .pptx。");
+  }
+
+  return clampText(slides.join("\n\n"), MAX_SOURCE_CHARS);
+}
+
+async function extractSourceFromFile(file) {
+  if (!(file instanceof File)) {
+    throw new Error("sourceFile is required.");
+  }
+
+  if (file.size <= 0) {
+    throw new Error("上传文件为空，请检查后重试。");
+  }
+
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    throw new Error("文件过大，请控制在 4MB 以内。");
+  }
+
+  const extension = fileExtension(file.name);
+
+  if (extension === "docx") {
+    return extractDocxTextFromZip(await file.arrayBuffer());
+  }
+
+  if (extension === "pptx") {
+    return extractPptxTextFromZip(await file.arrayBuffer());
+  }
+
+  if (extension === "doc" || extension === "ppt") {
+    throw new Error("暂不支持旧版 .doc / .ppt，请先另存为 .docx / .pptx 后再上传。");
+  }
+
+  if (SUPPORTED_TEXT_EXTENSIONS.has(extension) || file.type.startsWith("text/")) {
+    return clampText(normalizeNewlines(await file.text()), MAX_SOURCE_CHARS);
+  }
+
+  const fallback = normalizeNewlines(await file.text());
+  if (!looksLikeReadableText(fallback)) {
+    throw new Error("无法解析该文件类型。当前支持 txt / md / markdown / docx / pptx。");
+  }
+
+  return clampText(fallback, MAX_SOURCE_CHARS);
 }
 
 function parseTags(value) {
@@ -172,6 +343,45 @@ function requireWriteKey(request, env) {
   return provided === env.WRITE_API_KEY;
 }
 
+function asBoolean(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+
+async function parseGeneratePayload(request) {
+  const contentType = request.headers.get("Content-Type") || "";
+
+  if (contentType.includes("multipart/form-data")) {
+    const formData = await request.formData();
+    const sourceFile = formData.get("sourceFile");
+
+    return {
+      title: String(formData.get("title") || "").trim(),
+      topicInput: String(formData.get("topic") || "").trim(),
+      tags: parseTags(formData.get("tags")),
+      sourceText: sourceFile instanceof File ? await extractSourceFromFile(sourceFile) : String(formData.get("sourceText") || "").trim(),
+      extraInstruction: clampText(String(formData.get("extraInstruction") || ""), MAX_EXTRA_INSTRUCTION_CHARS),
+      promptTemplate: String(formData.get("promptTemplate") || "").trim(),
+      overwrite: asBoolean(formData.get("overwrite")),
+    };
+  }
+
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object") {
+    throw new Error("Invalid JSON body.");
+  }
+
+  return {
+    title: String(body.title || "").trim(),
+    topicInput: String(body.topic || "").trim(),
+    tags: parseTags(body.tags),
+    sourceText: clampText(String(body.sourceText || ""), MAX_SOURCE_CHARS),
+    extraInstruction: clampText(String(body.extraInstruction || ""), MAX_EXTRA_INSTRUCTION_CHARS),
+    promptTemplate: String(body.promptTemplate || "").trim(),
+    overwrite: Boolean(body.overwrite),
+  };
+}
+
 export default {
   async fetch(request, env) {
     const requestOrigin = request.headers.get("Origin");
@@ -236,18 +446,15 @@ export default {
         return jsonResponse({ error: "OPENAI_API_KEY is missing." }, 500, corsOrigin);
       }
 
-      const body = await request.json().catch(() => null);
-      if (!body || typeof body !== "object") {
-        return jsonResponse({ error: "Invalid JSON body." }, 400, corsOrigin);
+      let payload;
+      try {
+        payload = await parseGeneratePayload(request);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Invalid request body.";
+        return jsonResponse({ error: message }, 400, corsOrigin);
       }
 
-      const title = String(body.title || "").trim();
-      const topicInput = String(body.topic || "").trim();
-      const tags = parseTags(body.tags);
-      const sourceText = String(body.sourceText || "").trim();
-      const extraInstruction = String(body.extraInstruction || "").trim();
-      const promptTemplate = String(body.promptTemplate || "").trim();
-      const overwrite = Boolean(body.overwrite);
+      const { title, topicInput, tags, sourceText, extraInstruction, promptTemplate, overwrite } = payload;
 
       if (!title) {
         return jsonResponse({ error: "title is required." }, 400, corsOrigin);
