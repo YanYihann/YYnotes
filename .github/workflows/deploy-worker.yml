@@ -46,7 +46,50 @@ jobs:
       - name: Deploy to Cloudflare Workers
         if: steps.cf-secrets.outputs.missing == 'false'
         working-directory: cloud/neon-notes-worker
-        run: npx wrangler deploy
+        run: |
+          set -euo pipefail
+
+          LAST_OUTPUT=""
+          LAST_CODE=1
+
+          for ATTEMPT in 1 2 3; do
+            echo "Deploy attempt ${ATTEMPT}/3"
+            set +e
+            OUTPUT="$(npx wrangler deploy 2>&1)"
+            CODE=$?
+            set -e
+
+            echo "$OUTPUT"
+            LAST_OUTPUT="$OUTPUT"
+            LAST_CODE=$CODE
+
+            if [ "$CODE" -eq 0 ]; then
+              echo "Wrangler deploy succeeded."
+              exit 0
+            fi
+
+            if echo "$OUTPUT" | grep -qE "workers/subdomain -> 502 Bad Gateway"; then
+              if [ "$ATTEMPT" -lt 3 ]; then
+                echo "::warning::Cloudflare API temporary 502 on workers/subdomain. Retrying..."
+                sleep $((ATTEMPT * 6))
+                continue
+              fi
+
+              if echo "$OUTPUT" | grep -q "Uploaded neon-notes-worker"; then
+                echo "::warning::Deploy uploaded successfully, but post-deploy subdomain lookup returned 502. Treating as success."
+                exit 0
+              fi
+            fi
+
+            if [ "$ATTEMPT" -lt 3 ]; then
+              echo "::warning::Deploy failed. Retrying..."
+              sleep $((ATTEMPT * 6))
+            fi
+          done
+
+          echo "::error::Wrangler deploy failed after retries."
+          echo "$LAST_OUTPUT"
+          exit "$LAST_CODE"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
