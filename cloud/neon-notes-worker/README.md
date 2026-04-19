@@ -10,6 +10,11 @@ This worker is the backend for GitHub Pages note generation and storage.
 - `POST /notes/generate`: generate MDX via OpenAI and save to Neon
 - `GET /notes`: list latest notes (current user only)
 - `GET /notes/:slug`: get a single note (current user only)
+- `PATCH /notes/:slug`: update metadata (and supports `folderId` assignment)
+- `GET /folders`: list folders (current user only)
+- `POST /folders`: create folder (current user only)
+- `PATCH /folders/:id`: update folder name/order (current user only)
+- `DELETE /folders/:id`: delete folder and unassign related notes (current user only)
 - `DELETE /notes/:slug`: delete one note by slug (current user only)
 - `GET /health`: health check
 

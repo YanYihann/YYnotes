@@ -9,6 +9,7 @@ import { normalizeCloudNote, type CloudNoteRecord } from "@/lib/cloud-note-norma
 type NoteListItem = {
   slug: string;
   viewHref: string;
+  folderId: string;
   weekLabelZh: string;
   weekLabelEn: string;
   zhTitle: string;
@@ -20,11 +21,24 @@ type NoteListItem = {
   order: number;
 };
 
-type InitialNoteItem = Omit<NoteListItem, "viewHref">;
+type InitialNoteItem = Omit<NoteListItem, "viewHref" | "folderId">;
 
 type NotesApiResponse = {
   success?: boolean;
   notes?: unknown;
+  error?: string;
+};
+
+type CloudFolderRecord = {
+  id?: unknown;
+  name?: unknown;
+  sort_order?: unknown;
+};
+
+type FoldersApiResponse = {
+  success?: boolean;
+  folders?: unknown;
+  folder?: unknown;
   error?: string;
 };
 
@@ -53,27 +67,6 @@ const FOLDER_NAME_MAX_LENGTH = 24;
 
 function normalizeApiBase(input: string): string {
   return input.replace(/\/+$/, "");
-}
-
-function toCloudNoteItem(row: CloudNoteRecord): NoteListItem | null {
-  const normalized = normalizeCloudNote(row);
-  if (!normalized.slug) {
-    return null;
-  }
-
-  return {
-    slug: normalized.slug,
-    viewHref: `/notes/cloud?slug=${encodeURIComponent(normalized.slug)}`,
-    weekLabelZh: normalized.topicZh,
-    weekLabelEn: normalized.topicEn,
-    zhTitle: normalized.zhTitle,
-    enTitle: normalized.enTitle,
-    descriptionZh: normalized.descriptionZh,
-    descriptionEn: normalized.descriptionEn,
-    tags: normalized.tags,
-    topicZh: normalized.topicZh,
-    order: normalized.order,
-  };
 }
 
 function sortNoteItems(rows: NoteListItem[]): NoteListItem[] {
@@ -164,9 +157,49 @@ function extractDraggedSlug(event: React.DragEvent<HTMLElement>, fallback: strin
   return fallback;
 }
 
+function toCloudNoteItem(row: CloudNoteRecord): NoteListItem | null {
+  const normalized = normalizeCloudNote(row);
+  if (!normalized.slug) {
+    return null;
+  }
+
+  const folderIdParsed = Number(row.folder_id);
+  const folderId = Number.isInteger(folderIdParsed) && folderIdParsed > 0 ? String(folderIdParsed) : "";
+
+  return {
+    slug: normalized.slug,
+    viewHref: `/notes/cloud?slug=${encodeURIComponent(normalized.slug)}`,
+    folderId,
+    weekLabelZh: normalized.topicZh,
+    weekLabelEn: normalized.topicEn,
+    zhTitle: normalized.zhTitle,
+    enTitle: normalized.enTitle,
+    descriptionZh: normalized.descriptionZh,
+    descriptionEn: normalized.descriptionEn,
+    tags: normalized.tags,
+    topicZh: normalized.topicZh,
+    order: normalized.order,
+  };
+}
+
+function toFolderItem(row: CloudFolderRecord): FolderItem | null {
+  const idNumber = Number(row.id);
+  const id = Number.isInteger(idNumber) && idNumber > 0 ? String(idNumber) : "";
+  const name = sanitizeFolderName(String(row.name ?? ""));
+  const orderNumber = Number(row.sort_order);
+  const order = Number.isFinite(orderNumber) ? Math.max(0, Math.floor(orderNumber)) : 0;
+
+  if (!id || !name) {
+    return null;
+  }
+
+  return { id, name, order };
+}
+
 export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
   const { isReady, session } = useAuth();
   const authToken = session?.token ?? "";
+
   const [notes, setNotes] = useState<NoteListItem[]>(() =>
     IS_CLOUD_MODE
       ? []
@@ -174,23 +207,27 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
           initialNotes.map((note, index) => ({
             ...note,
             viewHref: `/notes/${note.slug}`,
+            folderId: "",
             order: Number.isFinite(note.order) ? note.order : index,
           })),
         ),
   );
+  const [folders, setFolders] = useState<FolderItem[]>([]);
+  const [noteFolderMap, setNoteFolderMap] = useState<Record<string, string>>({});
+
   const [loadingRemoteNotes, setLoadingRemoteNotes] = useState(false);
   const [search, setSearch] = useState("");
   const [topicFilter, setTopicFilter] = useState("");
   const [tagFilter, setTagFilter] = useState("");
   const [folderFilter, setFolderFilter] = useState<FolderFilterValue>("all");
   const [deletingSlug, setDeletingSlug] = useState("");
-  const [error, setError] = useState("");
-
-  const [folders, setFolders] = useState<FolderItem[]>([]);
-  const [noteFolderMap, setNoteFolderMap] = useState<Record<string, string>>({});
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [assigningSlug, setAssigningSlug] = useState("");
+  const [deletingFolderId, setDeletingFolderId] = useState("");
   const [folderInput, setFolderInput] = useState("");
   const [draggingSlug, setDraggingSlug] = useState("");
   const [dragOverTarget, setDragOverTarget] = useState<string>("");
+  const [error, setError] = useState("");
 
   const folderStorageKey = useMemo(
     () =>
@@ -212,6 +249,8 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
     if (!authToken) {
       setNotes([]);
+      setFolders([]);
+      setNoteFolderMap({});
       setError("");
       setLoadingRemoteNotes(false);
       return;
@@ -219,35 +258,61 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
     let cancelled = false;
 
-    async function loadCloudNotes() {
+    async function loadCloudData() {
       setLoadingRemoteNotes(true);
       setError("");
 
       try {
         const apiBase = normalizeApiBase(CLOUD_API_BASE);
-        const response = await fetch(`${apiBase}/notes?limit=200&include_content=1`, {
-          method: "GET",
-          cache: "no-store",
-          headers: {
-            Authorization: `Bearer ${authToken}`,
-          },
-        });
+        const headers = {
+          Authorization: `Bearer ${authToken}`,
+        };
 
-        const json = (await response.json().catch(() => null)) as NotesApiResponse | null;
-        if (!response.ok || !json?.success || !Array.isArray(json.notes)) {
-          throw new Error(json?.error || "云端笔记列表加载失败。");
+        const [notesResponse, foldersResponse] = await Promise.all([
+          fetch(`${apiBase}/notes?limit=200&include_content=1`, {
+            method: "GET",
+            cache: "no-store",
+            headers,
+          }),
+          fetch(`${apiBase}/folders`, {
+            method: "GET",
+            cache: "no-store",
+            headers,
+          }),
+        ]);
+
+        const notesJson = (await notesResponse.json().catch(() => null)) as NotesApiResponse | null;
+        if (!notesResponse.ok || !notesJson?.success || !Array.isArray(notesJson.notes)) {
+          throw new Error(notesJson?.error || "云端笔记列表加载失败。");
         }
 
-        const mapped = json.notes
+        const foldersJson = (await foldersResponse.json().catch(() => null)) as FoldersApiResponse | null;
+        if (!foldersResponse.ok || !foldersJson?.success || !Array.isArray(foldersJson.folders)) {
+          throw new Error(foldersJson?.error || "云端文件夹列表加载失败。");
+        }
+
+        const mappedNotes = notesJson.notes
           .map((item) => toCloudNoteItem(item as CloudNoteRecord))
           .filter((item): item is NoteListItem => item !== null);
+        const mappedFolders = foldersJson.folders
+          .map((item) => toFolderItem(item as CloudFolderRecord))
+          .filter((item): item is FolderItem => item !== null);
+
+        const nextNoteFolderMap: Record<string, string> = {};
+        for (const note of mappedNotes) {
+          if (note.folderId) {
+            nextNoteFolderMap[note.slug] = note.folderId;
+          }
+        }
 
         if (!cancelled) {
-          setNotes(sortNoteItems(mapped));
+          setNotes(sortNoteItems(mappedNotes));
+          setFolders(sortFolders(mappedFolders));
+          setNoteFolderMap(nextNoteFolderMap);
         }
       } catch (loadError) {
         if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : "云端笔记列表加载失败。");
+          setError(loadError instanceof Error ? loadError.message : "云端数据加载失败。");
         }
       } finally {
         if (!cancelled) {
@@ -256,7 +321,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
       }
     }
 
-    loadCloudNotes();
+    loadCloudData();
 
     return () => {
       cancelled = true;
@@ -264,13 +329,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
   }, [isReady, authToken]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    if (IS_CLOUD_MODE && (!isReady || !authToken)) {
-      setFolders([]);
-      setNoteFolderMap({});
+    if (typeof window === "undefined" || IS_CLOUD_MODE) {
       return;
     }
 
@@ -283,14 +342,10 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
     setFolders(parsed.folders);
     setNoteFolderMap(parsed.noteFolderMap);
-  }, [folderStorageKey, isReady, authToken]);
+  }, [folderStorageKey]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    if (IS_CLOUD_MODE && (!isReady || !authToken)) {
+    if (typeof window === "undefined" || IS_CLOUD_MODE) {
       return;
     }
 
@@ -300,7 +355,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
       noteFolderMap,
     };
     window.localStorage.setItem(folderStorageKey, JSON.stringify(payload));
-  }, [folders, noteFolderMap, folderStorageKey, isReady, authToken]);
+  }, [folders, noteFolderMap, folderStorageKey]);
 
   useEffect(() => {
     const knownSlugs = new Set(notes.map((note) => note.slug));
@@ -311,16 +366,10 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
       const next: Record<string, string> = {};
 
       for (const [slug, folderId] of Object.entries(previous)) {
-        if (!knownSlugs.has(slug)) {
+        if (!knownSlugs.has(slug) || !knownFolderIds.has(folderId)) {
           changed = true;
           continue;
         }
-
-        if (!knownFolderIds.has(folderId)) {
-          changed = true;
-          continue;
-        }
-
         next[slug] = folderId;
       }
 
@@ -416,25 +465,70 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     });
   }, [notes, noteFolderMap, folderFilter, topicFilter, tagFilter, search, folderById]);
 
-  function assignFolder(noteSlug: string, folderId: string | null) {
-    const normalized = folderId?.trim() ?? "";
+  function updateLocalFolderMapping(noteSlug: string, folderId: string) {
     setNoteFolderMap((previous) => {
       const current = previous[noteSlug] ?? "";
-      if (current === normalized) {
+      if (current === folderId) {
         return previous;
       }
 
       const next = { ...previous };
-      if (!normalized) {
+      if (!folderId) {
         delete next[noteSlug];
       } else {
-        next[noteSlug] = normalized;
+        next[noteSlug] = folderId;
       }
       return next;
     });
   }
 
-  function handleCreateFolder() {
+  async function assignFolder(noteSlug: string, folderId: string | null) {
+    const normalized = folderId?.trim() ?? "";
+    const previousFolderId = noteFolderMap[noteSlug] ?? "";
+    if (previousFolderId === normalized) {
+      return;
+    }
+
+    if (!IS_CLOUD_MODE) {
+      updateLocalFolderMapping(noteSlug, normalized);
+      return;
+    }
+
+    if (!authToken) {
+      setError("登录状态已失效，请重新登录。");
+      return;
+    }
+
+    setAssigningSlug(noteSlug);
+    setError("");
+    updateLocalFolderMapping(noteSlug, normalized);
+
+    try {
+      const apiBase = normalizeApiBase(CLOUD_API_BASE);
+      const response = await fetch(`${apiBase}/notes/${encodeURIComponent(noteSlug)}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          folderId: normalized ? Number(normalized) : null,
+        }),
+      });
+
+      const json = (await response.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+      if (!response.ok || !json?.success) {
+        throw new Error(json?.error || "保存文件夹归类失败。");
+      }
+    } catch (assignError) {
+      updateLocalFolderMapping(noteSlug, previousFolderId);
+      setError(assignError instanceof Error ? assignError.message : "保存文件夹归类失败。");
+    } finally {
+      setAssigningSlug("");
+    }
+  }
+
+  async function handleCreateFolder() {
     const name = sanitizeFolderName(folderInput);
     if (!name) {
       setError("请输入文件夹名称。");
@@ -451,24 +545,94 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
       return;
     }
 
+    if (!IS_CLOUD_MODE) {
+      setError("");
+      setFolders((previous) =>
+        sortFolders([
+          ...previous,
+          {
+            id: createFolderId(name),
+            name,
+            order: previous.length ? Math.max(...previous.map((item) => item.order)) + 1 : 0,
+          },
+        ]),
+      );
+      setFolderInput("");
+      return;
+    }
+
+    if (!authToken) {
+      setError("登录状态已失效，请重新登录。");
+      return;
+    }
+
+    setCreatingFolder(true);
     setError("");
-    setFolders((previous) =>
-      sortFolders([
-        ...previous,
-        {
-          id: createFolderId(name),
-          name,
-          order: previous.length ? Math.max(...previous.map((item) => item.order)) + 1 : 0,
+
+    try {
+      const apiBase = normalizeApiBase(CLOUD_API_BASE);
+      const response = await fetch(`${apiBase}/folders`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
         },
-      ]),
-    );
-    setFolderInput("");
+        body: JSON.stringify({ name }),
+      });
+
+      const json = (await response.json().catch(() => null)) as FoldersApiResponse | null;
+      if (!response.ok || !json?.success) {
+        throw new Error(json?.error || "创建云端文件夹失败。");
+      }
+
+      const folder = toFolderItem((json.folder ?? null) as CloudFolderRecord);
+      if (!folder) {
+        throw new Error("云端返回了无效的文件夹数据。");
+      }
+
+      setFolders((previous) => sortFolders([...previous, folder]));
+      setFolderInput("");
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "创建云端文件夹失败。");
+    } finally {
+      setCreatingFolder(false);
+    }
   }
 
-  function handleDeleteFolder(folder: FolderItem) {
+  async function handleDeleteFolder(folder: FolderItem) {
     const shouldDelete = window.confirm(`确认删除文件夹“${folder.name}”吗？该文件夹下笔记将变为未归类。`);
     if (!shouldDelete) {
       return;
+    }
+
+    if (IS_CLOUD_MODE) {
+      if (!authToken) {
+        setError("登录状态已失效，请重新登录。");
+        return;
+      }
+
+      setDeletingFolderId(folder.id);
+      setError("");
+      try {
+        const apiBase = normalizeApiBase(CLOUD_API_BASE);
+        const response = await fetch(`${apiBase}/folders/${encodeURIComponent(folder.id)}`, {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        });
+
+        const json = (await response.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+        if (!response.ok || !json?.success) {
+          throw new Error(json?.error || "删除云端文件夹失败。");
+        }
+      } catch (deleteError) {
+        setError(deleteError instanceof Error ? deleteError.message : "删除云端文件夹失败。");
+        setDeletingFolderId("");
+        return;
+      } finally {
+        setDeletingFolderId("");
+      }
     }
 
     setFolders((previous) => previous.filter((item) => item.id !== folder.id));
@@ -490,14 +654,14 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     }
   }
 
-  function handleFolderDrop(folderId: string | null, event: React.DragEvent<HTMLElement>) {
+  async function handleFolderDrop(folderId: string | null, event: React.DragEvent<HTMLElement>) {
     event.preventDefault();
     const slug = extractDraggedSlug(event, draggingSlug);
     if (!slug) {
       return;
     }
 
-    assignFolder(slug, folderId);
+    await assignFolder(slug, folderId);
     setDragOverTarget("");
     setDraggingSlug("");
   }
@@ -651,7 +815,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
           <p className="font-text text-[13px] text-black/65 dark:text-white/68">
             共 {filteredNotes.length} / {notes.length} 条
           </p>
-          {loadingRemoteNotes ? <p className="font-text text-[13px] text-[#0066cc] dark:text-[#2997ff]">正在加载云端笔记...</p> : null}
+          {loadingRemoteNotes ? <p className="font-text text-[13px] text-[#0066cc] dark:text-[#2997ff]">正在加载云端数据...</p> : null}
         </div>
 
         {error ? (
@@ -677,15 +841,16 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
           <button
             type="button"
+            disabled={creatingFolder}
             onClick={handleCreateFolder}
-            className="inline-flex h-[38px] items-center rounded-capsule border border-[#0066cc] px-4 font-text text-[14px] tracking-tightCaption text-[#0066cc] transition hover:bg-[#0066cc]/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-[#2997ff] dark:text-[#2997ff] dark:hover:bg-[#2997ff]/[0.14]"
+            className="inline-flex h-[38px] items-center rounded-capsule border border-[#0066cc] px-4 font-text text-[14px] tracking-tightCaption text-[#0066cc] transition hover:bg-[#0066cc]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-[#2997ff] dark:text-[#2997ff] dark:hover:bg-[#2997ff]/[0.14]"
           >
-            创建文件夹
+            {creatingFolder ? "创建中..." : "创建文件夹"}
           </button>
         </div>
 
         <p className="mt-3 font-text text-[13px] text-black/65 dark:text-white/70">
-          拖动笔记卡片到下方文件夹区域即可归类；也可以在卡片内使用下拉框切换文件夹。
+          拖动笔记卡片到下方文件夹区域即可归类，也可以在卡片内使用下拉框切换文件夹。
         </p>
 
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -695,7 +860,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
               setDragOverTarget("uncategorized");
             }}
             onDragLeave={() => setDragOverTarget((previous) => (previous === "uncategorized" ? "" : previous))}
-            onDrop={(event) => handleFolderDrop(null, event)}
+            onDrop={(event) => void handleFolderDrop(null, event)}
             className={`rounded-apple border px-3 py-3 transition ${
               dragOverTarget === "uncategorized"
                 ? "border-[#0071e3] bg-[#0071e3]/[0.08] dark:border-[#2997ff] dark:bg-[#2997ff]/[0.16]"
@@ -717,7 +882,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                 setDragOverTarget(folder.id);
               }}
               onDragLeave={() => setDragOverTarget((previous) => (previous === folder.id ? "" : previous))}
-              onDrop={(event) => handleFolderDrop(folder.id, event)}
+              onDrop={(event) => void handleFolderDrop(folder.id, event)}
               className={`rounded-apple border px-3 py-3 transition ${
                 dragOverTarget === folder.id
                   ? "border-[#0071e3] bg-[#0071e3]/[0.08] dark:border-[#2997ff] dark:bg-[#2997ff]/[0.16]"
@@ -728,10 +893,11 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                 <p className="font-text text-[13px] font-semibold text-black/80 dark:text-white/84">{folder.name}</p>
                 <button
                   type="button"
-                  onClick={() => handleDeleteFolder(folder)}
-                  className="inline-flex items-center rounded-capsule border border-[#b4232f]/35 px-2 py-0.5 font-text text-[11px] tracking-tightCaption text-[#8f1d27] transition hover:bg-[#b4232f]/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b4232f] dark:border-[#ff6a77]/40 dark:text-[#ffc4cb] dark:hover:bg-[#ff6a77]/[0.12]"
+                  disabled={deletingFolderId === folder.id}
+                  onClick={() => void handleDeleteFolder(folder)}
+                  className="inline-flex items-center rounded-capsule border border-[#b4232f]/35 px-2 py-0.5 font-text text-[11px] tracking-tightCaption text-[#8f1d27] transition hover:bg-[#b4232f]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b4232f] dark:border-[#ff6a77]/40 dark:text-[#ffc4cb] dark:hover:bg-[#ff6a77]/[0.12]"
                 >
-                  删除
+                  {deletingFolderId === folder.id ? "删除中..." : "删除"}
                 </button>
               </div>
               <p className="mt-1 font-text text-[12px] text-black/62 dark:text-white/68">{folderCounts[folder.id] ?? 0} 条笔记</p>
@@ -776,7 +942,8 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                   <div className="flex flex-wrap items-center gap-2">
                     <select
                       value={noteFolderId}
-                      onChange={(event) => assignFolder(note.slug, event.target.value || null)}
+                      disabled={assigningSlug === note.slug}
+                      onChange={(event) => void assignFolder(note.slug, event.target.value || null)}
                       onClick={(event) => event.stopPropagation()}
                       className="max-w-[180px] rounded-capsule border border-black/20 bg-white px-3 py-1.5 font-text text-[12px] text-black/78 outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/22 dark:bg-[#202022] dark:text-white/80"
                     >

@@ -8,6 +8,7 @@ const MAX_EXTRA_INSTRUCTION_CHARS = 1_500;
 const MAX_NOTE_CONTEXT_CHARS = 14_000;
 const MAX_SELECTION_CHARS = 2_200;
 const MAX_QUESTION_CHARS = 2_000;
+const MAX_FOLDER_NAME_CHARS = 48;
 const MAX_HISTORY_ITEMS = 8;
 const SUPPORTED_TEXT_EXTENSIONS = new Set(["txt", "md", "markdown", "tex", "csv", "rst"]);
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
@@ -553,6 +554,26 @@ function parseTags(value) {
   }
 
   return Array.from(set);
+}
+
+function normalizeFolderName(value) {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_FOLDER_NAME_CHARS);
+}
+
+function parseFolderId(value) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return Number.NaN;
+  }
+
+  return parsed;
 }
 
 function hasChinese(value) {
@@ -1287,6 +1308,7 @@ async function ensureSchema(sql) {
     CREATE TABLE IF NOT EXISTS notes (
       id BIGSERIAL PRIMARY KEY,
       user_id BIGINT,
+      folder_id BIGINT,
       slug TEXT NOT NULL,
       title TEXT NOT NULL,
       topic TEXT NOT NULL,
@@ -1301,10 +1323,33 @@ async function ensureSchema(sql) {
     )
   `;
 
+  await sql`
+    CREATE TABLE IF NOT EXISTS folders (
+      id BIGSERIAL PRIMARY KEY,
+      user_id BIGINT NOT NULL,
+      name TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (user_id, name)
+    )
+  `;
+
   await sql`ALTER TABLE notes ADD COLUMN IF NOT EXISTS user_id BIGINT`;
+  await sql`ALTER TABLE notes ADD COLUMN IF NOT EXISTS folder_id BIGINT`;
   await sql`ALTER TABLE notes DROP CONSTRAINT IF EXISTS notes_slug_key`;
+  await sql`ALTER TABLE notes DROP CONSTRAINT IF EXISTS notes_folder_fk`;
+  await sql`
+    ALTER TABLE notes
+    ADD CONSTRAINT notes_folder_fk
+    FOREIGN KEY (folder_id)
+    REFERENCES folders (id)
+    ON DELETE SET NULL
+  `;
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS notes_user_slug_unique_idx ON notes (user_id, slug)`;
   await sql`CREATE INDEX IF NOT EXISTS notes_user_updated_idx ON notes (user_id, updated_at DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS notes_user_folder_idx ON notes (user_id, folder_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS folders_user_order_idx ON folders (user_id, sort_order ASC, updated_at DESC)`;
 }
 
 function asBoolean(value) {
@@ -1472,7 +1517,11 @@ export default {
       }
 
       const requiresUserAuth =
-        url.pathname === "/assistant" || url.pathname === "/notes" || url.pathname.startsWith("/notes/");
+        url.pathname === "/assistant" ||
+        url.pathname === "/notes" ||
+        url.pathname.startsWith("/notes/") ||
+        url.pathname === "/folders" ||
+        url.pathname.startsWith("/folders/");
       let authenticatedUser = null;
       if (requiresUserAuth) {
         const authResolved = await resolveAuthenticatedUser(request, env, sql);
@@ -1503,6 +1552,138 @@ export default {
         return jsonResponse({ answer }, 200, corsOrigin);
       }
 
+      if (request.method === "GET" && url.pathname === "/folders") {
+        const userId = Number(authenticatedUser?.id);
+        const rows = await sql`
+          SELECT id, name, sort_order, created_at, updated_at
+          FROM folders
+          WHERE user_id = ${userId}
+          ORDER BY sort_order ASC, id ASC
+        `;
+
+        return jsonResponse({ success: true, folders: rows }, 200, corsOrigin);
+      }
+
+      if (request.method === "POST" && url.pathname === "/folders") {
+        const userId = Number(authenticatedUser?.id);
+        const body = await request.json().catch(() => null);
+        if (!body || typeof body !== "object") {
+          return jsonResponse({ error: "Invalid JSON body." }, 400, corsOrigin);
+        }
+
+        const name = normalizeFolderName(body.name);
+        if (!name) {
+          return jsonResponse({ error: "Folder name is required." }, 400, corsOrigin);
+        }
+
+        const duplicate = await sql`
+          SELECT id
+          FROM folders
+          WHERE user_id = ${userId} AND lower(name) = lower(${name})
+          LIMIT 1
+        `;
+        if (duplicate.length) {
+          return jsonResponse({ error: "Folder name already exists." }, 409, corsOrigin);
+        }
+
+        const requestedOrder = Number(body.sortOrder);
+        let sortOrder = Number.isInteger(requestedOrder) && requestedOrder >= 0 ? requestedOrder : null;
+        if (sortOrder === null) {
+          const nextRows = await sql`
+            SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order
+            FROM folders
+            WHERE user_id = ${userId}
+          `;
+          sortOrder = Number(nextRows?.[0]?.next_order ?? 0);
+        }
+
+        const inserted = await sql`
+          INSERT INTO folders (user_id, name, sort_order, updated_at)
+          VALUES (${userId}, ${name}, ${sortOrder}, NOW())
+          RETURNING id, name, sort_order, created_at, updated_at
+        `;
+
+        return jsonResponse({ success: true, folder: inserted[0] }, 201, corsOrigin);
+      }
+
+      const folderPathMatch = url.pathname.match(/^\/folders\/(\d+)$/);
+      if (request.method === "PATCH" && folderPathMatch) {
+        const userId = Number(authenticatedUser?.id);
+        const folderId = Number(folderPathMatch[1]);
+        const body = await request.json().catch(() => null);
+        if (!body || typeof body !== "object") {
+          return jsonResponse({ error: "Invalid JSON body." }, 400, corsOrigin);
+        }
+
+        const rows = await sql`
+          SELECT id, name, sort_order
+          FROM folders
+          WHERE user_id = ${userId} AND id = ${folderId}
+          LIMIT 1
+        `;
+        if (!rows.length) {
+          return jsonResponse({ error: "Folder not found." }, 404, corsOrigin);
+        }
+
+        const current = rows[0];
+        const hasName = Object.prototype.hasOwnProperty.call(body, "name");
+        const hasSortOrder = Object.prototype.hasOwnProperty.call(body, "sortOrder");
+        if (!hasName && !hasSortOrder) {
+          return jsonResponse({ error: "No update field provided." }, 400, corsOrigin);
+        }
+
+        const nextName = hasName ? normalizeFolderName(body.name) : String(current.name ?? "");
+        if (!nextName) {
+          return jsonResponse({ error: "Folder name is required." }, 400, corsOrigin);
+        }
+
+        const nextSortOrderRaw = hasSortOrder ? Number(body.sortOrder) : Number(current.sort_order ?? 0);
+        if (!Number.isInteger(nextSortOrderRaw) || nextSortOrderRaw < 0) {
+          return jsonResponse({ error: "sortOrder must be a non-negative integer." }, 400, corsOrigin);
+        }
+
+        const duplicate = await sql`
+          SELECT id
+          FROM folders
+          WHERE user_id = ${userId} AND lower(name) = lower(${nextName}) AND id <> ${folderId}
+          LIMIT 1
+        `;
+        if (duplicate.length) {
+          return jsonResponse({ error: "Folder name already exists." }, 409, corsOrigin);
+        }
+
+        const updated = await sql`
+          UPDATE folders
+          SET name = ${nextName}, sort_order = ${nextSortOrderRaw}, updated_at = NOW()
+          WHERE user_id = ${userId} AND id = ${folderId}
+          RETURNING id, name, sort_order, created_at, updated_at
+        `;
+
+        return jsonResponse({ success: true, folder: updated[0] }, 200, corsOrigin);
+      }
+
+      if (request.method === "DELETE" && folderPathMatch) {
+        const userId = Number(authenticatedUser?.id);
+        const folderId = Number(folderPathMatch[1]);
+
+        await sql`
+          UPDATE notes
+          SET folder_id = NULL, updated_at = NOW()
+          WHERE user_id = ${userId} AND folder_id = ${folderId}
+        `;
+
+        const deleted = await sql`
+          DELETE FROM folders
+          WHERE user_id = ${userId} AND id = ${folderId}
+          RETURNING id
+        `;
+        if (!deleted.length) {
+          return jsonResponse({ error: "Folder not found." }, 404, corsOrigin);
+        }
+
+        return jsonResponse({ success: true, folderId }, 200, corsOrigin);
+      }
+
       if (request.method === "GET" && url.pathname === "/notes") {
         const userId = Number(authenticatedUser?.id);
         const rawLimit = Number(url.searchParams.get("limit") || 20);
@@ -1510,14 +1691,14 @@ export default {
         const includeContent = asBoolean(url.searchParams.get("include_content"));
         const rows = includeContent
           ? await sql`
-              SELECT slug, title, topic, topic_zh, topic_en, tags, mdx_content, created_at, updated_at
+              SELECT slug, title, topic, topic_zh, topic_en, tags, folder_id, mdx_content, created_at, updated_at
               FROM notes
               WHERE user_id = ${userId}
               ORDER BY updated_at DESC
               LIMIT ${limit}
             `
           : await sql`
-              SELECT slug, title, topic, topic_zh, topic_en, tags, created_at, updated_at
+              SELECT slug, title, topic, topic_zh, topic_en, tags, folder_id, created_at, updated_at
               FROM notes
               WHERE user_id = ${userId}
               ORDER BY updated_at DESC
@@ -1535,7 +1716,7 @@ export default {
         }
 
         const rows = await sql`
-          SELECT slug, title, topic, topic_zh, topic_en, tags, mdx_content, created_at, updated_at
+          SELECT slug, title, topic, topic_zh, topic_en, tags, folder_id, mdx_content, created_at, updated_at
           FROM notes
           WHERE user_id = ${userId} AND slug = ${slug}
           LIMIT 1
@@ -1561,7 +1742,7 @@ export default {
         }
 
         const rows = await sql`
-          SELECT slug, title, topic, topic_zh, topic_en, tags
+          SELECT slug, title, topic, topic_zh, topic_en, tags, folder_id
           FROM notes
           WHERE user_id = ${userId} AND slug = ${slug}
           LIMIT 1
@@ -1575,6 +1756,30 @@ export default {
         const titleInput = String(body.title ?? "").trim();
         const topicInput = String(body.topic ?? "").trim();
         const tagsInput = parseTags(body.tags);
+        const hasFolderId = Object.prototype.hasOwnProperty.call(body, "folderId");
+        let nextFolderId = current.folder_id === null || current.folder_id === undefined ? null : Number(current.folder_id);
+
+        if (hasFolderId) {
+          const parsedFolderId = parseFolderId(body.folderId);
+          if (Number.isNaN(parsedFolderId)) {
+            return jsonResponse({ error: "folderId must be a positive integer or null." }, 400, corsOrigin);
+          }
+
+          if (parsedFolderId === null) {
+            nextFolderId = null;
+          } else {
+            const folderRows = await sql`
+              SELECT id
+              FROM folders
+              WHERE user_id = ${userId} AND id = ${parsedFolderId}
+              LIMIT 1
+            `;
+            if (!folderRows.length) {
+              return jsonResponse({ error: "Folder not found for current user." }, 400, corsOrigin);
+            }
+            nextFolderId = parsedFolderId;
+          }
+        }
 
         const nextTitle = titleInput || String(current.title ?? "").trim() || "未命名笔记";
         const currentTags = parseTags(current.tags);
@@ -1594,6 +1799,7 @@ export default {
             topic_zh = ${topicParts.topicZh},
             topic_en = ${topicParts.topicEn},
             tags = ${JSON.stringify(nextTags)},
+            folder_id = ${nextFolderId},
             updated_at = NOW()
           WHERE user_id = ${userId} AND slug = ${slug}
         `;
@@ -1611,6 +1817,7 @@ export default {
               descriptionZh: `关于“${nextTitle}”的双语学习笔记。`,
               descriptionEn: `Bilingual study note on ${nextTitle}.`,
               tags: nextTags,
+              folderId: nextFolderId,
             },
           },
           200,

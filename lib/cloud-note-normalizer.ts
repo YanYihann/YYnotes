@@ -10,6 +10,7 @@ export type CloudNoteRecord = {
   topic?: unknown;
   topic_zh?: unknown;
   topic_en?: unknown;
+  folder_id?: unknown;
   tags?: unknown;
   mdx_content?: unknown;
   created_at?: unknown;
