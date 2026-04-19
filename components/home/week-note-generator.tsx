@@ -64,6 +64,13 @@ function fileExtension(fileName: string): string {
   return fileName.slice(index + 1).toLowerCase();
 }
 
+function buildNoteViewHref(slug: string): string {
+  if (IS_CLOUD_MODE) {
+    return `/notes/cloud?slug=${encodeURIComponent(slug)}`;
+  }
+  return `/notes/${slug}`;
+}
+
 function buildPromptCandidates(): string[] {
   const candidates = new Set<string>(["./prompt.md"]);
 
@@ -375,7 +382,7 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
               {result.replaced ? "（已覆盖原文件）。" : "。"}
             </p>
             <Link
-              href={`/notes/${result.slug}`}
+              href={buildNoteViewHref(result.slug)}
               className="mt-2 inline-flex items-center rounded-capsule border border-[#0066cc] px-4 py-1.5 font-text text-[14px] tracking-tightCaption text-[#0066cc] transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-[#2997ff] dark:text-[#2997ff]"
             >
               打开生成结果
@@ -385,7 +392,7 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
 
           {result.note ? (
             <WeekCard
-              href={`/notes/${result.note.slug}`}
+              href={buildNoteViewHref(result.note.slug)}
               weekLabelZh={result.note.weekLabelZh}
               weekLabelEn={result.note.weekLabelEn}
               zhTitle={result.note.zhTitle}

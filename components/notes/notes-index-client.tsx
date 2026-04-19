@@ -5,6 +5,7 @@ import { WeekCard } from "@/components/week-card";
 
 type NoteListItem = {
   slug: string;
+  viewHref: string;
   weekLabelZh: string;
   weekLabelEn: string;
   zhTitle: string;
@@ -16,7 +17,7 @@ type NoteListItem = {
   canOpen: boolean;
 };
 
-type InitialNoteItem = Omit<NoteListItem, "canOpen">;
+type InitialNoteItem = Omit<NoteListItem, "canOpen" | "viewHref">;
 
 type CloudNoteRow = {
   slug?: unknown;
@@ -71,8 +72,11 @@ function toCloudNoteItem(row: CloudNoteRow, openableSlugSet: Set<string>): NoteL
   const topicEn = String(row.topic_en ?? row.topic ?? "General").trim() || "General";
   const tags = parseTagArray(row.tags).slice(0, 12);
 
+  const canOpen = openableSlugSet.has(slug);
+
   return {
     slug,
+    viewHref: canOpen ? `/notes/${slug}` : `/notes/cloud?slug=${encodeURIComponent(slug)}`,
     weekLabelZh: topicZh,
     weekLabelEn: topicEn,
     zhTitle: title,
@@ -81,13 +85,15 @@ function toCloudNoteItem(row: CloudNoteRow, openableSlugSet: Set<string>): NoteL
     descriptionEn: `Study note on ${title}.`,
     tags,
     topicZh,
-    canOpen: openableSlugSet.has(slug),
+    canOpen,
   };
 }
 
 export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
   const openableSlugSet = useMemo(() => new Set(initialNotes.map((note) => note.slug)), [initialNotes]);
-  const [notes, setNotes] = useState<NoteListItem[]>(initialNotes.map((note) => ({ ...note, canOpen: true })));
+  const [notes, setNotes] = useState<NoteListItem[]>(
+    initialNotes.map((note) => ({ ...note, viewHref: `/notes/${note.slug}`, canOpen: true })),
+  );
   const [loadingRemoteNotes, setLoadingRemoteNotes] = useState(false);
   const [search, setSearch] = useState("");
   const [topicFilter, setTopicFilter] = useState("");
@@ -324,7 +330,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
         {filteredNotes.map((note) => (
           <WeekCard
             key={note.slug}
-            href={`/notes/${note.slug}`}
+            href={note.viewHref}
             weekLabelZh={note.weekLabelZh}
             weekLabelEn={note.weekLabelEn}
             zhTitle={note.zhTitle}
@@ -332,7 +338,6 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
             descriptionZh={note.descriptionZh}
             descriptionEn={note.descriptionEn}
             tags={note.tags}
-            showOpenLink={note.canOpen}
             footerAction={
               <div className="flex flex-wrap items-center gap-2">
                 {!note.canOpen ? (

@@ -305,9 +305,114 @@ function buildUserPrompt({ title, topic, tags, sourceText, extraInstruction }) {
   ].join("\n");
 }
 
+function extractProviderMessage(payload) {
+  if (!payload || typeof payload !== "object") {
+    return "No detail from provider.";
+  }
+
+  const errorMessage = payload?.error?.message;
+  if (typeof errorMessage === "string" && errorMessage.trim()) {
+    return errorMessage.trim();
+  }
+
+  const message = payload?.message;
+  if (typeof message === "string" && message.trim()) {
+    return message.trim();
+  }
+
+  try {
+    const serialized = JSON.stringify(payload);
+    return serialized.length > 320 ? `${serialized.slice(0, 320)}...` : serialized;
+  } catch {
+    return "Unable to serialize provider error payload.";
+  }
+}
+
+function extractResponsesText(payload) {
+  if (!payload || typeof payload !== "object") {
+    return "";
+  }
+
+  const direct = payload.output_text;
+  if (typeof direct === "string" && direct.trim()) {
+    return direct.trim();
+  }
+
+  const output = payload.output;
+  if (!Array.isArray(output)) {
+    return "";
+  }
+
+  const textParts = [];
+  for (const item of output) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+
+    const content = item.content;
+    if (!Array.isArray(content)) {
+      continue;
+    }
+
+    for (const contentItem of content) {
+      if (!contentItem || typeof contentItem !== "object") {
+        continue;
+      }
+
+      const text = contentItem.text;
+      if (typeof text === "string" && text.trim()) {
+        textParts.push(text.trim());
+      }
+    }
+  }
+
+  return textParts.join("\n\n").trim();
+}
+
+function extractChatCompletionsText(payload) {
+  if (!payload || typeof payload !== "object") {
+    return "";
+  }
+
+  const choices = payload.choices;
+  if (!Array.isArray(choices) || choices.length === 0) {
+    return "";
+  }
+
+  const message = choices[0]?.message;
+  if (!message || typeof message !== "object") {
+    return "";
+  }
+
+  const content = message.content;
+  if (typeof content === "string") {
+    return content.trim();
+  }
+
+  if (!Array.isArray(content)) {
+    return "";
+  }
+
+  return content
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return "";
+      }
+      const text = item.text;
+      return typeof text === "string" ? text : "";
+    })
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
+}
+
 async function generateMdx({ env, title, topic, tags, sourceText, extraInstruction, promptTemplate }) {
   const openaiBaseUrl = normalizeApiBase(env.OPENAI_BASE_URL);
   const responsesEndpoint = `${openaiBaseUrl}/responses`;
+  const chatCompletionsEndpoint = `${openaiBaseUrl}/chat/completions`;
+  const modelName = env.OPENAI_MODEL || "gpt-4.1-mini";
+  const systemPrompt = buildSystemPrompt(promptTemplate);
+  const userPrompt = buildUserPrompt({ title, topic, tags, sourceText, extraInstruction });
 
   const response = await fetch(responsesEndpoint, {
     method: "POST",
@@ -316,18 +421,18 @@ async function generateMdx({ env, title, topic, tags, sourceText, extraInstructi
       Authorization: `Bearer ${env.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: env.OPENAI_MODEL || "gpt-4.1-mini",
+      model: modelName,
       input: [
         {
           role: "system",
-          content: [{ type: "input_text", text: buildSystemPrompt(promptTemplate) }],
+          content: [{ type: "input_text", text: systemPrompt }],
         },
         {
           role: "user",
           content: [
             {
               type: "input_text",
-              text: buildUserPrompt({ title, topic, tags, sourceText, extraInstruction }),
+              text: userPrompt,
             },
           ],
         },
@@ -336,17 +441,46 @@ async function generateMdx({ env, title, topic, tags, sourceText, extraInstructi
   });
 
   const json = await response.json().catch(() => null);
-  if (!response.ok) {
-    const message = json?.error?.message || "OpenAI generation failed.";
-    throw new Error(message);
+  if (response.ok) {
+    const outputText = extractResponsesText(json);
+    if (outputText) {
+      return outputText;
+    }
   }
 
-  const outputText = typeof json?.output_text === "string" ? json.output_text.trim() : "";
-  if (!outputText) {
-    throw new Error("OpenAI returned empty content.");
+  const responsesError = response.ok
+    ? "Responses API returned success but no readable text."
+    : `responses: HTTP ${response.status} - ${extractProviderMessage(json)}`;
+
+  const chatResponse = await fetch(chatCompletionsEndpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: modelName,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+    }),
+  });
+
+  const chatJson = await chatResponse.json().catch(() => null);
+  if (!chatResponse.ok) {
+    const chatError = `chat_completions: HTTP ${chatResponse.status} - ${extractProviderMessage(chatJson)}`;
+    throw new Error(`AI provider returned an error. ${responsesError} | ${chatError}`);
   }
 
-  return outputText;
+  const chatText = extractChatCompletionsText(chatJson);
+  if (!chatText) {
+    throw new Error(
+      `AI provider returned no readable text. ${responsesError} | chat_completions: empty text response.`,
+    );
+  }
+
+  return chatText;
 }
 
 async function ensureSchema(sql) {
