@@ -1,18 +1,10 @@
-"use client";
+﻿"use client";
 
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import GithubSlugger from "github-slugger";
-import ReactMarkdown from "react-markdown";
-import rehypeAutolinkHeadings from "rehype-autolink-headings";
-import rehypeKatex from "rehype-katex";
-import rehypeSlug from "rehype-slug";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import allComponents from "@/components/mdx/mdx-components";
-import { ReadingWorkspace } from "@/components/notes/reading-workspace";
-import { prepareNoteMarkdown } from "@/lib/mdx";
+import { NoteView } from "@/components/notes/note-view";
+import type { Heading } from "@/lib/content";
 
 type CloudNote = {
   slug: string;
@@ -44,6 +36,7 @@ type FrontmatterData = {
 };
 
 type NoteMeta = {
+  slug: string;
   zhTitle: string;
   enTitle: string;
   descriptionZh: string;
@@ -51,33 +44,10 @@ type NoteMeta = {
   topicZh: string;
   topicEn: string;
   tags: string[];
-  source: string;
-};
-
-type Heading = {
-  id: string;
-  title: string;
-  level: 2 | 3;
+  noteContent: string;
 };
 
 const CLOUD_API_BASE = process.env.NEXT_PUBLIC_NOTES_API_BASE?.trim() ?? "";
-
-const markdownComponents = {
-  p: allComponents.p,
-  h2: allComponents.h2,
-  h3: allComponents.h3,
-  h4: allComponents.h4,
-  ul: allComponents.ul,
-  ol: allComponents.ol,
-  li: allComponents.li,
-  a: allComponents.a,
-  blockquote: allComponents.blockquote,
-  pre: allComponents.pre,
-  code: allComponents.code,
-  table: allComponents.table,
-  th: allComponents.th,
-  td: allComponents.td,
-};
 
 function normalizeApiBase(input: string): string {
   return input.replace(/\/+$/, "");
@@ -188,6 +158,7 @@ function asText(value: unknown): string {
 function deriveMeta(note: CloudNote | null): NoteMeta {
   if (!note) {
     return {
+      slug: "",
       zhTitle: "云端笔记",
       enTitle: "Cloud Note",
       descriptionZh: "云端笔记内容。",
@@ -195,7 +166,7 @@ function deriveMeta(note: CloudNote | null): NoteMeta {
       topicZh: "未分类",
       topicEn: "General",
       tags: [],
-      source: "",
+      noteContent: "",
     };
   }
 
@@ -230,6 +201,7 @@ function deriveMeta(note: CloudNote | null): NoteMeta {
     : normalizeTags(note.tags);
 
   return {
+    slug: note.slug,
     zhTitle,
     enTitle,
     descriptionZh,
@@ -237,7 +209,7 @@ function deriveMeta(note: CloudNote | null): NoteMeta {
     topicZh,
     topicEn,
     tags,
-    source: body,
+    noteContent: body,
   };
 }
 
@@ -326,8 +298,7 @@ export function CloudNoteViewer() {
   }, [slug]);
 
   const meta = useMemo(() => deriveMeta(note), [note]);
-  const renderedSource = useMemo(() => prepareNoteMarkdown(meta.source), [meta.source]);
-  const headings = useMemo(() => extractHeadings(meta.source), [meta.source]);
+  const headings = useMemo(() => extractHeadings(meta.noteContent), [meta.noteContent]);
 
   if (loading) {
     return (
@@ -347,7 +318,7 @@ export function CloudNoteViewer() {
     );
   }
 
-  if (!renderedSource) {
+  if (!meta.noteContent) {
     return (
       <article className="rounded-apple bg-white px-5 py-8 shadow-card dark:bg-[#272729] sm:px-8 md:px-10">
         <p className="font-text text-[15px] text-black/72 dark:text-white/75">笔记内容为空。</p>
@@ -356,92 +327,33 @@ export function CloudNoteViewer() {
   }
 
   return (
-    <ReadingWorkspace
+    <NoteView
       headings={headings}
-      noteContext={{
-        slug: slug || "",
-        weekLabelZh: meta.topicZh,
-        weekLabelEn: meta.topicEn,
+      note={{
+        slug: meta.slug || slug,
+        topicZh: meta.topicZh,
+        topicEn: meta.topicEn,
         zhTitle: meta.zhTitle,
         enTitle: meta.enTitle,
-        noteContent: meta.source,
+        descriptionZh: meta.descriptionZh,
+        descriptionEn: meta.descriptionEn,
+        tags: meta.tags,
+        noteContent: meta.noteContent,
       }}
-    >
-      <article className="rounded-apple bg-white px-5 py-8 shadow-card dark:bg-[#272729] sm:px-8 md:px-10">
-        <header className="mb-8 border-b border-black/10 pb-6 dark:border-white/10">
-          <p className="font-text text-[12px] font-semibold uppercase tracking-[0.1em] text-black/55 dark:text-white/55">
-            {meta.topicZh}
-            <span className="ui-en ml-1">{meta.topicEn} - Note</span>
-          </p>
-          {meta.tags.length ? (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {meta.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="rounded-capsule border border-black/15 px-2 py-0.5 font-text text-[12px] tracking-tightCaption text-black/63 dark:border-white/20 dark:text-white/66"
-                >
-                  #{tag}
-                </span>
-              ))}
-            </div>
-          ) : null}
-          <h1 className="mt-3 font-display text-[clamp(2rem,5vw,3.5rem)] font-semibold leading-[1.07] tracking-tightDisplay text-[#1d1d1f] dark:text-white">
-            {meta.zhTitle}
-            <span className="ui-en mt-1 block font-text text-[0.36em] font-normal leading-[1.35] tracking-tightBody text-black/72 dark:text-white/74">
-              {meta.enTitle}
-            </span>
-          </h1>
-          <p className="mt-3 font-text text-[17px] leading-[1.47] tracking-tightBody text-black/80 dark:text-white/80">
-            {meta.descriptionZh}
-            <span className="ui-en mt-1 block text-black/68 dark:text-white/72">{meta.descriptionEn}</span>
-          </p>
-        </header>
-
-        <div className="note-prose" data-note-content>
-          <ReactMarkdown
-            components={markdownComponents}
-            remarkPlugins={[remarkGfm, remarkMath]}
-            rehypePlugins={[
-              rehypeKatex,
-              rehypeSlug,
-              [
-                rehypeAutolinkHeadings,
-                {
-                  behavior: "append",
-                  properties: {
-                    className: ["anchor-link"],
-                    "aria-label": "Anchor",
-                  },
-                },
-              ],
-            ]}
-          >
-            {renderedSource}
-          </ReactMarkdown>
-        </div>
-
-        <nav className="mt-14 grid gap-4 border-t border-black/10 pt-6 dark:border-white/10 sm:grid-cols-2">
-          <div>
-            <Link
-              href="/notes"
-              className="inline-flex rounded-capsule border border-[#0066cc] px-4 py-1.5 text-[14px] tracking-tightCaption text-[#0066cc] transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-[#2997ff] dark:text-[#2997ff]"
-            >
-              ← 返回列表
-              <span className="ui-en ml-1">All Notes</span>
-            </Link>
-          </div>
-          <div className="sm:text-right">
-            <Link
-              href={`/notes/cloud?slug=${encodeURIComponent(slug)}`}
-              className="inline-flex rounded-capsule border border-[#0066cc] px-4 py-1.5 text-[14px] tracking-tightCaption text-[#0066cc] transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-[#2997ff] dark:text-[#2997ff]"
-            >
-              重新加载
-              <span className="ui-en ml-1">Reload</span>
-              <span className="ml-1">→</span>
-            </Link>
-          </div>
-        </nav>
-      </article>
-    </ReadingWorkspace>
+      nav={{
+        left: {
+          href: "/notes",
+          labelZh: "返回列表",
+          labelEn: "All Notes",
+          leadingArrow: true,
+        },
+        right: {
+          href: `/notes/cloud?slug=${encodeURIComponent(slug)}`,
+          labelZh: "重新加载",
+          labelEn: "Reload",
+          trailingArrow: true,
+        },
+      }}
+    />
   );
 }
