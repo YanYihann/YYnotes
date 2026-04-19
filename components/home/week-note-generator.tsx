@@ -64,14 +64,37 @@ function fileExtension(fileName: string): string {
   return fileName.slice(index + 1).toLowerCase();
 }
 
-async function loadPromptTemplateFromSite(): Promise<string> {
-  const candidates = ["/prompt.md"];
+function buildPromptCandidates(): string[] {
+  const candidates = new Set<string>(["/prompt.md", "./prompt.md"]);
+
   if (typeof window !== "undefined") {
-    const segment = window.location.pathname.split("/").filter(Boolean)[0];
-    if (segment) {
-      candidates.push(`/${segment}/prompt.md`);
+    const { origin, pathname } = window.location;
+    const segments = pathname.split("/").filter(Boolean);
+    const repoSegment = segments[0];
+
+    if (repoSegment) {
+      candidates.add(`/${repoSegment}/prompt.md`);
+    }
+
+    const currentDir = pathname.endsWith("/") ? pathname : pathname.slice(0, pathname.lastIndexOf("/") + 1);
+    if (currentDir) {
+      candidates.add(`${currentDir}prompt.md`);
+    }
+
+    for (const candidate of Array.from(candidates)) {
+      try {
+        candidates.add(new URL(candidate, origin).toString());
+      } catch {
+        // Ignore malformed URL candidates.
+      }
     }
   }
+
+  return Array.from(candidates);
+}
+
+async function loadPromptTemplateFromSite(): Promise<string> {
+  const candidates = buildPromptCandidates();
 
   for (const candidate of candidates) {
     const response = await fetch(candidate, { cache: "no-store" });
@@ -85,7 +108,7 @@ async function loadPromptTemplateFromSite(): Promise<string> {
     }
   }
 
-  throw new Error("无法读取 prompt.md，请确认该文件已发布到站点根目录。");
+  throw new Error(`无法读取 prompt.md，请确认该文件已发布到站点根目录。已尝试路径：${candidates.join("，")}`);
 }
 
 async function callLocalGenerator(params: {

@@ -1,5 +1,5 @@
 ﻿import type { Metadata } from "next";
-import { WeekCard } from "@/components/week-card";
+import { NotesIndexClient } from "@/components/notes/notes-index-client";
 import { getWeekNotes } from "@/lib/content";
 
 export const metadata: Metadata = {
@@ -9,6 +9,17 @@ export const metadata: Metadata = {
 
 export default async function NotesIndexPage() {
   const notes = await getWeekNotes();
+  const initialNotes = notes.map((note) => ({
+    slug: note.slug,
+    weekLabelZh: note.weekLabelZh,
+    weekLabelEn: note.weekLabelEn,
+    zhTitle: note.zhTitle,
+    enTitle: note.enTitle,
+    descriptionZh: note.descriptionZh,
+    descriptionEn: note.descriptionEn,
+    tags: note.tags,
+    topicZh: note.topicZh,
+  }));
 
   return (
     <div className="section-light min-h-[calc(100vh-3rem)] py-14">
@@ -28,21 +39,7 @@ export default async function NotesIndexPage() {
           </p>
         </header>
 
-        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-          {notes.map((note) => (
-            <WeekCard
-              key={note.slug}
-              href={`/notes/${note.slug}`}
-              weekLabelZh={note.weekLabelZh}
-              weekLabelEn={note.weekLabelEn}
-              zhTitle={note.zhTitle}
-              enTitle={note.enTitle}
-              descriptionZh={note.descriptionZh}
-              descriptionEn={note.descriptionEn}
-              tags={note.tags}
-            />
-          ))}
-        </div>
+        <NotesIndexClient initialNotes={initialNotes} />
       </div>
     </div>
   );

@@ -7,6 +7,7 @@ This worker is the backend for GitHub Pages note generation and storage.
 - `POST /notes/generate`: generate MDX via OpenAI and save to Neon
 - `GET /notes`: list latest notes
 - `GET /notes/:slug`: get a single note
+- `DELETE /notes/:slug`: delete one note by slug
 - `GET /health`: health check
 
 ## 1) Prepare Neon

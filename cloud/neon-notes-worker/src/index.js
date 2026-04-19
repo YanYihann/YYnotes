@@ -12,7 +12,7 @@ function jsonResponse(data, status = 200, origin = "*") {
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       "Access-Control-Allow-Origin": origin,
-      "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+      "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, X-Notes-Write-Key",
     },
   });
@@ -435,6 +435,29 @@ export default {
       }
 
       return jsonResponse({ success: true, note: rows[0] }, 200, corsOrigin);
+    }
+
+    if (request.method === "DELETE" && url.pathname.startsWith("/notes/")) {
+      if (!requireWriteKey(request, env)) {
+        return jsonResponse({ error: "Unauthorized write request." }, 401, corsOrigin);
+      }
+
+      const slug = decodeURIComponent(url.pathname.replace("/notes/", "")).trim();
+      if (!slug) {
+        return jsonResponse({ error: "Slug is required." }, 400, corsOrigin);
+      }
+
+      const deleted = await sql`
+        DELETE FROM notes
+        WHERE slug = ${slug}
+        RETURNING slug
+      `;
+
+      if (!deleted.length) {
+        return jsonResponse({ error: "Note not found." }, 404, corsOrigin);
+      }
+
+      return jsonResponse({ success: true, slug }, 200, corsOrigin);
     }
 
     if (request.method === "POST" && url.pathname === "/notes/generate") {

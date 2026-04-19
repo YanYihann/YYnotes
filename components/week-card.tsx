@@ -1,4 +1,5 @@
 ﻿import Link from "next/link";
+import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 type WeekCardProps = {
@@ -11,6 +12,8 @@ type WeekCardProps = {
   descriptionEn: string;
   tags?: string[];
   className?: string;
+  footerAction?: ReactNode;
+  showOpenLink?: boolean;
 };
 
 export function WeekCard({
@@ -23,6 +26,8 @@ export function WeekCard({
   descriptionEn,
   tags = [],
   className,
+  footerAction,
+  showOpenLink = true,
 }: WeekCardProps) {
   return (
     <article
@@ -58,15 +63,18 @@ export function WeekCard({
         </p>
       </div>
 
-      <div className="mt-6">
-        <Link
-          href={href}
-          className="inline-flex items-center rounded-capsule border border-[#0066cc] px-4 py-1.5 font-text text-[14px] tracking-tightCaption text-[#0066cc] transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent dark:border-[#2997ff] dark:text-[#2997ff]"
-        >
-          打开笔记
-          <span className="ui-en ml-1">Open Note</span>
-          <span className="ml-1">&gt;</span>
-        </Link>
+      <div className="mt-6 flex flex-wrap items-center gap-2">
+        {showOpenLink ? (
+          <Link
+            href={href}
+            className="inline-flex items-center rounded-capsule border border-[#0066cc] px-4 py-1.5 font-text text-[14px] tracking-tightCaption text-[#0066cc] transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent dark:border-[#2997ff] dark:text-[#2997ff]"
+          >
+            打开笔记
+            <span className="ui-en ml-1">Open Note</span>
+            <span className="ml-1">&gt;</span>
+          </Link>
+        ) : null}
+        {footerAction}
       </div>
     </article>
   );
