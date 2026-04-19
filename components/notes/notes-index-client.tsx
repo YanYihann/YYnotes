@@ -32,8 +32,24 @@ type NotesIndexClientProps = {
   initialNotes: InitialNoteItem[];
 };
 
+type FolderItem = {
+  id: string;
+  name: string;
+  order: number;
+};
+
+type FolderStorePayload = {
+  version: 1;
+  folders: FolderItem[];
+  noteFolderMap: Record<string, string>;
+};
+
+type FolderFilterValue = "all" | "uncategorized" | `folder:${string}`;
+
 const CLOUD_API_BASE = process.env.NEXT_PUBLIC_NOTES_API_BASE?.trim() ?? "";
 const IS_CLOUD_MODE = CLOUD_API_BASE.length > 0;
+const FOLDER_STORE_VERSION = 1;
+const FOLDER_NAME_MAX_LENGTH = 24;
 
 function normalizeApiBase(input: string): string {
   return input.replace(/\/+$/, "");
@@ -64,6 +80,90 @@ function sortNoteItems(rows: NoteListItem[]): NoteListItem[] {
   return [...rows].sort((a, b) => a.order - b.order || a.slug.localeCompare(b.slug));
 }
 
+function sortFolders(rows: FolderItem[]): FolderItem[] {
+  return [...rows].sort((a, b) => a.order - b.order || a.name.localeCompare(b.name, "zh-Hans-CN"));
+}
+
+function sanitizeFolderName(raw: string): string {
+  return raw.replace(/\s+/g, " ").trim();
+}
+
+function buildFolderStorageKey(params: { cloudMode: boolean; userId?: number }): string {
+  const scope = params.cloudMode ? `cloud:${params.userId ?? "anonymous"}` : "local";
+  return `yynotes.note-folders.v1:${scope}`;
+}
+
+function parseFolderStore(raw: string | null): FolderStorePayload | null {
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<FolderStorePayload> | null;
+    if (!parsed || parsed.version !== FOLDER_STORE_VERSION) {
+      return null;
+    }
+
+    const folders = Array.isArray(parsed.folders)
+      ? parsed.folders
+          .map((folder, index) => {
+            const id = String(folder?.id ?? "").trim();
+            const name = sanitizeFolderName(String(folder?.name ?? ""));
+            const order = Number.isFinite(folder?.order) ? Number(folder?.order) : index;
+            if (!id || !name) {
+              return null;
+            }
+            return { id, name, order };
+          })
+          .filter((item): item is FolderItem => item !== null)
+      : [];
+
+    const noteFolderMap: Record<string, string> = {};
+    if (parsed.noteFolderMap && typeof parsed.noteFolderMap === "object") {
+      for (const [slug, folderId] of Object.entries(parsed.noteFolderMap)) {
+        const safeSlug = String(slug).trim();
+        const safeFolderId = String(folderId ?? "").trim();
+        if (!safeSlug || !safeFolderId) {
+          continue;
+        }
+        noteFolderMap[safeSlug] = safeFolderId;
+      }
+    }
+
+    return {
+      version: FOLDER_STORE_VERSION,
+      folders: sortFolders(folders),
+      noteFolderMap,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function createFolderId(name: string): string {
+  const safePart = name
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 24);
+  const stamp = Date.now().toString(36);
+  return safePart ? `folder-${safePart}-${stamp}` : `folder-${stamp}`;
+}
+
+function extractDraggedSlug(event: React.DragEvent<HTMLElement>, fallback: string): string {
+  const custom = event.dataTransfer.getData("text/yynotes-note-slug").trim();
+  if (custom) {
+    return custom;
+  }
+
+  const plain = event.dataTransfer.getData("text/plain").trim();
+  if (plain) {
+    return plain;
+  }
+
+  return fallback;
+}
+
 export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
   const { isReady, session } = useAuth();
   const authToken = session?.token ?? "";
@@ -82,8 +182,24 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
   const [search, setSearch] = useState("");
   const [topicFilter, setTopicFilter] = useState("");
   const [tagFilter, setTagFilter] = useState("");
+  const [folderFilter, setFolderFilter] = useState<FolderFilterValue>("all");
   const [deletingSlug, setDeletingSlug] = useState("");
   const [error, setError] = useState("");
+
+  const [folders, setFolders] = useState<FolderItem[]>([]);
+  const [noteFolderMap, setNoteFolderMap] = useState<Record<string, string>>({});
+  const [folderInput, setFolderInput] = useState("");
+  const [draggingSlug, setDraggingSlug] = useState("");
+  const [dragOverTarget, setDragOverTarget] = useState<string>("");
+
+  const folderStorageKey = useMemo(
+    () =>
+      buildFolderStorageKey({
+        cloudMode: IS_CLOUD_MODE,
+        userId: session?.user?.id,
+      }),
+    [session?.user?.id],
+  );
 
   useEffect(() => {
     if (!IS_CLOUD_MODE) {
@@ -147,6 +263,79 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     };
   }, [isReady, authToken]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (IS_CLOUD_MODE && (!isReady || !authToken)) {
+      setFolders([]);
+      setNoteFolderMap({});
+      return;
+    }
+
+    const parsed = parseFolderStore(window.localStorage.getItem(folderStorageKey));
+    if (!parsed) {
+      setFolders([]);
+      setNoteFolderMap({});
+      return;
+    }
+
+    setFolders(parsed.folders);
+    setNoteFolderMap(parsed.noteFolderMap);
+  }, [folderStorageKey, isReady, authToken]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (IS_CLOUD_MODE && (!isReady || !authToken)) {
+      return;
+    }
+
+    const payload: FolderStorePayload = {
+      version: FOLDER_STORE_VERSION,
+      folders: sortFolders(folders),
+      noteFolderMap,
+    };
+    window.localStorage.setItem(folderStorageKey, JSON.stringify(payload));
+  }, [folders, noteFolderMap, folderStorageKey, isReady, authToken]);
+
+  useEffect(() => {
+    const knownSlugs = new Set(notes.map((note) => note.slug));
+    const knownFolderIds = new Set(folders.map((folder) => folder.id));
+
+    setNoteFolderMap((previous) => {
+      let changed = false;
+      const next: Record<string, string> = {};
+
+      for (const [slug, folderId] of Object.entries(previous)) {
+        if (!knownSlugs.has(slug)) {
+          changed = true;
+          continue;
+        }
+
+        if (!knownFolderIds.has(folderId)) {
+          changed = true;
+          continue;
+        }
+
+        next[slug] = folderId;
+      }
+
+      return changed ? next : previous;
+    });
+  }, [notes, folders]);
+
+  const folderById = useMemo(() => {
+    const map = new Map<string, FolderItem>();
+    for (const folder of folders) {
+      map.set(folder.id, folder);
+    }
+    return map;
+  }, [folders]);
+
   const topicOptions = useMemo(() => {
     const unique = new Set<string>();
     for (const note of notes) {
@@ -173,10 +362,30 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     return Array.from(unique).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
   }, [notes]);
 
+  const folderCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const note of notes) {
+      const folderId = noteFolderMap[note.slug] ?? "";
+      const key = folderId || "uncategorized";
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    return counts;
+  }, [notes, noteFolderMap]);
+
   const filteredNotes = useMemo(() => {
     const keyword = search.trim().toLowerCase();
 
     return notes.filter((note) => {
+      const noteFolderId = noteFolderMap[note.slug] ?? "";
+
+      if (folderFilter === "uncategorized" && noteFolderId) {
+        return false;
+      }
+
+      if (folderFilter.startsWith("folder:") && noteFolderId !== folderFilter.slice("folder:".length)) {
+        return false;
+      }
+
       if (topicFilter && note.topicZh !== topicFilter) {
         return false;
       }
@@ -189,6 +398,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
         return true;
       }
 
+      const folderName = noteFolderId ? folderById.get(noteFolderId)?.name ?? "" : "";
       const haystack = [
         note.zhTitle,
         note.enTitle,
@@ -196,6 +406,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
         note.descriptionEn,
         note.weekLabelZh,
         note.weekLabelEn,
+        folderName,
         note.tags.join(" "),
       ]
         .join(" ")
@@ -203,7 +414,93 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
       return haystack.includes(keyword);
     });
-  }, [notes, search, topicFilter, tagFilter]);
+  }, [notes, noteFolderMap, folderFilter, topicFilter, tagFilter, search, folderById]);
+
+  function assignFolder(noteSlug: string, folderId: string | null) {
+    const normalized = folderId?.trim() ?? "";
+    setNoteFolderMap((previous) => {
+      const current = previous[noteSlug] ?? "";
+      if (current === normalized) {
+        return previous;
+      }
+
+      const next = { ...previous };
+      if (!normalized) {
+        delete next[noteSlug];
+      } else {
+        next[noteSlug] = normalized;
+      }
+      return next;
+    });
+  }
+
+  function handleCreateFolder() {
+    const name = sanitizeFolderName(folderInput);
+    if (!name) {
+      setError("请输入文件夹名称。");
+      return;
+    }
+
+    if (name.length > FOLDER_NAME_MAX_LENGTH) {
+      setError(`文件夹名称最多 ${FOLDER_NAME_MAX_LENGTH} 个字符。`);
+      return;
+    }
+
+    if (folders.some((folder) => folder.name.toLowerCase() === name.toLowerCase())) {
+      setError("该文件夹名称已存在。");
+      return;
+    }
+
+    setError("");
+    setFolders((previous) =>
+      sortFolders([
+        ...previous,
+        {
+          id: createFolderId(name),
+          name,
+          order: previous.length ? Math.max(...previous.map((item) => item.order)) + 1 : 0,
+        },
+      ]),
+    );
+    setFolderInput("");
+  }
+
+  function handleDeleteFolder(folder: FolderItem) {
+    const shouldDelete = window.confirm(`确认删除文件夹“${folder.name}”吗？该文件夹下笔记将变为未归类。`);
+    if (!shouldDelete) {
+      return;
+    }
+
+    setFolders((previous) => previous.filter((item) => item.id !== folder.id));
+    setNoteFolderMap((previous) => {
+      let changed = false;
+      const next: Record<string, string> = {};
+      for (const [slug, folderId] of Object.entries(previous)) {
+        if (folderId === folder.id) {
+          changed = true;
+          continue;
+        }
+        next[slug] = folderId;
+      }
+      return changed ? next : previous;
+    });
+
+    if (folderFilter === `folder:${folder.id}`) {
+      setFolderFilter("all");
+    }
+  }
+
+  function handleFolderDrop(folderId: string | null, event: React.DragEvent<HTMLElement>) {
+    event.preventDefault();
+    const slug = extractDraggedSlug(event, draggingSlug);
+    if (!slug) {
+      return;
+    }
+
+    assignFolder(slug, folderId);
+    setDragOverTarget("");
+    setDraggingSlug("");
+  }
 
   async function handleDeleteNote(note: NoteListItem) {
     if (deletingSlug) {
@@ -243,7 +540,15 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
         throw new Error(json?.error || "删除失败，请稍后重试。");
       }
 
-      setNotes((prev) => prev.filter((item) => item.slug !== note.slug));
+      setNotes((previous) => previous.filter((item) => item.slug !== note.slug));
+      setNoteFolderMap((previous) => {
+        if (!(note.slug in previous)) {
+          return previous;
+        }
+        const next = { ...previous };
+        delete next[note.slug];
+        return next;
+      });
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : "删除失败，请稍后重试。");
     } finally {
@@ -255,6 +560,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     setSearch("");
     setTopicFilter("");
     setTagFilter("");
+    setFolderFilter("all");
   }
 
   if (IS_CLOUD_MODE && !isReady) {
@@ -272,14 +578,14 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
   return (
     <>
       <section className="mb-6 rounded-apple bg-white p-4 shadow-card dark:bg-[#272729]">
-        <div className="grid gap-3 md:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-5">
           <label className="space-y-1 md:col-span-2">
             <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/60 dark:text-white/60">关键词</span>
             <input
               type="text"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="搜索标题、主题或标签"
+              placeholder="搜索标题、主题、标签或文件夹"
               className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[14px] text-black/85 outline-none transition placeholder:text-black/45 focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/86 dark:placeholder:text-white/45"
             />
           </label>
@@ -315,6 +621,23 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
               ))}
             </select>
           </label>
+
+          <label className="space-y-1">
+            <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/60 dark:text-white/60">文件夹</span>
+            <select
+              value={folderFilter}
+              onChange={(event) => setFolderFilter(event.target.value as FolderFilterValue)}
+              className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[14px] text-black/85 outline-none transition focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/86"
+            >
+              <option value="all">全部文件夹</option>
+              <option value="uncategorized">未归类</option>
+              {folders.map((folder) => (
+                <option key={folder.id} value={`folder:${folder.id}`}>
+                  {folder.name}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -338,37 +661,157 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
         ) : null}
       </section>
 
+      <section className="mb-6 rounded-apple bg-white p-4 shadow-card dark:bg-[#272729]">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="min-w-[220px] flex-1 space-y-1">
+            <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/60 dark:text-white/60">新建文件夹</span>
+            <input
+              type="text"
+              value={folderInput}
+              onChange={(event) => setFolderInput(event.target.value)}
+              maxLength={FOLDER_NAME_MAX_LENGTH}
+              placeholder="例如：数值微分 / 插值"
+              className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[14px] text-black/85 outline-none transition placeholder:text-black/45 focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/86 dark:placeholder:text-white/45"
+            />
+          </label>
+
+          <button
+            type="button"
+            onClick={handleCreateFolder}
+            className="inline-flex h-[38px] items-center rounded-capsule border border-[#0066cc] px-4 font-text text-[14px] tracking-tightCaption text-[#0066cc] transition hover:bg-[#0066cc]/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-[#2997ff] dark:text-[#2997ff] dark:hover:bg-[#2997ff]/[0.14]"
+          >
+            创建文件夹
+          </button>
+        </div>
+
+        <p className="mt-3 font-text text-[13px] text-black/65 dark:text-white/70">
+          拖动笔记卡片到下方文件夹区域即可归类；也可以在卡片内使用下拉框切换文件夹。
+        </p>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div
+            onDragOver={(event) => {
+              event.preventDefault();
+              setDragOverTarget("uncategorized");
+            }}
+            onDragLeave={() => setDragOverTarget((previous) => (previous === "uncategorized" ? "" : previous))}
+            onDrop={(event) => handleFolderDrop(null, event)}
+            className={`rounded-apple border px-3 py-3 transition ${
+              dragOverTarget === "uncategorized"
+                ? "border-[#0071e3] bg-[#0071e3]/[0.08] dark:border-[#2997ff] dark:bg-[#2997ff]/[0.16]"
+                : "border-black/12 bg-black/[0.02] dark:border-white/16 dark:bg-white/[0.04]"
+            }`}
+          >
+            <p className="font-text text-[13px] font-semibold text-black/80 dark:text-white/84">
+              未归类
+              <span className="ui-en ml-1 text-black/62 dark:text-white/66">Uncategorized</span>
+            </p>
+            <p className="mt-1 font-text text-[12px] text-black/62 dark:text-white/68">{folderCounts.uncategorized ?? 0} 条笔记</p>
+          </div>
+
+          {folders.map((folder) => (
+            <div
+              key={folder.id}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setDragOverTarget(folder.id);
+              }}
+              onDragLeave={() => setDragOverTarget((previous) => (previous === folder.id ? "" : previous))}
+              onDrop={(event) => handleFolderDrop(folder.id, event)}
+              className={`rounded-apple border px-3 py-3 transition ${
+                dragOverTarget === folder.id
+                  ? "border-[#0071e3] bg-[#0071e3]/[0.08] dark:border-[#2997ff] dark:bg-[#2997ff]/[0.16]"
+                  : "border-black/12 bg-black/[0.02] dark:border-white/16 dark:bg-white/[0.04]"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <p className="font-text text-[13px] font-semibold text-black/80 dark:text-white/84">{folder.name}</p>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteFolder(folder)}
+                  className="inline-flex items-center rounded-capsule border border-[#b4232f]/35 px-2 py-0.5 font-text text-[11px] tracking-tightCaption text-[#8f1d27] transition hover:bg-[#b4232f]/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b4232f] dark:border-[#ff6a77]/40 dark:text-[#ffc4cb] dark:hover:bg-[#ff6a77]/[0.12]"
+                >
+                  删除
+                </button>
+              </div>
+              <p className="mt-1 font-text text-[12px] text-black/62 dark:text-white/68">{folderCounts[folder.id] ?? 0} 条笔记</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-        {filteredNotes.map((note) => (
-          <WeekCard
-            key={note.slug}
-            href={note.viewHref}
-            weekLabelZh={note.weekLabelZh}
-            weekLabelEn={note.weekLabelEn}
-            zhTitle={note.zhTitle}
-            enTitle={note.enTitle}
-            descriptionZh={note.descriptionZh}
-            descriptionEn={note.descriptionEn}
-            tags={note.tags}
-            footerAction={
-              <button
-                type="button"
-                disabled={deletingSlug === note.slug}
-                onClick={() => handleDeleteNote(note)}
-                className="inline-flex items-center rounded-capsule border border-[#b4232f]/35 px-3 py-1.5 font-text text-[13px] tracking-tightCaption text-[#8f1d27] transition hover:bg-[#b4232f]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b4232f] dark:border-[#ff6a77]/40 dark:text-[#ffc4cb] dark:hover:bg-[#ff6a77]/[0.12]"
-              >
-                {deletingSlug === note.slug ? "删除中..." : "删除"}
-              </button>
-            }
-          />
-        ))}
+        {filteredNotes.map((note) => {
+          const noteFolderId = noteFolderMap[note.slug] ?? "";
+          const noteFolderName = noteFolderId ? folderById.get(noteFolderId)?.name ?? "" : "";
+          const isDragging = draggingSlug === note.slug;
+
+          return (
+            <div
+              key={note.slug}
+              draggable
+              onDragStart={(event) => {
+                setDraggingSlug(note.slug);
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/yynotes-note-slug", note.slug);
+                event.dataTransfer.setData("text/plain", note.slug);
+              }}
+              onDragEnd={() => {
+                setDraggingSlug("");
+                setDragOverTarget("");
+              }}
+              className={`transition ${isDragging ? "opacity-60" : ""}`}
+              title="拖拽到上方文件夹可归类"
+            >
+              <WeekCard
+                href={note.viewHref}
+                weekLabelZh={note.weekLabelZh}
+                weekLabelEn={note.weekLabelEn}
+                zhTitle={note.zhTitle}
+                enTitle={note.enTitle}
+                descriptionZh={note.descriptionZh}
+                descriptionEn={note.descriptionEn}
+                tags={note.tags}
+                footerAction={
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={noteFolderId}
+                      onChange={(event) => assignFolder(note.slug, event.target.value || null)}
+                      onClick={(event) => event.stopPropagation()}
+                      className="max-w-[180px] rounded-capsule border border-black/20 bg-white px-3 py-1.5 font-text text-[12px] text-black/78 outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/22 dark:bg-[#202022] dark:text-white/80"
+                    >
+                      <option value="">未归类</option>
+                      {folders.map((folder) => (
+                        <option key={folder.id} value={folder.id}>
+                          {folder.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={deletingSlug === note.slug}
+                      onClick={() => handleDeleteNote(note)}
+                      className="inline-flex items-center rounded-capsule border border-[#b4232f]/35 px-3 py-1.5 font-text text-[13px] tracking-tightCaption text-[#8f1d27] transition hover:bg-[#b4232f]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b4232f] dark:border-[#ff6a77]/40 dark:text-[#ffc4cb] dark:hover:bg-[#ff6a77]/[0.12]"
+                    >
+                      {deletingSlug === note.slug ? "删除中..." : "删除"}
+                    </button>
+                    <span className="font-text text-[12px] text-black/60 dark:text-white/66">
+                      {noteFolderName ? `文件夹：${noteFolderName}` : "文件夹：未归类"}
+                    </span>
+                  </div>
+                }
+              />
+            </div>
+          );
+        })}
       </div>
 
       {!filteredNotes.length ? (
         <p className="mt-6 rounded-apple border border-black/12 bg-white px-4 py-3 font-text text-[14px] leading-[1.45] text-black/72 dark:border-white/15 dark:bg-[#272729] dark:text-white/74">
-          没有匹配当前筛选条件的笔记，请调整关键词、主题或标签。
+          没有匹配当前筛选条件的笔记，请调整关键词、主题、标签或文件夹。
         </p>
       ) : null}
     </>
   );
 }
+
