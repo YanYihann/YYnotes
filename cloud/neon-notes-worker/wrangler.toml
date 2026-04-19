@@ -4,7 +4,7 @@ compatibility_date = "2026-04-19"
 
 [vars]
 OPENAI_MODEL = "gpt-4.1-mini"
-ALLOWED_ORIGIN = "https://yanyihann.github.io"
+ALLOWED_ORIGIN = "https://yynotes.pages.dev,https://yanyihann.github.io,http://localhost:3000,http://127.0.0.1:3000"
 OPENAI_BASE_URL = "https://api.openai-proxy.org/v1"
 
 # Set these with:

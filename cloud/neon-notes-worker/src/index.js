@@ -37,19 +37,39 @@ function normalizeOriginValue(value) {
   }
 }
 
-function getOrigin(requestOrigin, allowedOrigin) {
-  const normalizedAllowed = normalizeOriginValue(allowedOrigin);
+function parseAllowedOrigins(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) {
+    return { wildcard: true, origins: ["*"] };
+  }
 
-  if (normalizedAllowed === "*") {
+  const normalized = raw
+    .split(/[,\n]/)
+    .map((item) => normalizeOriginValue(item))
+    .filter(Boolean);
+
+  if (!normalized.length || normalized.includes("*")) {
+    return { wildcard: true, origins: ["*"] };
+  }
+
+  return { wildcard: false, origins: Array.from(new Set(normalized)) };
+}
+
+function getOrigin(requestOrigin, allowedOrigin) {
+  const { wildcard, origins } = parseAllowedOrigins(allowedOrigin);
+
+  if (wildcard) {
     return "*";
   }
 
+  const fallbackOrigin = origins[0] || "*";
+
   if (!requestOrigin) {
-    return normalizedAllowed;
+    return fallbackOrigin;
   }
 
   const normalizedRequest = normalizeOriginValue(requestOrigin);
-  return normalizedRequest === normalizedAllowed ? normalizedRequest : normalizedAllowed;
+  return origins.includes(normalizedRequest) ? normalizedRequest : fallbackOrigin;
 }
 
 function slugifyTitle(input) {
