@@ -29,11 +29,18 @@ type GenerationResult = {
   preview: string;
 };
 
+type MetadataUpdateResult = {
+  success: boolean;
+  slug: string;
+  note: GeneratedNote | null;
+};
+
 type WeekNoteGeneratorProps = {
   existingNotes: ExistingNote[];
 };
 
 const CLOUD_API_BASE = process.env.NEXT_PUBLIC_NOTES_API_BASE?.trim() ?? "";
+const CLOUD_WRITE_KEY = process.env.NEXT_PUBLIC_NOTES_WRITE_KEY?.trim() ?? "";
 const IS_CLOUD_MODE = CLOUD_API_BASE.length > 0;
 
 function slugifyTitle(input: string): string {
@@ -77,6 +84,22 @@ function deriveTitleFromFileName(fileName: string): string {
     .replace(/[_-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function parseTagsInput(raw: string): string[] {
+  const dedup = new Set<string>();
+  for (const token of raw.split(/[，,、|]/)) {
+    const cleaned = token.trim().replace(/^#+/, "");
+    if (!cleaned) {
+      continue;
+    }
+    dedup.add(cleaned);
+    if (dedup.size >= 12) {
+      break;
+    }
+  }
+
+  return Array.from(dedup);
 }
 
 function buildNoteViewHref(slug: string): string {
@@ -216,6 +239,65 @@ async function callCloudGenerator(params: {
   return json as GenerationResult;
 }
 
+async function callLocalMetadataUpdate(params: {
+  slug: string;
+  title: string;
+  topic: string;
+  tags: string[];
+}): Promise<MetadataUpdateResult> {
+  const response = await fetch("/api/note-generator", {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(params),
+  });
+
+  const json = (await response.json().catch(() => null)) as { error?: string } & Partial<MetadataUpdateResult> | null;
+  if (!response.ok || !json) {
+    throw new Error(json?.error || "更新元信息失败，请稍后重试。");
+  }
+
+  if (!json.success || !json.slug) {
+    throw new Error("元信息更新结果无效，请重试。");
+  }
+
+  return json as MetadataUpdateResult;
+}
+
+async function callCloudMetadataUpdate(params: {
+  slug: string;
+  title: string;
+  topic: string;
+  tags: string[];
+}): Promise<MetadataUpdateResult> {
+  const apiBase = normalizeApiBase(CLOUD_API_BASE);
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  if (CLOUD_WRITE_KEY) {
+    headers["X-Notes-Write-Key"] = CLOUD_WRITE_KEY;
+  }
+
+  const response = await fetch(`${apiBase}/notes/${encodeURIComponent(params.slug)}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify(params),
+  });
+
+  const json = (await response.json().catch(() => null)) as { error?: string } & Partial<MetadataUpdateResult> | null;
+  if (!response.ok || !json) {
+    throw new Error(json?.error || "云端元信息更新失败，请稍后重试。");
+  }
+
+  if (!json.success || !json.slug) {
+    throw new Error("云端元信息更新结果无效，请重试。");
+  }
+
+  return json as MetadataUpdateResult;
+}
+
 export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
   const router = useRouter();
   const [title, setTitle] = useState("");
@@ -225,8 +307,12 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
   const [extraInstruction, setExtraInstruction] = useState("");
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [savingMeta, setSavingMeta] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<GenerationResult | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editTopic, setEditTopic] = useState("");
+  const [editTags, setEditTags] = useState("");
 
   const slugPreview = useMemo(() => {
     const manualTitle = title.trim();
@@ -275,11 +361,56 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
       const generationResult = IS_CLOUD_MODE ? await callCloudGenerator(payload) : await callLocalGenerator(payload);
 
       setResult(generationResult);
+      setEditTitle(generationResult.note?.zhTitle ?? payload.title);
+      setEditTopic(generationResult.note?.weekLabelZh ?? payload.topic);
+      setEditTags((generationResult.note?.tags ?? parseTagsInput(payload.tags)).join(", "));
       router.refresh();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "生成失败，请稍后重试。");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function onSaveMetadata() {
+    if (!result?.slug) {
+      return;
+    }
+
+    setSavingMeta(true);
+    setError("");
+
+    try {
+      const payload = {
+        slug: result.slug,
+        title: editTitle.trim(),
+        topic: editTopic.trim(),
+        tags: parseTagsInput(editTags),
+      };
+
+      const updated = IS_CLOUD_MODE ? await callCloudMetadataUpdate(payload) : await callLocalMetadataUpdate(payload);
+
+      if (updated.note) {
+        setResult((previous) => {
+          if (!previous) {
+            return previous;
+          }
+
+          return {
+            ...previous,
+            note: updated.note,
+          };
+        });
+        setEditTitle(updated.note.zhTitle);
+        setEditTopic(updated.note.weekLabelZh);
+        setEditTags((updated.note.tags ?? []).join(", "));
+      }
+
+      router.refresh();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "更新元信息失败，请稍后重试。");
+    } finally {
+      setSavingMeta(false);
     }
   }
 
@@ -415,6 +546,59 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
               <span className="ml-1">&gt;</span>
             </Link>
           </div>
+
+          <section className="rounded-apple border border-black/12 bg-white p-4 dark:border-white/12 dark:bg-[#1f1f21]">
+            <p className="font-text text-[13px] font-semibold tracking-[0.06em] text-black/70 dark:text-white/74">
+              生成后可修改元信息
+              <span className="ui-en ml-1">Edit Metadata After Generation</span>
+            </p>
+
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <label className="space-y-1 md:col-span-2">
+                <span className="font-text text-[12px] text-black/62 dark:text-white/66">标题</span>
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(event) => setEditTitle(event.target.value)}
+                  placeholder="留空将保留当前标题"
+                  className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[14px] text-black/85 outline-none transition placeholder:text-black/45 focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/86 dark:placeholder:text-white/45"
+                />
+              </label>
+
+              <label className="space-y-1">
+                <span className="font-text text-[12px] text-black/62 dark:text-white/66">主题</span>
+                <input
+                  type="text"
+                  value={editTopic}
+                  onChange={(event) => setEditTopic(event.target.value)}
+                  placeholder="留空将自动兜底生成主题"
+                  className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[14px] text-black/85 outline-none transition placeholder:text-black/45 focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/86 dark:placeholder:text-white/45"
+                />
+              </label>
+
+              <label className="space-y-1">
+                <span className="font-text text-[12px] text-black/62 dark:text-white/66">标签</span>
+                <input
+                  type="text"
+                  value={editTags}
+                  onChange={(event) => setEditTags(event.target.value)}
+                  placeholder="用逗号分隔，如：定义, 推导, 例题"
+                  className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[14px] text-black/85 outline-none transition placeholder:text-black/45 focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/86 dark:placeholder:text-white/45"
+                />
+              </label>
+            </div>
+
+            <div className="mt-3">
+              <button
+                type="button"
+                disabled={savingMeta}
+                onClick={onSaveMetadata}
+                className="inline-flex items-center rounded-capsule border border-[#0066cc] px-4 py-1.5 font-text text-[14px] tracking-tightCaption text-[#0066cc] transition hover:underline disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-[#2997ff] dark:text-[#2997ff]"
+              >
+                {savingMeta ? "保存中..." : "保存元信息修改"}
+              </button>
+            </div>
+          </section>
 
           {result.note ? (
             <WeekCard

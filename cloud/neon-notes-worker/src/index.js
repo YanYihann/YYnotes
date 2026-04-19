@@ -18,7 +18,7 @@ function jsonResponse(data, status = 200, origin = "*") {
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       "Access-Control-Allow-Origin": origin,
-      "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
+      "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, X-Notes-Write-Key",
       "Vary": "Origin",
     },
@@ -460,6 +460,25 @@ function deriveTopicFromSource(sourceText) {
   return "";
 }
 
+function deriveTopicFromTitleOrTags(title, tags) {
+  const titlePhrases = extractChinesePhrases(String(title ?? ""));
+  const titleCandidate = titlePhrases.find((item) => item.length >= 2 && item.length <= 16);
+  if (titleCandidate) {
+    return titleCandidate;
+  }
+
+  if (Array.isArray(tags)) {
+    const tagCandidate = tags
+      .map((item) => String(item ?? "").trim())
+      .find((item) => item.length >= 2 && item.length <= 16 && hasChinese(item));
+    if (tagCandidate) {
+      return tagCandidate;
+    }
+  }
+
+  return "学习笔记";
+}
+
 async function inferMissingMetadata({ env, sourceText, fileName }) {
   const openaiBaseUrl = normalizeApiBase(env.OPENAI_BASE_URL);
   const responsesEndpoint = `${openaiBaseUrl}/responses`;
@@ -590,11 +609,11 @@ async function resolveGenerationMetadata({ env, titleInput, topicInput, tagsInpu
   }
 
   if (!topic) {
-    topic = deriveTopicFromSource(sourceText) || "未分类";
+    topic = deriveTopicFromSource(sourceText) || deriveTopicFromTitleOrTags(title, tags);
   }
 
   if (!hasManualTopic && !hasChinese(topic)) {
-    topic = deriveTopicFromSource(sourceText) || "未分类";
+    topic = deriveTopicFromSource(sourceText) || deriveTopicFromTitleOrTags(title, tags);
   }
 
   if (!hasManualTags) {
@@ -618,17 +637,18 @@ async function resolveGenerationMetadata({ env, titleInput, topicInput, tagsInpu
 function splitTopic(topicInput, title) {
   const normalized = String(topicInput ?? "").trim();
   if (!normalized) {
+    const topicZh = deriveTopicFromTitleOrTags(title, []);
     return {
-      topicZh: "未分类",
+      topicZh,
       topicEn: "General",
-      topic: "未分类 / General",
+      topic: `${topicZh} / General`,
     };
   }
 
   const hasZh = /[\u4e00-\u9fff]/.test(normalized);
   const hasEn = /[A-Za-z]/.test(normalized);
-  const topicZh = hasEn && !hasZh ? "未分类" : normalized;
-  const topicEn = hasZh && !hasEn ? String(title ?? "") : normalized;
+  const topicZh = hasEn && !hasZh ? deriveTopicFromTitleOrTags(title, []) : normalized;
+  const topicEn = hasZh && !hasEn ? String(title ?? "") || "General" : normalized;
 
   return {
     topicZh,
@@ -1166,6 +1186,79 @@ export default {
         }
 
         return jsonResponse({ success: true, note: rows[0] }, 200, corsOrigin);
+      }
+
+      if (request.method === "PATCH" && url.pathname.startsWith("/notes/")) {
+        if (!requireWriteKey(request, env)) {
+          return jsonResponse({ error: "Unauthorized write request." }, 401, corsOrigin);
+        }
+
+        const slug = decodeURIComponent(url.pathname.replace("/notes/", "")).trim();
+        if (!slug) {
+          return jsonResponse({ error: "Slug is required." }, 400, corsOrigin);
+        }
+
+        const body = await request.json().catch(() => null);
+        if (!body || typeof body !== "object") {
+          return jsonResponse({ error: "Invalid JSON body." }, 400, corsOrigin);
+        }
+
+        const rows = await sql`
+          SELECT slug, title, topic, topic_zh, topic_en, tags
+          FROM notes
+          WHERE slug = ${slug}
+          LIMIT 1
+        `;
+
+        if (!rows.length) {
+          return jsonResponse({ error: "Note not found." }, 404, corsOrigin);
+        }
+
+        const current = rows[0];
+        const titleInput = String(body.title ?? "").trim();
+        const topicInput = String(body.topic ?? "").trim();
+        const tagsInput = parseTags(body.tags);
+
+        const nextTitle = titleInput || String(current.title ?? "").trim() || "未命名笔记";
+        const currentTags = parseTags(current.tags);
+        const nextTags = tagsInput.length ? tagsInput.slice(0, 12) : currentTags.slice(0, 12);
+        const topicSeed =
+          topicInput ||
+          String(current.topic_zh ?? "").trim() ||
+          String(current.topic ?? "").trim() ||
+          deriveTopicFromTitleOrTags(nextTitle, nextTags);
+        const topicParts = splitTopic(topicSeed, nextTitle);
+
+        await sql`
+          UPDATE notes
+          SET
+            title = ${nextTitle},
+            topic = ${topicParts.topic},
+            topic_zh = ${topicParts.topicZh},
+            topic_en = ${topicParts.topicEn},
+            tags = ${JSON.stringify(nextTags)},
+            updated_at = NOW()
+          WHERE slug = ${slug}
+        `;
+
+        return jsonResponse(
+          {
+            success: true,
+            slug,
+            note: {
+              slug,
+              weekLabelZh: topicParts.topicZh,
+              weekLabelEn: topicParts.topicEn,
+              zhTitle: nextTitle,
+              enTitle: nextTitle,
+              descriptionZh: `关于“${nextTitle}”的双语学习笔记。`,
+              descriptionEn: `Bilingual study note on ${nextTitle}.`,
+              tags: nextTags,
+            },
+          },
+          200,
+          corsOrigin,
+        );
       }
 
       if (request.method === "DELETE" && url.pathname.startsWith("/notes/")) {

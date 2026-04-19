@@ -498,6 +498,23 @@ function deriveTopicFromSource(source: string): string {
   return "";
 }
 
+function deriveTopicFromTitleOrTags(title: string, tags: string[]): string {
+  const titlePhrases = extractChinesePhrases(title);
+  const titleCandidate = titlePhrases.find((item) => item.length >= 2 && item.length <= 16);
+  if (titleCandidate) {
+    return titleCandidate;
+  }
+
+  const tagCandidate = tags
+    .map((item) => item.trim())
+    .find((item) => item.length >= 2 && item.length <= 16 && hasChinese(item));
+  if (tagCandidate) {
+    return tagCandidate;
+  }
+
+  return "学习笔记";
+}
+
 async function inferMissingMetadata(args: {
   sourceText: string;
   fileName: string;
@@ -589,11 +606,11 @@ async function resolveGenerationMetadata(args: {
   }
 
   if (!topic) {
-    topic = deriveTopicFromSource(args.sourceText) || "未分类";
+    topic = deriveTopicFromSource(args.sourceText) || deriveTopicFromTitleOrTags(title, tags);
   }
 
   if (!hasManualTopic && !hasChinese(topic)) {
-    topic = deriveTopicFromSource(args.sourceText) || "未分类";
+    topic = deriveTopicFromSource(args.sourceText) || deriveTopicFromTitleOrTags(title, tags);
   }
 
   if (!hasManualTags) {
@@ -628,16 +645,17 @@ function splitTopic(topicInput: string, title: string): { topicZh: string; topic
   const normalized = topicInput.trim();
 
   if (!normalized) {
+    const topicZh = deriveTopicFromTitleOrTags(title, []);
     return {
-      topicZh: "未分类",
+      topicZh,
       topicEn: "General",
-      topic: "未分类 / General",
+      topic: `${topicZh} / General`,
     };
   }
 
   const lang = detectLanguage(normalized);
-  const topicZh = lang === "en" ? "未分类" : normalized;
-  const topicEn = lang === "zh" ? title : normalized;
+  const topicZh = lang === "en" ? deriveTopicFromTitleOrTags(title, []) : normalized;
+  const topicEn = lang === "zh" ? title || "General" : normalized;
 
   return {
     topicZh,
@@ -997,6 +1015,84 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "生成失败，请稍后重试。";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const body = (await request.json().catch(() => null)) as
+      | {
+          slug?: unknown;
+          title?: unknown;
+          topic?: unknown;
+          tags?: unknown;
+        }
+      | null;
+
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "请求体格式无效。" }, { status: 400 });
+    }
+
+    const slug = String(body.slug ?? "").trim();
+    if (!slug) {
+      return NextResponse.json({ error: "缺少 slug。" }, { status: 400 });
+    }
+
+    const allNotes = await getWeekNotes();
+    const target = allNotes.find((note) => note.slug === slug);
+    if (!target) {
+      return NextResponse.json({ error: "未找到对应笔记。" }, { status: 404 });
+    }
+
+    const titleInput = typeof body.title === "string" ? body.title.trim() : "";
+    const topicInput = typeof body.topic === "string" ? body.topic.trim() : "";
+    const tagsInput =
+      typeof body.tags === "string"
+        ? parseTagsInput(body.tags)
+        : Array.isArray(body.tags)
+          ? parseTagsUnknown(body.tags)
+          : [];
+
+    const nextTitle = titleInput || target.zhTitle || target.enTitle || "未命名笔记";
+    const nextTags = tagsInput.length ? tagsInput.slice(0, 12) : target.tags.slice(0, 12);
+    const topicSeed = topicInput || target.topicZh || deriveTopicFromTitleOrTags(nextTitle, nextTags);
+    const topicParts = splitTopic(topicSeed, nextTitle);
+
+    const raw = await fs.readFile(target.filePath, "utf8");
+    const parsed = matter(raw);
+    const data = { ...(parsed.data as Record<string, unknown>) };
+    const content = normalizeNewlines(parsed.content).trimEnd();
+
+    data.title = nextTitle;
+    data.topic = topicParts.topic;
+    data.topicZh = topicParts.topicZh;
+    data.topicEn = topicParts.topicEn;
+    data.tags = nextTags;
+
+    const updatedRaw = `${matter.stringify(`${content}\n`, data).trimEnd()}\n`;
+    await fs.writeFile(target.filePath, updatedRaw, "utf8");
+
+    const refreshed = (await getWeekNotes()).find((note) => note.slug === slug);
+
+    return NextResponse.json({
+      success: true,
+      slug,
+      note: refreshed
+        ? {
+            slug: refreshed.slug,
+            weekLabelZh: refreshed.weekLabelZh,
+            weekLabelEn: refreshed.weekLabelEn,
+            zhTitle: refreshed.zhTitle,
+            enTitle: refreshed.enTitle,
+            descriptionZh: refreshed.descriptionZh,
+            descriptionEn: refreshed.descriptionEn,
+            tags: refreshed.tags,
+          }
+        : null,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "更新元信息失败，请稍后重试。";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

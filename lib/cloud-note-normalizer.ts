@@ -469,6 +469,8 @@ export function normalizeCloudNote(note: CloudNoteRecord | null): NormalizedClou
   const createdAtMs = parseCreatedAtMs(note.created_at);
   const order = Number.isFinite(orderRaw ?? NaN) ? (orderRaw as number) : weekNumber > 0 ? weekNumber : Math.floor(createdAtMs);
 
+  const rowTitle = normalizeFrontmatterText(note.title);
+  const rowTitleLang = rowTitle ? detectLanguage(rowTitle) : "none";
   const frontmatterTitle =
     normalizeFrontmatterText(data.title) ??
     normalizeFrontmatterText(data.zhTitle) ??
@@ -476,14 +478,18 @@ export function normalizeCloudNote(note: CloudNoteRecord | null): NormalizedClou
   const frontmatterTitleLang = frontmatterTitle ? detectLanguage(frontmatterTitle) : "none";
 
   const enTitle =
-    frontmatterTitle && frontmatterTitleLang !== "zh"
-      ? frontmatterTitle
-      : topTitles.enTitle ?? `Note ${slugName}`;
+    normalizeFrontmatterText(data.enTitle) ??
+    (rowTitle && rowTitleLang !== "zh" ? rowTitle : undefined) ??
+    (frontmatterTitle && frontmatterTitleLang !== "zh" ? frontmatterTitle : undefined) ??
+    topTitles.enTitle ??
+    `Note ${slugName}`;
 
   const zhTitle =
-    frontmatterTitle && frontmatterTitleLang === "zh"
-      ? frontmatterTitle
-      : topTitles.zhTitle ?? `\u7b14\u8bb0\uff1a${slugName}`;
+    normalizeFrontmatterText(data.zhTitle) ??
+    (rowTitle && rowTitleLang !== "en" ? rowTitle : undefined) ??
+    (frontmatterTitle && frontmatterTitleLang === "zh" ? frontmatterTitle : undefined) ??
+    topTitles.zhTitle ??
+    `\u7b14\u8bb0\uff1a${slugName}`;
 
   const parsedDescriptions = extractBilingualDescription(source);
   const frontmatterDescription = normalizeFrontmatterText(data.description);
@@ -503,9 +509,9 @@ export function normalizeCloudNote(note: CloudNoteRecord | null): NormalizedClou
     parsedDescriptions.descriptionZh ??
     DEFAULT_DESCRIPTION_ZH;
 
-  let topicZh = normalizeFrontmatterText(data.topicZh);
-  let topicEn = normalizeFrontmatterText(data.topicEn);
-  const topicRaw = normalizeFrontmatterText(data.topic);
+  let topicZh = normalizeFrontmatterText(note.topic_zh) ?? normalizeFrontmatterText(data.topicZh);
+  let topicEn = normalizeFrontmatterText(note.topic_en) ?? normalizeFrontmatterText(data.topicEn);
+  const topicRaw = normalizeFrontmatterText(note.topic) ?? normalizeFrontmatterText(data.topic);
 
   if (topicRaw) {
     const lang = detectLanguage(topicRaw);
@@ -518,15 +524,11 @@ export function normalizeCloudNote(note: CloudNoteRecord | null): NormalizedClou
   }
 
   if (!topicZh) {
-    topicZh =
-      normalizeFrontmatterText(note.topic_zh) ??
-      headings[0]?.title ??
-      (weekNumber > 0 ? `\u7b2c${weekNumber}\u5468` : "\u672a\u5206\u7c7b");
+    topicZh = headings[0]?.title ?? (weekNumber > 0 ? `\u7b2c${weekNumber}\u5468` : "\u672a\u5206\u7c7b");
   }
 
   if (!topicEn) {
-    topicEn =
-      normalizeFrontmatterText(note.topic_en) ?? headings.find((heading) => heading.enTitle)?.enTitle ?? (weekNumber > 0 ? `Week ${weekNumber}` : enTitle);
+    topicEn = headings.find((heading) => heading.enTitle)?.enTitle ?? (weekNumber > 0 ? `Week ${weekNumber}` : enTitle);
   }
 
   const tagsFromFrontmatter = normalizeTags(data.tags);
@@ -535,7 +537,7 @@ export function normalizeCloudNote(note: CloudNoteRecord | null): NormalizedClou
     .map((heading) => heading.title)
     .filter(Boolean)
     .slice(0, 4);
-  const tags = tagsFromFrontmatter.length ? tagsFromFrontmatter : tagsFromRecord.length ? tagsFromRecord : derivedTags;
+  const tags = tagsFromRecord.length ? tagsFromRecord : tagsFromFrontmatter.length ? tagsFromFrontmatter : derivedTags;
 
   return {
     slug,
