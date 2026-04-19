@@ -3,6 +3,7 @@
 import ReactMarkdown from "react-markdown";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import rehypeKatex from "rehype-katex";
+import rehypeRaw from "rehype-raw";
 import rehypeSlug from "rehype-slug";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -35,6 +36,7 @@ export function NoteMarkdown({ source }: NoteMarkdownProps) {
       components={markdownComponents}
       remarkPlugins={[remarkGfm, remarkMath]}
       rehypePlugins={[
+        rehypeRaw,
         rehypeKatex,
         rehypeSlug,
         [
@@ -53,4 +55,3 @@ export function NoteMarkdown({ source }: NoteMarkdownProps) {
     </ReactMarkdown>
   );
 }
-

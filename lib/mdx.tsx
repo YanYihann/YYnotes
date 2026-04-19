@@ -1,6 +1,7 @@
 ﻿import ReactMarkdown from "react-markdown";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import rehypeKatex from "rehype-katex";
+import rehypeRaw from "rehype-raw";
 import rehypeSlug from "rehype-slug";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -55,6 +56,7 @@ function normalizeLineForLanguage(line: string): string {
     .replace(/^\s*>\s?/, "")
     .replace(/^\s*[-*+]\s+/, "")
     .replace(/^\s*\d+\.\s+/, "")
+    .replace(/<[^>]*>/g, " ")
     .replace(/`[^`]*`/g, " ")
     .replace(/\$[^$]*\$/g, " ")
     .trim();
@@ -197,7 +199,7 @@ function isStandalonePlainLine(line: string): boolean {
     return false;
   }
 
-  if (isTableLine(trimmed) || /^[-*_]{3,}$/.test(trimmed) || /^<[^>]+>/.test(trimmed) || /^\$\$/.test(trimmed)) {
+  if (isTableLine(trimmed) || /^[-*_]{3,}$/.test(trimmed) || /^\$\$/.test(trimmed)) {
     return false;
   }
 
@@ -607,6 +609,7 @@ export async function renderWeekContent(note: WeekNote) {
       components={markdownComponents}
       remarkPlugins={[remarkGfm, remarkMath]}
       rehypePlugins={[
+        rehypeRaw,
         rehypeKatex,
         rehypeSlug,
         [
