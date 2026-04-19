@@ -1,12 +1,7 @@
-﻿import Link from "next/link";
-import { WeekNoteGenerator } from "@/components/home/week-note-generator";
-import { WeekCard } from "@/components/week-card";
-import { getKeyTopics, getWeekNotes } from "@/lib/content";
+import Link from "next/link";
+import { HomeCloudNotesSections } from "@/components/home/home-cloud-notes-sections";
 
 export default async function HomePage() {
-  const notes = await getWeekNotes();
-  const topics = await getKeyTopics();
-
   return (
     <>
       <section className="section-dark">
@@ -38,76 +33,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="section-light py-16">
-        <div className="mx-auto w-full max-w-[1100px] px-4 sm:px-6">
-          <div className="mb-8 flex items-end justify-between gap-6">
-            <div>
-              <h2 className="font-display text-[40px] font-semibold leading-[1.1] text-[#1d1d1f] dark:text-white">
-                我的笔记
-                <span className="ui-en mt-1 block text-[0.52em] font-normal text-black/70 dark:text-white/75">My Notes</span>
-              </h2>
-              <p className="mt-2 max-w-[720px] font-text text-[17px] leading-[1.47] text-black/75 dark:text-white/75">
-                以主题和标签组织已有笔记，同时支持持续新增与归档。
-                <span className="ui-en ml-1">Organized by topics and tags, with a structure that supports continuous note creation and archiving.</span>
-              </p>
-            </div>
-            <Link
-              href="/notes"
-              className="hidden text-[14px] tracking-tightCaption text-[#0066cc] underline-offset-4 hover:underline dark:text-[#2997ff] sm:inline"
-            >
-              查看全部笔记
-              <span className="ui-en ml-1">View all notes</span>
-              <span className="ml-1">&gt;</span>
-            </Link>
-          </div>
-
-          <WeekNoteGenerator
-            existingNotes={notes.map((note) => ({
-              slug: note.slug,
-            }))}
-          />
-
-          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-            {notes.map((note) => (
-              <WeekCard
-                key={note.slug}
-                href={`/notes/${note.slug}`}
-                weekLabelZh={note.weekLabelZh}
-                weekLabelEn={note.weekLabelEn}
-                zhTitle={note.zhTitle}
-                enTitle={note.enTitle}
-                descriptionZh={note.descriptionZh}
-                descriptionEn={note.descriptionEn}
-                tags={note.tags}
-              />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="section-dark py-16">
-        <div className="mx-auto grid w-full max-w-[1100px] gap-10 px-4 sm:px-6 lg:grid-cols-[1.3fr_1fr]">
-          <div>
-            <h2 className="font-display text-[40px] font-semibold leading-[1.1] text-white">
-              最近笔记主题
-              <span className="ui-en mt-1 block text-[0.52em] font-normal text-white/80">Recent Note Topics</span>
-            </h2>
-            <p className="mt-3 font-text text-[17px] leading-[1.47] text-white/80">
-              自动提取你最近笔记中的关键主题，帮助快速回顾与定位。
-              <span className="ui-en ml-1">
-                Automatically surfaced key topics from recent notes for faster review and navigation.
-              </span>
-            </p>
-          </div>
-          <ul className="space-y-2 rounded-apple bg-white/10 p-5">
-            {topics.map((topic) => (
-              <li key={topic} className="font-text text-[17px] leading-[1.47] text-white/88">
-                {topic}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </section>
+      <HomeCloudNotesSections />
 
       <section className="section-light py-16">
         <div className="mx-auto w-full max-w-content px-4 sm:px-6">
