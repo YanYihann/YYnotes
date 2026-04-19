@@ -549,6 +549,10 @@ async function inferMissingMetadata({ env, sourceText, fileName }) {
 }
 
 async function resolveGenerationMetadata({ env, titleInput, topicInput, tagsInput, sourceText, fileName }) {
+  const hasManualTitle = String(titleInput ?? "").trim().length > 0;
+  const hasManualTopic = String(topicInput ?? "").trim().length > 0;
+  const hasManualTags = Array.isArray(tagsInput) && tagsInput.length > 0;
+
   let title = String(titleInput ?? "").trim();
   let topic = String(topicInput ?? "").trim();
   let tags = Array.isArray(tagsInput) ? tagsInput.slice(0, 12) : [];
@@ -581,7 +585,7 @@ async function resolveGenerationMetadata({ env, titleInput, topicInput, tagsInpu
     title = deriveTitleFromSource(sourceText) || deriveTitleFromFileName(fileName) || "未命名笔记";
   }
 
-  if (!hasChinese(title)) {
+  if (!hasManualTitle && !hasChinese(title)) {
     title = deriveTitleFromSource(sourceText) || "未命名笔记";
   }
 
@@ -589,17 +593,19 @@ async function resolveGenerationMetadata({ env, titleInput, topicInput, tagsInpu
     topic = deriveTopicFromSource(sourceText) || "未分类";
   }
 
-  if (!hasChinese(topic)) {
+  if (!hasManualTopic && !hasChinese(topic)) {
     topic = deriveTopicFromSource(sourceText) || "未分类";
   }
 
-  tags = tags.filter((tag) => hasChinese(tag));
-  if (!tags.length) {
-    tags = fallbackTagsFromMetadata(title, topic);
-  }
+  if (!hasManualTags) {
+    tags = tags.filter((tag) => hasChinese(tag));
+    if (!tags.length) {
+      tags = fallbackTagsFromMetadata(title, topic);
+    }
 
-  if (!tags.length) {
-    tags = ["学习笔记", "知识整理"];
+    if (!tags.length) {
+      tags = ["学习笔记", "知识整理"];
+    }
   }
 
   return {
@@ -1122,13 +1128,22 @@ export default {
       }
 
       if (request.method === "GET" && url.pathname === "/notes") {
-        const limit = Math.min(Number(url.searchParams.get("limit") || 20), 100);
-        const rows = await sql`
-          SELECT slug, title, topic, topic_zh, topic_en, tags, created_at, updated_at
-          FROM notes
-          ORDER BY updated_at DESC
-          LIMIT ${limit}
-        `;
+        const rawLimit = Number(url.searchParams.get("limit") || 20);
+        const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(Math.floor(rawLimit), 300)) : 20;
+        const includeContent = asBoolean(url.searchParams.get("include_content"));
+        const rows = includeContent
+          ? await sql`
+              SELECT slug, title, topic, topic_zh, topic_en, tags, mdx_content, created_at, updated_at
+              FROM notes
+              ORDER BY updated_at DESC
+              LIMIT ${limit}
+            `
+          : await sql`
+              SELECT slug, title, topic, topic_zh, topic_en, tags, created_at, updated_at
+              FROM notes
+              ORDER BY updated_at DESC
+              LIMIT ${limit}
+            `;
 
         return jsonResponse({ success: true, notes: rows }, 200, corsOrigin);
       }

@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { WeekCard } from "@/components/week-card";
+import {
+  normalizeCloudNote,
+  type CloudNoteRecord,
+} from "@/lib/cloud-note-normalizer";
 
 type NoteListItem = {
   slug: string;
@@ -14,19 +18,10 @@ type NoteListItem = {
   descriptionEn: string;
   tags: string[];
   topicZh: string;
-  canOpen: boolean;
+  order: number;
 };
 
-type InitialNoteItem = Omit<NoteListItem, "canOpen" | "viewHref">;
-
-type CloudNoteRow = {
-  slug?: unknown;
-  title?: unknown;
-  topic?: unknown;
-  topic_zh?: unknown;
-  topic_en?: unknown;
-  tags?: unknown;
-};
+type InitialNoteItem = Omit<NoteListItem, "viewHref">;
 
 type NotesApiResponse = {
   success?: boolean;
@@ -46,53 +41,40 @@ function normalizeApiBase(input: string): string {
   return input.replace(/\/+$/, "");
 }
 
-function parseTagArray(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.map((item) => String(item).trim()).filter(Boolean);
-  }
-
-  if (typeof value === "string") {
-    return value
-      .split(/[，,、|]/)
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
-
-  return [];
-}
-
-function toCloudNoteItem(row: CloudNoteRow, openableSlugSet: Set<string>): NoteListItem | null {
-  const slug = String(row.slug ?? "").trim();
-  if (!slug) {
+function toCloudNoteItem(row: CloudNoteRecord): NoteListItem | null {
+  const normalized = normalizeCloudNote(row);
+  if (!normalized.slug) {
     return null;
   }
 
-  const title = String(row.title ?? "").trim() || slug;
-  const topicZh = String(row.topic_zh ?? row.topic ?? "未分类").trim() || "未分类";
-  const topicEn = String(row.topic_en ?? row.topic ?? "General").trim() || "General";
-  const tags = parseTagArray(row.tags).slice(0, 12);
-
-  const canOpen = openableSlugSet.has(slug);
-
   return {
-    slug,
-    viewHref: canOpen ? `/notes/${slug}` : `/notes/cloud?slug=${encodeURIComponent(slug)}`,
-    weekLabelZh: topicZh,
-    weekLabelEn: topicEn,
-    zhTitle: title,
-    enTitle: title,
-    descriptionZh: `关于“${title}”的笔记。`,
-    descriptionEn: `Study note on ${title}.`,
-    tags,
-    topicZh,
-    canOpen,
+    slug: normalized.slug,
+    viewHref: `/notes/cloud?slug=${encodeURIComponent(normalized.slug)}`,
+    weekLabelZh: normalized.topicZh,
+    weekLabelEn: normalized.topicEn,
+    zhTitle: normalized.zhTitle,
+    enTitle: normalized.enTitle,
+    descriptionZh: normalized.descriptionZh,
+    descriptionEn: normalized.descriptionEn,
+    tags: normalized.tags,
+    topicZh: normalized.topicZh,
+    order: normalized.order,
   };
 }
 
+function sortNoteItems(rows: NoteListItem[]): NoteListItem[] {
+  return [...rows].sort((a, b) => a.order - b.order || a.slug.localeCompare(b.slug));
+}
+
 export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
-  const openableSlugSet = useMemo(() => new Set(initialNotes.map((note) => note.slug)), [initialNotes]);
-  const [notes, setNotes] = useState<NoteListItem[]>(
-    initialNotes.map((note) => ({ ...note, viewHref: `/notes/${note.slug}`, canOpen: true })),
+  const [notes, setNotes] = useState<NoteListItem[]>(() =>
+    sortNoteItems(
+      initialNotes.map((note, index) => ({
+        ...note,
+        viewHref: `/notes/${note.slug}`,
+        order: Number.isFinite(note.order) ? note.order : index,
+      })),
+    ),
   );
   const [loadingRemoteNotes, setLoadingRemoteNotes] = useState(false);
   const [search, setSearch] = useState("");
@@ -114,7 +96,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
       try {
         const apiBase = normalizeApiBase(CLOUD_API_BASE);
-        const response = await fetch(`${apiBase}/notes?limit=200`, {
+        const response = await fetch(`${apiBase}/notes?limit=200&include_content=1`, {
           method: "GET",
           cache: "no-store",
         });
@@ -125,11 +107,11 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
         }
 
         const mapped = json.notes
-          .map((item) => toCloudNoteItem(item as CloudNoteRow, openableSlugSet))
+          .map((item) => toCloudNoteItem(item as CloudNoteRecord))
           .filter((item): item is NoteListItem => item !== null);
 
         if (!cancelled) {
-          setNotes(mapped);
+          setNotes(sortNoteItems(mapped));
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -147,7 +129,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     return () => {
       cancelled = true;
     };
-  }, [openableSlugSet]);
+  }, []);
 
   const topicOptions = useMemo(() => {
     const unique = new Set<string>();
@@ -339,21 +321,14 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
             descriptionEn={note.descriptionEn}
             tags={note.tags}
             footerAction={
-              <div className="flex flex-wrap items-center gap-2">
-                {!note.canOpen ? (
-                  <span className="rounded-capsule border border-black/15 px-2 py-1 font-text text-[12px] text-black/60 dark:border-white/20 dark:text-white/62">
-                    仅云端管理
-                  </span>
-                ) : null}
-                <button
-                  type="button"
-                  disabled={deletingSlug === note.slug}
-                  onClick={() => handleDeleteNote(note)}
-                  className="inline-flex items-center rounded-capsule border border-[#b4232f]/35 px-3 py-1.5 font-text text-[13px] tracking-tightCaption text-[#8f1d27] transition hover:bg-[#b4232f]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b4232f] dark:border-[#ff6a77]/40 dark:text-[#ffc4cb] dark:hover:bg-[#ff6a77]/[0.12]"
-                >
-                  {deletingSlug === note.slug ? "删除中..." : "删除"}
-                </button>
-              </div>
+              <button
+                type="button"
+                disabled={deletingSlug === note.slug}
+                onClick={() => handleDeleteNote(note)}
+                className="inline-flex items-center rounded-capsule border border-[#b4232f]/35 px-3 py-1.5 font-text text-[13px] tracking-tightCaption text-[#8f1d27] transition hover:bg-[#b4232f]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b4232f] dark:border-[#ff6a77]/40 dark:text-[#ffc4cb] dark:hover:bg-[#ff6a77]/[0.12]"
+              >
+                {deletingSlug === note.slug ? "删除中..." : "删除"}
+              </button>
             }
           />
         ))}
