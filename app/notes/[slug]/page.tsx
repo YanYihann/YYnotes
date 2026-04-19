@@ -25,7 +25,7 @@ export async function generateMetadata({ params }: WeekPageProps): Promise<Metad
   }
 
   return {
-    title: `${note.weekLabelEn} • ${note.enTitle}`,
+    title: `${note.topicEn} • ${note.enTitle}`,
     description: note.descriptionEn,
   };
 }
@@ -57,9 +57,21 @@ export default async function WeekPage({ params }: WeekPageProps) {
         <article className="rounded-apple bg-white px-5 py-8 shadow-card dark:bg-[#272729] sm:px-8 md:px-10">
           <header className="mb-8 border-b border-black/10 pb-6 dark:border-white/10">
             <p className="font-text text-[12px] font-semibold uppercase tracking-[0.1em] text-black/55 dark:text-white/55">
-              {note.weekLabelZh}
-              <span className="ui-en ml-1">{note.weekLabelEn} • Study Note</span>
+              {note.topicZh}
+              <span className="ui-en ml-1">{note.topicEn} • Note</span>
             </p>
+            {note.tags.length ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {note.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="rounded-capsule border border-black/15 px-2 py-0.5 font-text text-[12px] tracking-tightCaption text-black/63 dark:border-white/20 dark:text-white/66"
+                  >
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            ) : null}
             <h1 className="mt-3 font-display text-[clamp(2rem,5vw,3.5rem)] font-semibold leading-[1.07] tracking-tightDisplay text-[#1d1d1f] dark:text-white">
               {note.zhTitle}
               <span className="ui-en mt-1 block font-text text-[0.36em] font-normal leading-[1.35] tracking-tightBody text-black/72 dark:text-white/74">

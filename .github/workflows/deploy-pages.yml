@@ -40,6 +40,7 @@ jobs:
       - name: Build static site
         env:
           GITHUB_ACTIONS: "true"
+          NEXT_PUBLIC_NOTES_API_BASE: ${{ vars.NEXT_PUBLIC_NOTES_API_BASE }}
         run: npm run build
 
       - name: Add nojekyll marker

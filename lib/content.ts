@@ -22,6 +22,10 @@ export type WeekNote = {
   weekLabel: string;
   weekLabelEn: string;
   weekLabelZh: string;
+  topic: string;
+  topicEn: string;
+  topicZh: string;
+  tags: string[];
   order: number;
   source: string;
   headings: Heading[];
@@ -36,10 +40,15 @@ type Frontmatter = {
   slug?: string;
   week?: number;
   order?: number;
+  topic?: string;
+  topicEn?: string;
+  topicZh?: string;
+  tags?: string[] | string;
 };
 
 const WEEK_FILE_PATTERN = /^week(\d+)\.mdx$/i;
-const CONTENT_DIRS = ["", path.join("content", "weeks")];
+const NOTE_FILE_PATTERN = /\.mdx$/i;
+const CONTENT_DIRS = ["笔记"];
 const DEFAULT_DESCRIPTION_EN = "Bilingual study notes.";
 const DEFAULT_DESCRIPTION_ZH = "双语学习笔记。";
 
@@ -285,8 +294,6 @@ function extractHeadings(markdown: string): Heading[] {
     const current = parsed[index];
     const next = parsed[index + 1];
 
-    // English heading followed by Chinese heading in the same level:
-    // use Chinese title as primary and keep English as secondary for optional display.
     if (current.lang === "en" && next && next.lang === "zh" && next.level === current.level) {
       headings.push({
         id: next.id,
@@ -313,7 +320,50 @@ function extractHeadings(markdown: string): Heading[] {
   return headings;
 }
 
-async function findWeekFiles(): Promise<string[]> {
+function normalizeFrontmatterText(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
+function slugifyText(input: string): string {
+  const base = input
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  if (base) {
+    return base;
+  }
+
+  const stamp = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
+  return `note-${stamp}`;
+}
+
+function parseFrontmatterTags(value: Frontmatter["tags"]): string[] {
+  const rawList = Array.isArray(value) ? value : typeof value === "string" ? value.split(/[，,、|]/) : [];
+
+  const deduped = new Set<string>();
+  for (const raw of rawList) {
+    const tag = String(raw).trim().replace(/^#+/, "");
+    if (!tag) {
+      continue;
+    }
+    deduped.add(tag);
+    if (deduped.size >= 12) {
+      break;
+    }
+  }
+
+  return Array.from(deduped);
+}
+
+async function findNoteFiles(): Promise<string[]> {
   const root = process.cwd();
   const found = new Set<string>();
 
@@ -323,11 +373,7 @@ async function findWeekFiles(): Promise<string[]> {
     try {
       const entries = await fs.readdir(absoluteDir, { withFileTypes: true });
       for (const entry of entries) {
-        if (!entry.isFile()) {
-          continue;
-        }
-
-        if (!WEEK_FILE_PATTERN.test(entry.name)) {
+        if (!entry.isFile() || !NOTE_FILE_PATTERN.test(entry.name)) {
           continue;
         }
 
@@ -341,40 +387,38 @@ async function findWeekFiles(): Promise<string[]> {
   return Array.from(found);
 }
 
-async function readWeekFromFile(filePath: string): Promise<WeekNote | null> {
+async function readNoteFromFile(filePath: string): Promise<WeekNote | null> {
   const fileName = path.basename(filePath);
   const weekMatch = fileName.match(WEEK_FILE_PATTERN);
-
-  if (!weekMatch) {
-    return null;
-  }
 
   const raw = await fs.readFile(filePath, "utf8");
   const parsed = matter(raw);
   const frontmatter = parsed.data as Frontmatter;
   const topTitles = extractTopLevelBilingualTitles(parsed.content);
+  const source = stripLeadingTopHeadings(parsed.content);
+  const headings = extractHeadings(source);
+  const stat = await fs.stat(filePath);
 
-  const weekFromName = Number(weekMatch[1]);
-  const weekNumber = frontmatter.week ?? weekFromName;
-  const order = frontmatter.order ?? weekNumber;
-  const frontmatterTitle = frontmatter.title?.trim();
+  const weekFromName = weekMatch ? Number(weekMatch[1]) : undefined;
+  const weekNumber = frontmatter.week ?? weekFromName ?? 0;
+  const frontmatterTitle = normalizeFrontmatterText(frontmatter.title);
   const frontmatterTitleLang = frontmatterTitle ? detectLanguage(frontmatterTitle) : "none";
+
   const enTitle =
     frontmatterTitle && frontmatterTitleLang !== "zh"
       ? frontmatterTitle
-      : topTitles.enTitle ?? `Week ${weekNumber}`;
+      : topTitles.enTitle ?? `Note ${path.parse(fileName).name}`;
   const zhTitle =
     frontmatterTitle && frontmatterTitleLang === "zh"
       ? frontmatterTitle
-      : topTitles.zhTitle ?? `第${weekNumber}周`;
-  const title = enTitle;
-  const source = stripLeadingTopHeadings(parsed.content);
+      : topTitles.zhTitle ?? `笔记：${path.parse(fileName).name}`;
+
   const parsedDescriptions = extractBilingualDescription(source);
-  const frontmatterDescription = frontmatter.description?.trim();
+  const frontmatterDescription = normalizeFrontmatterText(frontmatter.description);
   const frontmatterDescriptionLang = frontmatterDescription ? detectLanguage(frontmatterDescription) : "none";
 
   const descriptionEnCandidate =
-    frontmatter.descriptionEn?.trim() ??
+    normalizeFrontmatterText(frontmatter.descriptionEn) ??
     (frontmatterDescriptionLang !== "zh" ? frontmatterDescription : undefined) ??
     parsedDescriptions.descriptionEn ??
     extractFirstParagraph(source);
@@ -382,28 +426,67 @@ async function readWeekFromFile(filePath: string): Promise<WeekNote | null> {
     descriptionEnCandidate && detectLanguage(descriptionEnCandidate) !== "zh" ? descriptionEnCandidate : DEFAULT_DESCRIPTION_EN;
 
   const descriptionZh =
-    frontmatter.descriptionZh?.trim() ??
+    normalizeFrontmatterText(frontmatter.descriptionZh) ??
     (frontmatterDescriptionLang === "zh" ? frontmatterDescription : undefined) ??
     parsedDescriptions.descriptionZh ??
-    `第${weekNumber}周${DEFAULT_DESCRIPTION_ZH}`;
-  const description = descriptionEn;
-  const slug = frontmatter.slug ?? `week-${weekNumber}`;
-  const headings = extractHeadings(source);
-  const weekLabelEn = `Week ${weekNumber}`;
-  const weekLabelZh = `第${weekNumber}周`;
+    DEFAULT_DESCRIPTION_ZH;
+
+  let topicZh = normalizeFrontmatterText(frontmatter.topicZh);
+  let topicEn = normalizeFrontmatterText(frontmatter.topicEn);
+  const topicRaw = normalizeFrontmatterText(frontmatter.topic);
+
+  if (topicRaw) {
+    const lang = detectLanguage(topicRaw);
+    if (!topicZh && lang !== "en") {
+      topicZh = topicRaw;
+    }
+    if (!topicEn && lang !== "zh") {
+      topicEn = topicRaw;
+    }
+  }
+
+  if (!topicZh) {
+    topicZh = headings[0]?.title ?? (weekNumber > 0 ? `第${weekNumber}周` : "未分类");
+  }
+  if (!topicEn) {
+    topicEn = headings.find((heading) => heading.enTitle)?.enTitle ?? (weekNumber > 0 ? `Week ${weekNumber}` : enTitle);
+  }
+
+  const topic = `${topicZh} / ${topicEn}`;
+
+  const frontmatterSlug = normalizeFrontmatterText(frontmatter.slug);
+  const slug = frontmatterSlug ?? (weekNumber > 0 ? `week-${weekNumber}` : slugifyText(path.parse(fileName).name));
+
+  const tagsFromFrontmatter = parseFrontmatterTags(frontmatter.tags);
+  const derivedTags = headings
+    .map((heading) => heading.title)
+    .filter(Boolean)
+    .slice(0, 4);
+  const tags = tagsFromFrontmatter.length ? tagsFromFrontmatter : derivedTags;
+
+  const order =
+    typeof frontmatter.order === "number" && Number.isFinite(frontmatter.order)
+      ? frontmatter.order
+      : weekNumber > 0
+        ? weekNumber
+        : Math.floor(stat.mtimeMs);
 
   return {
     slug,
-    title,
+    title: enTitle,
     enTitle,
     zhTitle,
-    description,
+    description: descriptionEn,
     descriptionEn,
     descriptionZh,
     weekNumber,
-    weekLabel: weekLabelEn,
-    weekLabelEn,
-    weekLabelZh,
+    weekLabel: topicEn,
+    weekLabelEn: topicEn,
+    weekLabelZh: topicZh,
+    topic,
+    topicEn,
+    topicZh,
+    tags,
     order,
     source,
     headings,
@@ -412,12 +495,12 @@ async function readWeekFromFile(filePath: string): Promise<WeekNote | null> {
 }
 
 export async function getWeekNotes(): Promise<WeekNote[]> {
-  const files = await findWeekFiles();
-  const notes = await Promise.all(files.map((filePath) => readWeekFromFile(filePath)));
+  const files = await findNoteFiles();
+  const notes = await Promise.all(files.map((filePath) => readNoteFromFile(filePath)));
 
   return notes
     .filter((note): note is WeekNote => note !== null)
-    .sort((a, b) => a.order - b.order || a.weekNumber - b.weekNumber);
+    .sort((a, b) => a.order - b.order || a.slug.localeCompare(b.slug));
 }
 
 export async function getWeekBySlug(slug: string): Promise<WeekNote | null> {
@@ -447,12 +530,17 @@ export async function getKeyTopics(): Promise<string[]> {
   const topicSet = new Set<string>();
 
   for (const note of notes) {
-    for (const heading of note.headings) {
-      topicSet.add(heading.title);
+    if (note.topicZh) {
+      topicSet.add(note.topicZh);
+    }
+
+    for (const tag of note.tags) {
+      topicSet.add(tag);
       if (topicSet.size >= 6) {
         break;
       }
     }
+
     if (topicSet.size >= 6) {
       break;
     }

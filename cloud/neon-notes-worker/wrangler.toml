@@ -1,0 +1,13 @@
+﻿name = "neon-notes-worker"
+main = "src/index.js"
+compatibility_date = "2026-04-19"
+
+[vars]
+OPENAI_MODEL = "gpt-4.1-mini"
+ALLOWED_ORIGIN = "https://yanyihann.github.io"
+
+# Set these with:
+# wrangler secret put DATABASE_URL
+# wrangler secret put OPENAI_API_KEY
+# Optional:
+# wrangler secret put WRITE_API_KEY

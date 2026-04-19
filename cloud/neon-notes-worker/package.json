@@ -1,0 +1,15 @@
+﻿{
+  "name": "neon-notes-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.4"
+  },
+  "devDependencies": {
+    "wrangler": "^4.16.0"
+  }
+}

@@ -9,6 +9,7 @@ type WeekCardProps = {
   enTitle: string;
   descriptionZh: string;
   descriptionEn: string;
+  tags?: string[];
   className?: string;
 };
 
@@ -20,6 +21,7 @@ export function WeekCard({
   enTitle,
   descriptionZh,
   descriptionEn,
+  tags = [],
   className,
 }: WeekCardProps) {
   return (
@@ -34,6 +36,18 @@ export function WeekCard({
           {weekLabelZh}
           <span className="ui-en ml-1 uppercase">{weekLabelEn}</span>
         </p>
+        {tags.length ? (
+          <div className="flex flex-wrap gap-1.5">
+            {tags.slice(0, 4).map((tag) => (
+              <span
+                key={tag}
+                className="rounded-capsule border border-black/15 px-2 py-0.5 font-text text-[11px] tracking-tightCaption text-black/65 dark:border-white/20 dark:text-white/68"
+              >
+                #{tag}
+              </span>
+            ))}
+          </div>
+        ) : null}
         <h3 className="font-display text-[28px] font-normal leading-[1.14] tracking-[0.196px] text-[#1d1d1f] dark:text-white">
           {zhTitle}
           <span className="ui-en mt-1 block font-text text-[15px] leading-[1.43] tracking-tightCaption text-black/62 dark:text-white/65">{enTitle}</span>

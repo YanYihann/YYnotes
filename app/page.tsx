@@ -47,8 +47,8 @@ export default async function HomePage() {
                 <span className="ui-en mt-1 block text-[0.52em] font-normal text-black/70 dark:text-white/75">My Notes</span>
               </h2>
               <p className="mt-2 max-w-[720px] font-text text-[17px] leading-[1.47] text-black/75 dark:text-white/75">
-                按时间顺序管理已有笔记，同时支持持续新增与归档。
-                <span className="ui-en ml-1">Organized chronologically, with a structure that supports continuous note creation and archiving.</span>
+                以主题和标签组织已有笔记，同时支持持续新增与归档。
+                <span className="ui-en ml-1">Organized by topics and tags, with a structure that supports continuous note creation and archiving.</span>
               </p>
             </div>
             <Link
@@ -62,8 +62,7 @@ export default async function HomePage() {
           </div>
 
           <WeekNoteGenerator
-            existingWeeks={notes.map((note) => ({
-              weekNumber: note.weekNumber,
+            existingNotes={notes.map((note) => ({
               slug: note.slug,
             }))}
           />
@@ -79,6 +78,7 @@ export default async function HomePage() {
                 enTitle={note.enTitle}
                 descriptionZh={note.descriptionZh}
                 descriptionEn={note.descriptionEn}
+                tags={note.tags}
               />
             ))}
           </div>

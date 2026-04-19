@@ -92,8 +92,8 @@ export function buildAssistantUserPrompt(payload: NoteAssistantRequest): string 
   const parts: string[] = [];
 
   parts.push("Current note metadata:");
-  parts.push(`- Week (ZH): ${context.weekLabelZh}`);
-  parts.push(`- Week (EN): ${context.weekLabelEn}`);
+  parts.push(`- Topic (ZH): ${context.weekLabelZh}`);
+  parts.push(`- Topic (EN): ${context.weekLabelEn}`);
   parts.push(`- Title (ZH): ${context.zhTitle}`);
   parts.push(`- Title (EN): ${context.enTitle}`);
   parts.push(`- Slug: ${context.slug}`);
