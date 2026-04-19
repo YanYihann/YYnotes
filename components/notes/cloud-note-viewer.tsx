@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import GithubSlugger from "github-slugger";
 import ReactMarkdown from "react-markdown";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import rehypeKatex from "rehype-katex";
@@ -10,6 +11,7 @@ import rehypeSlug from "rehype-slug";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import allComponents from "@/components/mdx/mdx-components";
+import { ReadingWorkspace } from "@/components/notes/reading-workspace";
 
 type CloudNote = {
   slug: string;
@@ -25,6 +27,12 @@ type CloudNoteResponse = {
   success?: boolean;
   note?: CloudNote;
   error?: string;
+};
+
+type Heading = {
+  id: string;
+  title: string;
+  level: 2 | 3;
 };
 
 const CLOUD_API_BASE = process.env.NEXT_PUBLIC_NOTES_API_BASE?.trim() ?? "";
@@ -77,6 +85,42 @@ function stripFrontmatter(content: string): string {
   }
 
   return source.slice(closingIndex + 5).trim();
+}
+
+function normalizeHeadingText(rawTitle: string): string {
+  return rawTitle
+    .trim()
+    .replace(/`/g, "")
+    .replace(/\$([^$]+)\$/g, "$1")
+    .replace(/\*\*/g, "")
+    .replace(/\*/g, "")
+    .replace(/\[(.*?)\]\(.*?\)/g, "$1")
+    .trim();
+}
+
+function extractHeadings(markdown: string): Heading[] {
+  const slugger = new GithubSlugger();
+  slugger.reset();
+
+  const headings: Heading[] = [];
+  const matches = markdown.matchAll(/^(#{2,3})\s+(.+)$/gm);
+
+  for (const match of matches) {
+    const level = match[1].length as 2 | 3;
+    const title = normalizeHeadingText(match[2]);
+    if (!title) {
+      continue;
+    }
+
+    const id = slugger.slug(title);
+    if (!id) {
+      continue;
+    }
+
+    headings.push({ id, title, level });
+  }
+
+  return headings;
 }
 
 export function CloudNoteViewer() {
@@ -137,6 +181,88 @@ export function CloudNoteViewer() {
   const tags = useMemo(() => parseTags(note?.tags), [note]);
   const topicZh = note?.topic_zh?.trim() || "未分类";
   const topicEn = note?.topic_en?.trim() || "General";
+  const headings = useMemo(() => extractHeadings(renderedContent), [renderedContent]);
+
+  const noteContext = useMemo(
+    () => ({
+      slug: slug || "",
+      weekLabelZh: topicZh,
+      weekLabelEn: topicEn,
+      zhTitle: note?.title || "云端笔记",
+      enTitle: note?.title || "Cloud Note",
+      noteContent: renderedContent,
+    }),
+    [slug, topicZh, topicEn, note?.title, renderedContent],
+  );
+
+  if (!loading && !error && renderedContent) {
+    return (
+      <ReadingWorkspace headings={headings} noteContext={noteContext}>
+        <article className="rounded-apple bg-white px-5 py-8 shadow-card dark:bg-[#272729] sm:px-8 md:px-10">
+          <header className="mb-8 border-b border-black/10 pb-6 dark:border-white/10">
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href="/notes"
+                className="inline-flex rounded-capsule border border-[#0066cc] px-4 py-1.5 text-[14px] tracking-tightCaption text-[#0066cc] transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-[#2997ff] dark:text-[#2997ff]"
+              >
+                返回列表
+              </Link>
+              {slug ? (
+                <span className="rounded-capsule border border-black/15 px-3 py-1 text-[12px] text-black/62 dark:border-white/18 dark:text-white/66">
+                  slug: {slug}
+                </span>
+              ) : null}
+            </div>
+
+            <p className="mt-4 font-text text-[12px] font-semibold uppercase tracking-[0.1em] text-black/55 dark:text-white/55">
+              {topicZh}
+              <span className="ui-en ml-1">{topicEn} - Cloud Note</span>
+            </p>
+
+            <h1 className="mt-3 font-display text-[clamp(2rem,5vw,3.5rem)] font-semibold leading-[1.07] tracking-tightDisplay text-[#1d1d1f] dark:text-white">
+              {note?.title || "云端笔记"}
+            </h1>
+
+            {tags.length ? (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="rounded-capsule border border-black/15 px-2 py-0.5 font-text text-[12px] tracking-tightCaption text-black/63 dark:border-white/20 dark:text-white/66"
+                  >
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </header>
+
+          <div className="note-prose" data-note-content>
+            <ReactMarkdown
+              components={markdownComponents}
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[
+                rehypeKatex,
+                rehypeSlug,
+                [
+                  rehypeAutolinkHeadings,
+                  {
+                    behavior: "append",
+                    properties: {
+                      className: ["anchor-link"],
+                      "aria-label": "Anchor",
+                    },
+                  },
+                ],
+              ]}
+            >
+              {renderedContent}
+            </ReactMarkdown>
+          </div>
+        </article>
+      </ReadingWorkspace>
+    );
+  }
 
   return (
     <article className="rounded-apple bg-white px-5 py-8 shadow-card dark:bg-[#272729] sm:px-8 md:px-10">
@@ -186,29 +312,8 @@ export function CloudNoteViewer() {
         </p>
       ) : null}
 
-      {!loading && !error && renderedContent ? (
-        <div className="note-prose" data-note-content>
-          <ReactMarkdown
-            components={markdownComponents}
-            remarkPlugins={[remarkGfm, remarkMath]}
-            rehypePlugins={[
-              rehypeKatex,
-              rehypeSlug,
-              [
-                rehypeAutolinkHeadings,
-                {
-                  behavior: "append",
-                  properties: {
-                    className: ["anchor-link"],
-                    "aria-label": "Anchor",
-                  },
-                },
-              ],
-            ]}
-          >
-            {renderedContent}
-          </ReactMarkdown>
-        </div>
+      {!loading && !error && !renderedContent ? (
+        <p className="font-text text-[15px] text-black/72 dark:text-white/75">笔记内容为空。</p>
       ) : null}
     </article>
   );

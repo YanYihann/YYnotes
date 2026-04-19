@@ -4,6 +4,10 @@ import JSZip from "jszip";
 const MAX_FILE_SIZE_BYTES = 4 * 1024 * 1024;
 const MAX_SOURCE_CHARS = 35_000;
 const MAX_EXTRA_INSTRUCTION_CHARS = 1_500;
+const MAX_NOTE_CONTEXT_CHARS = 14_000;
+const MAX_SELECTION_CHARS = 2_200;
+const MAX_QUESTION_CHARS = 2_000;
+const MAX_HISTORY_ITEMS = 8;
 const SUPPORTED_TEXT_EXTENSIONS = new Set(["txt", "md", "markdown", "tex", "csv", "rst"]);
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
 
@@ -406,6 +410,174 @@ function extractChatCompletionsText(payload) {
     .trim();
 }
 
+function flattenInputMessages(input) {
+  return input.map((item) => ({
+    role: item.role,
+    content: Array.isArray(item.content) ? item.content.map((part) => part?.text || "").join("\n\n").trim() : "",
+  }));
+}
+
+function buildAssistantSystemPrompt() {
+  return [
+    "You are a study assistant integrated into a bilingual note page.",
+    "Primary task: help the student understand the CURRENT note content accurately and clearly.",
+    "Use the provided note context first. Do not invent formulas or claims that contradict the note.",
+    "If the note context is insufficient, explicitly say so and provide cautious guidance.",
+    "Keep explanations educational, structured, and concise enough for study use.",
+    "When user asks Chinese, answer Chinese. When user asks English, answer English. When user asks bilingual, answer with Chinese first and English below.",
+    "When possible, reference formulas, methods, assumptions, and common mistakes from the note.",
+    "Do not present yourself as a general unrelated chatbot.",
+  ].join("\n");
+}
+
+function normalizeAssistantHistory(history) {
+  if (!Array.isArray(history)) {
+    return [];
+  }
+
+  const valid = history
+    .map((item) => ({
+      role: item?.role === "assistant" ? "assistant" : "user",
+      content: clampText(item?.content, MAX_QUESTION_CHARS),
+    }))
+    .filter((item) => item.content.length > 0);
+
+  if (valid.length <= MAX_HISTORY_ITEMS) {
+    return valid;
+  }
+
+  return valid.slice(valid.length - MAX_HISTORY_ITEMS);
+}
+
+function sanitizeAssistantPayload(payload) {
+  const raw = payload && typeof payload === "object" ? payload : {};
+  const context = raw.context && typeof raw.context === "object" ? raw.context : {};
+
+  return {
+    question: clampText(raw.question, MAX_QUESTION_CHARS),
+    quickAction: clampText(raw.quickAction, 120) || undefined,
+    history: normalizeAssistantHistory(raw.history),
+    context: {
+      slug: clampText(context.slug, 120),
+      weekLabelZh: clampText(context.weekLabelZh, 80),
+      weekLabelEn: clampText(context.weekLabelEn, 80),
+      zhTitle: clampText(context.zhTitle, 240),
+      enTitle: clampText(context.enTitle, 240),
+      noteContent: clampText(context.noteContent, MAX_NOTE_CONTEXT_CHARS),
+      selectedText: clampText(context.selectedText, MAX_SELECTION_CHARS) || undefined,
+      selectedSection: clampText(context.selectedSection, 180) || undefined,
+    },
+  };
+}
+
+function buildAssistantUserPrompt(payload) {
+  const { context, question, quickAction } = payload;
+  const parts = [];
+
+  parts.push("Current note metadata:");
+  parts.push(`- Topic (ZH): ${context.weekLabelZh}`);
+  parts.push(`- Topic (EN): ${context.weekLabelEn}`);
+  parts.push(`- Title (ZH): ${context.zhTitle}`);
+  parts.push(`- Title (EN): ${context.enTitle}`);
+  parts.push(`- Slug: ${context.slug}`);
+
+  if (context.selectedSection) {
+    parts.push(`- Selected section: ${context.selectedSection}`);
+  }
+
+  if (context.selectedText) {
+    parts.push("\nUser-selected note text:");
+    parts.push(context.selectedText);
+  }
+
+  parts.push("\nCurrent note content (markdown):");
+  parts.push(context.noteContent);
+
+  if (quickAction) {
+    parts.push(`\nQuick action: ${quickAction}`);
+  }
+
+  parts.push("\nStudent question:");
+  parts.push(question);
+
+  parts.push(
+    "\nResponse requirements: prioritize this note context, explain steps clearly, and keep terminology consistent with this note's subject.",
+  );
+
+  return parts.join("\n");
+}
+
+async function generateAssistantAnswer(env, payload) {
+  const openaiBaseUrl = normalizeApiBase(env.OPENAI_BASE_URL);
+  const responsesEndpoint = `${openaiBaseUrl}/responses`;
+  const chatCompletionsEndpoint = `${openaiBaseUrl}/chat/completions`;
+  const modelName = env.OPENAI_MODEL || "gpt-4.1-mini";
+
+  const input = [
+    {
+      role: "system",
+      content: [{ type: "input_text", text: buildAssistantSystemPrompt() }],
+    },
+    ...payload.history.map((item) => ({
+      role: item.role === "assistant" ? "assistant" : "user",
+      content: [{ type: "input_text", text: item.content }],
+    })),
+    {
+      role: "user",
+      content: [{ type: "input_text", text: buildAssistantUserPrompt(payload) }],
+    },
+  ];
+
+  const response = await fetch(responsesEndpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: modelName,
+      input,
+    }),
+  });
+
+  const json = await response.json().catch(() => null);
+  if (response.ok) {
+    const text = extractResponsesText(json);
+    if (text) {
+      return text;
+    }
+  }
+
+  const responsesError = response.ok
+    ? "Responses API returned success but no readable text."
+    : `responses: HTTP ${response.status} - ${extractProviderMessage(json)}`;
+
+  const chatResponse = await fetch(chatCompletionsEndpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: modelName,
+      messages: flattenInputMessages(input),
+    }),
+  });
+
+  const chatJson = await chatResponse.json().catch(() => null);
+  if (!chatResponse.ok) {
+    const chatError = `chat_completions: HTTP ${chatResponse.status} - ${extractProviderMessage(chatJson)}`;
+    throw new Error(`AI provider returned an error. ${responsesError} | ${chatError}`);
+  }
+
+  const chatText = extractChatCompletionsText(chatJson);
+  if (!chatText) {
+    throw new Error(`AI provider returned no readable text. ${responsesError} | chat_completions: empty text response.`);
+  }
+
+  return chatText;
+}
+
 async function generateMdx({ env, title, topic, tags, sourceText, extraInstruction, promptTemplate }) {
   const openaiBaseUrl = normalizeApiBase(env.OPENAI_BASE_URL);
   const responsesEndpoint = `${openaiBaseUrl}/responses`;
@@ -571,6 +743,27 @@ export default {
 
       if (request.method === "GET" && url.pathname === "/health") {
         return jsonResponse({ ok: true }, 200, corsOrigin);
+      }
+
+      if (request.method === "POST" && url.pathname === "/assistant") {
+        if (!env.OPENAI_API_KEY) {
+          return jsonResponse({ error: "OPENAI_API_KEY is missing." }, 500, corsOrigin);
+        }
+
+        let rawPayload;
+        try {
+          rawPayload = await request.json();
+        } catch {
+          return jsonResponse({ error: "Invalid JSON body." }, 400, corsOrigin);
+        }
+
+        const payload = sanitizeAssistantPayload(rawPayload);
+        if (!payload.question) {
+          return jsonResponse({ error: "Question is required." }, 400, corsOrigin);
+        }
+
+        const answer = await generateAssistantAnswer(env, payload);
+        return jsonResponse({ answer }, 200, corsOrigin);
       }
 
       if (request.method === "GET" && url.pathname === "/notes") {
