@@ -65,7 +65,7 @@ function fileExtension(fileName: string): string {
 }
 
 function buildPromptCandidates(): string[] {
-  const candidates = new Set<string>(["/prompt.md", "./prompt.md"]);
+  const candidates = new Set<string>(["./prompt.md"]);
 
   if (typeof window !== "undefined") {
     const { origin, pathname } = window.location;
@@ -80,6 +80,9 @@ function buildPromptCandidates(): string[] {
     if (currentDir) {
       candidates.add(`${currentDir}prompt.md`);
     }
+
+    // Keep absolute root as a final fallback to avoid noisy 404 on project pages.
+    candidates.add("/prompt.md");
 
     for (const candidate of Array.from(candidates)) {
       try {

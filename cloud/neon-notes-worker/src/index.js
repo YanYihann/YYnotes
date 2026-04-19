@@ -14,16 +14,37 @@ function jsonResponse(data, status = 200, origin = "*") {
       "Access-Control-Allow-Origin": origin,
       "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, X-Notes-Write-Key",
+      "Vary": "Origin",
     },
   });
 }
 
-function getOrigin(requestOrigin, allowedOrigin) {
-  if (!requestOrigin || allowedOrigin === "*") {
+function normalizeOriginValue(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw || raw === "*") {
     return "*";
   }
 
-  return requestOrigin === allowedOrigin ? requestOrigin : allowedOrigin;
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return raw.replace(/\/+$/, "");
+  }
+}
+
+function getOrigin(requestOrigin, allowedOrigin) {
+  const normalizedAllowed = normalizeOriginValue(allowedOrigin);
+
+  if (normalizedAllowed === "*") {
+    return "*";
+  }
+
+  if (!requestOrigin) {
+    return normalizedAllowed;
+  }
+
+  const normalizedRequest = normalizeOriginValue(requestOrigin);
+  return normalizedRequest === normalizedAllowed ? normalizedRequest : normalizedAllowed;
 }
 
 function slugifyTitle(input) {
@@ -388,177 +409,182 @@ export default {
     const allowedOrigin = env.ALLOWED_ORIGIN || "*";
     const corsOrigin = getOrigin(requestOrigin, allowedOrigin);
 
-    if (request.method === "OPTIONS") {
-      return jsonResponse({ ok: true }, 200, corsOrigin);
-    }
-
-    if (!env.DATABASE_URL) {
-      return jsonResponse({ error: "DATABASE_URL is missing." }, 500, corsOrigin);
-    }
-
-    const sql = neon(env.DATABASE_URL);
-    await ensureSchema(sql);
-
-    const url = new URL(request.url);
-
-    if (request.method === "GET" && url.pathname === "/health") {
-      return jsonResponse({ ok: true }, 200, corsOrigin);
-    }
-
-    if (request.method === "GET" && url.pathname === "/notes") {
-      const limit = Math.min(Number(url.searchParams.get("limit") || 20), 100);
-      const rows = await sql`
-        SELECT slug, title, topic, topic_zh, topic_en, tags, created_at, updated_at
-        FROM notes
-        ORDER BY updated_at DESC
-        LIMIT ${limit}
-      `;
-
-      return jsonResponse({ success: true, notes: rows }, 200, corsOrigin);
-    }
-
-    if (request.method === "GET" && url.pathname.startsWith("/notes/")) {
-      const slug = decodeURIComponent(url.pathname.replace("/notes/", "")).trim();
-      if (!slug) {
-        return jsonResponse({ error: "Slug is required." }, 400, corsOrigin);
+    try {
+      if (request.method === "OPTIONS") {
+        return jsonResponse({ ok: true }, 200, corsOrigin);
       }
 
-      const rows = await sql`
-        SELECT slug, title, topic, topic_zh, topic_en, tags, mdx_content, created_at, updated_at
-        FROM notes
-        WHERE slug = ${slug}
-        LIMIT 1
-      `;
-
-      if (!rows.length) {
-        return jsonResponse({ error: "Note not found." }, 404, corsOrigin);
+      if (!env.DATABASE_URL) {
+        return jsonResponse({ error: "DATABASE_URL is missing." }, 500, corsOrigin);
       }
 
-      return jsonResponse({ success: true, note: rows[0] }, 200, corsOrigin);
-    }
+      const sql = neon(env.DATABASE_URL);
+      await ensureSchema(sql);
 
-    if (request.method === "DELETE" && url.pathname.startsWith("/notes/")) {
-      if (!requireWriteKey(request, env)) {
-        return jsonResponse({ error: "Unauthorized write request." }, 401, corsOrigin);
+      const url = new URL(request.url);
+
+      if (request.method === "GET" && url.pathname === "/health") {
+        return jsonResponse({ ok: true }, 200, corsOrigin);
       }
 
-      const slug = decodeURIComponent(url.pathname.replace("/notes/", "")).trim();
-      if (!slug) {
-        return jsonResponse({ error: "Slug is required." }, 400, corsOrigin);
+      if (request.method === "GET" && url.pathname === "/notes") {
+        const limit = Math.min(Number(url.searchParams.get("limit") || 20), 100);
+        const rows = await sql`
+          SELECT slug, title, topic, topic_zh, topic_en, tags, created_at, updated_at
+          FROM notes
+          ORDER BY updated_at DESC
+          LIMIT ${limit}
+        `;
+
+        return jsonResponse({ success: true, notes: rows }, 200, corsOrigin);
       }
 
-      const deleted = await sql`
-        DELETE FROM notes
-        WHERE slug = ${slug}
-        RETURNING slug
-      `;
+      if (request.method === "GET" && url.pathname.startsWith("/notes/")) {
+        const slug = decodeURIComponent(url.pathname.replace("/notes/", "")).trim();
+        if (!slug) {
+          return jsonResponse({ error: "Slug is required." }, 400, corsOrigin);
+        }
 
-      if (!deleted.length) {
-        return jsonResponse({ error: "Note not found." }, 404, corsOrigin);
+        const rows = await sql`
+          SELECT slug, title, topic, topic_zh, topic_en, tags, mdx_content, created_at, updated_at
+          FROM notes
+          WHERE slug = ${slug}
+          LIMIT 1
+        `;
+
+        if (!rows.length) {
+          return jsonResponse({ error: "Note not found." }, 404, corsOrigin);
+        }
+
+        return jsonResponse({ success: true, note: rows[0] }, 200, corsOrigin);
       }
 
-      return jsonResponse({ success: true, slug }, 200, corsOrigin);
-    }
+      if (request.method === "DELETE" && url.pathname.startsWith("/notes/")) {
+        if (!requireWriteKey(request, env)) {
+          return jsonResponse({ error: "Unauthorized write request." }, 401, corsOrigin);
+        }
 
-    if (request.method === "POST" && url.pathname === "/notes/generate") {
-      if (!requireWriteKey(request, env)) {
-        return jsonResponse({ error: "Unauthorized write request." }, 401, corsOrigin);
+        const slug = decodeURIComponent(url.pathname.replace("/notes/", "")).trim();
+        if (!slug) {
+          return jsonResponse({ error: "Slug is required." }, 400, corsOrigin);
+        }
+
+        const deleted = await sql`
+          DELETE FROM notes
+          WHERE slug = ${slug}
+          RETURNING slug
+        `;
+
+        if (!deleted.length) {
+          return jsonResponse({ error: "Note not found." }, 404, corsOrigin);
+        }
+
+        return jsonResponse({ success: true, slug }, 200, corsOrigin);
       }
 
-      if (!env.OPENAI_API_KEY) {
-        return jsonResponse({ error: "OPENAI_API_KEY is missing." }, 500, corsOrigin);
-      }
+      if (request.method === "POST" && url.pathname === "/notes/generate") {
+        if (!requireWriteKey(request, env)) {
+          return jsonResponse({ error: "Unauthorized write request." }, 401, corsOrigin);
+        }
 
-      let payload;
-      try {
-        payload = await parseGeneratePayload(request);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Invalid request body.";
-        return jsonResponse({ error: message }, 400, corsOrigin);
-      }
+        if (!env.OPENAI_API_KEY) {
+          return jsonResponse({ error: "OPENAI_API_KEY is missing." }, 500, corsOrigin);
+        }
 
-      const { title, topicInput, tags, sourceText, extraInstruction, promptTemplate, overwrite } = payload;
+        let payload;
+        try {
+          payload = await parseGeneratePayload(request);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Invalid request body.";
+          return jsonResponse({ error: message }, 400, corsOrigin);
+        }
 
-      if (!title) {
-        return jsonResponse({ error: "title is required." }, 400, corsOrigin);
-      }
+        const { title, topicInput, tags, sourceText, extraInstruction, promptTemplate, overwrite } = payload;
 
-      if (!sourceText) {
-        return jsonResponse({ error: "sourceText is required." }, 400, corsOrigin);
-      }
+        if (!title) {
+          return jsonResponse({ error: "title is required." }, 400, corsOrigin);
+        }
 
-      if (!promptTemplate) {
-        return jsonResponse({ error: "promptTemplate is required." }, 400, corsOrigin);
-      }
+        if (!sourceText) {
+          return jsonResponse({ error: "sourceText is required." }, 400, corsOrigin);
+        }
 
-      const slug = slugifyTitle(title);
-      const topicParts = splitTopic(topicInput, title);
+        if (!promptTemplate) {
+          return jsonResponse({ error: "promptTemplate is required." }, 400, corsOrigin);
+        }
 
-      const existing = await sql`SELECT slug FROM notes WHERE slug = ${slug} LIMIT 1`;
-      if (existing.length && !overwrite) {
-        return jsonResponse({ error: `slug ${slug} already exists.` }, 409, corsOrigin);
-      }
+        const slug = slugifyTitle(title);
+        const topicParts = splitTopic(topicInput, title);
 
-      const mdxContent = await generateMdx({
-        env,
-        title,
-        topic: topicInput,
-        tags,
-        sourceText,
-        extraInstruction,
-        promptTemplate,
-      });
+        const existing = await sql`SELECT slug FROM notes WHERE slug = ${slug} LIMIT 1`;
+        if (existing.length && !overwrite) {
+          return jsonResponse({ error: `slug ${slug} already exists.` }, 409, corsOrigin);
+        }
 
-      await sql`
-        INSERT INTO notes (slug, title, topic, topic_zh, topic_en, tags, mdx_content, source_text, updated_at)
-        VALUES (
-          ${slug},
-          ${title},
-          ${topicParts.topic},
-          ${topicParts.topicZh},
-          ${topicParts.topicEn},
-          ${JSON.stringify(tags)},
-          ${mdxContent},
-          ${sourceText},
-          NOW()
-        )
-        ON CONFLICT (slug)
-        DO UPDATE SET
-          title = EXCLUDED.title,
-          topic = EXCLUDED.topic,
-          topic_zh = EXCLUDED.topic_zh,
-          topic_en = EXCLUDED.topic_en,
-          tags = EXCLUDED.tags,
-          mdx_content = EXCLUDED.mdx_content,
-          source_text = EXCLUDED.source_text,
-          updated_at = NOW()
-      `;
+        const mdxContent = await generateMdx({
+          env,
+          title,
+          topic: topicInput,
+          tags,
+          sourceText,
+          extraInstruction,
+          promptTemplate,
+        });
 
-      const preview = mdxContent.split(/\r?\n/).slice(0, 28).join("\n");
+        await sql`
+          INSERT INTO notes (slug, title, topic, topic_zh, topic_en, tags, mdx_content, source_text, updated_at)
+          VALUES (
+            ${slug},
+            ${title},
+            ${topicParts.topic},
+            ${topicParts.topicZh},
+            ${topicParts.topicEn},
+            ${JSON.stringify(tags)},
+            ${mdxContent},
+            ${sourceText},
+            NOW()
+          )
+          ON CONFLICT (slug)
+          DO UPDATE SET
+            title = EXCLUDED.title,
+            topic = EXCLUDED.topic,
+            topic_zh = EXCLUDED.topic_zh,
+            topic_en = EXCLUDED.topic_en,
+            tags = EXCLUDED.tags,
+            mdx_content = EXCLUDED.mdx_content,
+            source_text = EXCLUDED.source_text,
+            updated_at = NOW()
+        `;
 
-      return jsonResponse(
-        {
-          success: true,
-          slug,
-          replaced: existing.length > 0,
-          fileName: `${slug}.mdx`,
-          preview,
-          note: {
+        const preview = mdxContent.split(/\r?\n/).slice(0, 28).join("\n");
+
+        return jsonResponse(
+          {
+            success: true,
             slug,
-            weekLabelZh: topicParts.topicZh,
-            weekLabelEn: topicParts.topicEn,
-            zhTitle: title,
-            enTitle: title,
-            descriptionZh: `关于“${title}”的双语学习笔记。`,
-            descriptionEn: `Bilingual study note on ${title}.`,
-            tags,
+            replaced: existing.length > 0,
+            fileName: `${slug}.mdx`,
+            preview,
+            note: {
+              slug,
+              weekLabelZh: topicParts.topicZh,
+              weekLabelEn: topicParts.topicEn,
+              zhTitle: title,
+              enTitle: title,
+              descriptionZh: `关于“${title}”的双语学习笔记。`,
+              descriptionEn: `Bilingual study note on ${title}.`,
+              tags,
+            },
           },
-        },
-        200,
-        corsOrigin,
-      );
-    }
+          200,
+          corsOrigin,
+        );
+      }
 
-    return jsonResponse({ error: "Not found." }, 404, corsOrigin);
+      return jsonResponse({ error: "Not found." }, 404, corsOrigin);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Internal server error.";
+      return jsonResponse({ error: message }, 500, corsOrigin);
+    }
   },
 };
