@@ -549,6 +549,10 @@ async function resolveGenerationMetadata(args: {
   sourceText: string;
   fileName: string;
 }): Promise<InferredMetadata> {
+  const hasManualTitle = args.titleInput.trim().length > 0;
+  const hasManualTopic = args.topicInput.trim().length > 0;
+  const hasManualTags = args.tagsInput.length > 0;
+
   let title = args.titleInput.trim();
   let topic = args.topicInput.trim();
   let tags = args.tagsInput.slice(0, 12);
@@ -580,7 +584,7 @@ async function resolveGenerationMetadata(args: {
     title = deriveTitleFromSource(args.sourceText) || deriveTitleFromFileName(args.fileName) || "未命名笔记";
   }
 
-  if (!hasChinese(title)) {
+  if (!hasManualTitle && !hasChinese(title)) {
     title = deriveTitleFromSource(args.sourceText) || "未命名笔记";
   }
 
@@ -588,17 +592,19 @@ async function resolveGenerationMetadata(args: {
     topic = deriveTopicFromSource(args.sourceText) || "未分类";
   }
 
-  if (!hasChinese(topic)) {
+  if (!hasManualTopic && !hasChinese(topic)) {
     topic = deriveTopicFromSource(args.sourceText) || "未分类";
   }
 
-  tags = tags.filter((tag) => hasChinese(tag));
-  if (!tags.length) {
-    tags = fallbackTagsFromMetadata(title, topic);
-  }
+  if (!hasManualTags) {
+    tags = tags.filter((tag) => hasChinese(tag));
+    if (!tags.length) {
+      tags = fallbackTagsFromMetadata(title, topic);
+    }
 
-  if (!tags.length) {
-    tags = ["学习笔记", "知识整理"];
+    if (!tags.length) {
+      tags = ["学习笔记", "知识整理"];
+    }
   }
 
   return {

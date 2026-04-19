@@ -266,14 +266,8 @@ Knowledge requires more than a true statement.
 
 # 十、术语处理要求
 
-- 首次出现的重要术语，尽量保留中英文对照
+- 首次出现的重要术语，尽量保留中英文对照，但是要保证术语完整性，比如说：**前向差商(forward difference formula)**,而不是前向**差商（Divided Difference）**
 - 同一术语全文译法要统一
-- 必要时可写成：
-
-  `**Concept（概念）**`  
-  `**Principle（原则）**`  
-  `**Method（方法）**`
-
 - 不要前后使用不同译名导致混乱
 
 ---
