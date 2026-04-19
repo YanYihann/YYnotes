@@ -23,7 +23,7 @@ const DEFAULT_AI_WIDTH = MIN_AI_WIDTH;
 const MAX_AI_WIDTH = 860;
 
 export function ReadingWorkspace({ headings, noteContext, children }: ReadingWorkspaceProps) {
-  const [tocCollapsed, setTocCollapsed] = useState(false);
+  const [tocCollapsed, setTocCollapsed] = useState(true);
   const [aiWidth, setAiWidth] = useState(DEFAULT_AI_WIDTH);
   const [dragging, setDragging] = useState(false);
 
