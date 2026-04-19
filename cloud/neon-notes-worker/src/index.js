@@ -74,7 +74,7 @@ function getOrigin(requestOrigin, allowedOrigin) {
 }
 
 const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
-const PASSWORD_HASH_ITERATIONS = 160_000;
+const PASSWORD_HASH_ITERATIONS = 100_000;
 const PASSWORD_SALT_BYTES = 16;
 const PASSWORD_HASH_BYTES = 32;
 const USERNAME_REGEX = /^[a-z0-9][a-z0-9._-]{2,39}$/;
