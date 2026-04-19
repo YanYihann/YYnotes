@@ -80,9 +80,15 @@ function detectLineLanguage(children: ReactNode): "zh" | "en" | "mixed" {
   }
 
   if (hasEnglish && !hasChinese) {
-    const looksLikeFormula =
-      /[=+\-*/^<>_{}()[\]\\]|∑|∫|√|≈|≤|≥|±|\d/.test(text) &&
-      !/[A-Za-z]{3,}\s+[A-Za-z]{3,}/.test(text);
+    const normalizedText = text.replace(/\s+/g, " ").trim();
+    const englishWords = (normalizedText.match(/[A-Za-z]+/g) ?? []).map((word) => word.toLowerCase());
+    const nonSingleLetterWords = englishWords.filter((word) => word.length >= 2);
+    const nonMathWords = nonSingleLetterWords.filter(
+      (word) => !["sin", "cos", "tan", "cot", "sec", "csc", "log", "ln", "exp", "lim", "max", "min"].includes(word),
+    );
+    const hasNaturalEnglishPhrase = /\b[A-Za-z]{2,}(?:[-'][A-Za-z]{2,})?[,:;)]?\s+[A-Za-z]{2,}\b/.test(normalizedText);
+    const hasMathSignal = /[=+\-*/^<>_{}()[\]\\]|∑|∫|√|≈|≤|≥|±|\d/.test(normalizedText);
+    const looksLikeFormula = hasMathSignal && !hasNaturalEnglishPhrase && nonMathWords.length === 0;
 
     if (looksLikeFormula) {
       return "mixed";
