@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { LoginRequiredCard } from "@/components/auth/login-required-card";
+import { useAuth } from "@/components/auth/auth-provider";
 import { WeekNoteGenerator } from "@/components/home/week-note-generator";
 import { WeekCard } from "@/components/week-card";
 import { normalizeCloudNote, type CloudNoteRecord } from "@/lib/cloud-note-normalizer";
@@ -57,13 +59,27 @@ function sortRows(rows: HomeCloudNoteItem[]): HomeCloudNoteItem[] {
 }
 
 export function HomeCloudNotesSections() {
+  const { isReady, session } = useAuth();
+  const authToken = session?.token ?? "";
   const [notes, setNotes] = useState<HomeCloudNoteItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!CLOUD_API_BASE) {
-      setError("未配置 NEXT_PUBLIC_NOTES_API_BASE，首页无法读取云端笔记。");
+      setError("未配置 NEXT_PUBLIC_NOTES_API_BASE，无法读取云端笔记。");
+      setNotes([]);
+      return;
+    }
+
+    if (!isReady) {
+      return;
+    }
+
+    if (!authToken) {
+      setNotes([]);
+      setLoading(false);
+      setError("");
       return;
     }
 
@@ -77,7 +93,11 @@ export function HomeCloudNotesSections() {
         const response = await fetch(`${apiBase}/notes?limit=200&include_content=1`, {
           method: "GET",
           cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
         });
+
         const json = (await response.json().catch(() => null)) as NotesApiResponse | null;
         if (!response.ok || !json?.success || !Array.isArray(json.notes)) {
           throw new Error(json?.error || "云端笔记加载失败。");
@@ -106,7 +126,7 @@ export function HomeCloudNotesSections() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isReady, authToken]);
 
   const topics = useMemo(() => {
     const unique = new Set<string>();
@@ -119,6 +139,34 @@ export function HomeCloudNotesSections() {
     return Array.from(unique).slice(0, 12);
   }, [notes]);
 
+  if (!isReady) {
+    return (
+      <section className="section-light py-16">
+        <div className="mx-auto w-full max-w-[1100px] px-4 sm:px-6">
+          <article className="rounded-apple bg-white p-6 shadow-card dark:bg-[#272729]">
+            <p className="font-text text-[15px] text-black/72 dark:text-white/75">正在检查登录状态...</p>
+          </article>
+        </div>
+      </section>
+    );
+  }
+
+  if (!session?.token) {
+    return (
+      <section className="section-light py-16">
+        <div className="mx-auto w-full max-w-[1100px] px-4 sm:px-6">
+          <LoginRequiredCard
+            redirectTo="/"
+            titleZh="登录后查看我的笔记"
+            titleEn="Sign In to Open My Notes"
+            descriptionZh="首页的“我的笔记”仅展示当前账号创建的云端笔记。"
+            descriptionEn="The homepage note archive only shows cloud notes created by your current account."
+          />
+        </div>
+      </section>
+    );
+  }
+
   return (
     <>
       <section className="section-light py-16">
@@ -130,8 +178,8 @@ export function HomeCloudNotesSections() {
                 <span className="ui-en mt-1 block text-[0.52em] font-normal text-black/70 dark:text-white/75">My Notes</span>
               </h2>
               <p className="mt-2 max-w-[720px] font-text text-[17px] leading-[1.47] text-black/75 dark:text-white/75">
-                首页直接显示云端笔记，持续新增后可立即归档查看。
-                <span className="ui-en ml-1">Homepage now reads directly from cloud notes for immediate archive visibility.</span>
+                仅展示当前账号生成和管理的云端笔记。
+                <span className="ui-en ml-1">Showing only cloud notes that belong to your account.</span>
               </p>
             </div>
           </div>
@@ -166,7 +214,7 @@ export function HomeCloudNotesSections() {
 
           {!loading && !error && notes.length === 0 ? (
             <p className="mt-5 rounded-apple border border-black/12 bg-white px-4 py-3 font-text text-[14px] leading-[1.45] text-black/72 dark:border-white/15 dark:bg-[#272729] dark:text-white/74">
-              云端暂时没有笔记，先在上方生成第一篇笔记即可。
+              你还没有云端笔记，先在上方生成第一篇笔记。
             </p>
           ) : null}
         </div>
@@ -177,11 +225,11 @@ export function HomeCloudNotesSections() {
           <div>
             <h2 className="font-display text-[40px] font-semibold leading-[1.1] text-white">
               最近笔记主题
-              <span className="ui-en mt-1 block text-[0.52em] font-normal text-white/80">Recent Note Topics</span>
+              <span className="ui-en mt-1 block text-[0.52em] font-normal text-white/80">Recent Topics</span>
             </h2>
             <p className="mt-3 font-text text-[17px] leading-[1.47] text-white/80">
-              从云端笔记自动提取主题，帮助快速定位与回顾。
-              <span className="ui-en ml-1">Topics are extracted from cloud notes for faster navigation and review.</span>
+              自动从你的云端笔记提取主题，用于快速定位与复习。
+              <span className="ui-en ml-1">Auto-extracted from your own notes for quick navigation.</span>
             </p>
           </div>
           <ul className="space-y-2 rounded-apple bg-white/10 p-5">

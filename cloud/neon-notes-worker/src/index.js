@@ -19,7 +19,7 @@ function jsonResponse(data, status = 200, origin = "*") {
       "Content-Type": "application/json; charset=utf-8",
       "Access-Control-Allow-Origin": origin,
       "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, X-Notes-Write-Key",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
       "Vary": "Origin",
     },
   });
@@ -71,6 +71,243 @@ function getOrigin(requestOrigin, allowedOrigin) {
 
   const normalizedRequest = normalizeOriginValue(requestOrigin);
   return origins.includes(normalizedRequest) ? normalizedRequest : fallbackOrigin;
+}
+
+const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
+const PASSWORD_HASH_ITERATIONS = 160_000;
+const PASSWORD_SALT_BYTES = 16;
+const PASSWORD_HASH_BYTES = 32;
+const USERNAME_REGEX = /^[a-z0-9][a-z0-9._-]{2,39}$/;
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+
+function getAuthSecret(env) {
+  const secret = String(env.AUTH_SECRET ?? "").trim();
+  return secret;
+}
+
+function normalizeUsername(value) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function normalizeDisplayName(value) {
+  const normalized = String(value ?? "").trim();
+  return normalized ? normalized.slice(0, 80) : "";
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 1) {
+    binary += String.fromCharCode(bytes[index]);
+  }
+  return btoa(binary);
+}
+
+function bytesToBase64Url(bytes) {
+  return bytesToBase64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function base64UrlToBytes(value) {
+  const normalized = String(value ?? "").replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+function timingSafeEqual(a, b) {
+  const left = String(a ?? "");
+  const right = String(b ?? "");
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  let result = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    result |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  }
+
+  return result === 0;
+}
+
+async function signTokenData(secret, data) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    textEncoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+
+  const signature = await crypto.subtle.sign("HMAC", key, textEncoder.encode(data));
+  return bytesToBase64Url(new Uint8Array(signature));
+}
+
+async function createAuthToken(secret, user) {
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const payload = {
+    sub: Number(user.id),
+    username: String(user.username),
+    displayName: user.display_name ? String(user.display_name) : "",
+    iat: nowSeconds,
+    exp: nowSeconds + TOKEN_TTL_SECONDS,
+  };
+
+  const headerBytes = textEncoder.encode(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const payloadBytes = textEncoder.encode(JSON.stringify(payload));
+  const headerSegment = bytesToBase64Url(headerBytes);
+  const payloadSegment = bytesToBase64Url(payloadBytes);
+  const signingInput = `${headerSegment}.${payloadSegment}`;
+  const signatureSegment = await signTokenData(secret, signingInput);
+  return `${signingInput}.${signatureSegment}`;
+}
+
+async function verifyAuthToken(secret, token) {
+  const raw = String(token ?? "").trim();
+  if (!raw) {
+    return null;
+  }
+
+  const segments = raw.split(".");
+  if (segments.length !== 3) {
+    return null;
+  }
+
+  const [headerSegment, payloadSegment, signatureSegment] = segments;
+  if (!headerSegment || !payloadSegment || !signatureSegment) {
+    return null;
+  }
+
+  const signingInput = `${headerSegment}.${payloadSegment}`;
+  const expectedSignature = await signTokenData(secret, signingInput);
+  if (!timingSafeEqual(signatureSegment, expectedSignature)) {
+    return null;
+  }
+
+  try {
+    const payloadText = textDecoder.decode(base64UrlToBytes(payloadSegment));
+    const payload = JSON.parse(payloadText);
+    const userId = Number(payload?.sub);
+    const username = normalizeUsername(payload?.username);
+    const exp = Number(payload?.exp);
+
+    if (!Number.isInteger(userId) || userId <= 0 || !username || !Number.isFinite(exp)) {
+      return null;
+    }
+
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    if (exp <= nowSeconds) {
+      return null;
+    }
+
+    return {
+      id: userId,
+      username,
+      displayName: normalizeDisplayName(payload?.displayName),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function parseBearerToken(request) {
+  const authorization = request.headers.get("Authorization") || "";
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  if (!match) {
+    return "";
+  }
+  return match[1].trim();
+}
+
+function toPublicUser(row) {
+  return {
+    id: Number(row.id),
+    username: String(row.username),
+    displayName: normalizeDisplayName(row.display_name),
+  };
+}
+
+async function hashPassword(password) {
+  const salt = crypto.getRandomValues(new Uint8Array(PASSWORD_SALT_BYTES));
+  const key = await crypto.subtle.importKey("raw", textEncoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      salt,
+      iterations: PASSWORD_HASH_ITERATIONS,
+      hash: "SHA-256",
+    },
+    key,
+    PASSWORD_HASH_BYTES * 8,
+  );
+  const hash = new Uint8Array(bits);
+  return `pbkdf2_sha256$${PASSWORD_HASH_ITERATIONS}$${bytesToBase64Url(salt)}$${bytesToBase64Url(hash)}`;
+}
+
+async function verifyPassword(password, storedHash) {
+  const parts = String(storedHash ?? "").split("$");
+  if (parts.length !== 4 || parts[0] !== "pbkdf2_sha256") {
+    return false;
+  }
+
+  const iterations = Number(parts[1]);
+  if (!Number.isInteger(iterations) || iterations < 80_000) {
+    return false;
+  }
+
+  try {
+    const salt = base64UrlToBytes(parts[2]);
+    const expectedHash = base64UrlToBytes(parts[3]);
+    const key = await crypto.subtle.importKey("raw", textEncoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+    const bits = await crypto.subtle.deriveBits(
+      {
+        name: "PBKDF2",
+        salt,
+        iterations,
+        hash: "SHA-256",
+      },
+      key,
+      expectedHash.length * 8,
+    );
+
+    const hash = new Uint8Array(bits);
+    return timingSafeEqual(bytesToBase64Url(hash), bytesToBase64Url(expectedHash));
+  } catch {
+    return false;
+  }
+}
+
+async function resolveAuthenticatedUser(request, env, sql) {
+  const secret = getAuthSecret(env);
+  if (!secret) {
+    return { error: { status: 500, message: "AUTH_SECRET is missing." } };
+  }
+
+  const token = parseBearerToken(request);
+  if (!token) {
+    return { error: { status: 401, message: "Authentication required." } };
+  }
+
+  const tokenPayload = await verifyAuthToken(secret, token);
+  if (!tokenPayload) {
+    return { error: { status: 401, message: "Invalid or expired token." } };
+  }
+
+  const rows = await sql`
+    SELECT id, username, display_name
+    FROM users
+    WHERE id = ${tokenPayload.id} AND username = ${tokenPayload.username}
+    LIMIT 1
+  `;
+
+  if (!rows.length) {
+    return { error: { status: 401, message: "User no longer exists." } };
+  }
+
+  return { user: toPublicUser(rows[0]) };
 }
 
 function slugifyTitle(input) {
@@ -1036,9 +1273,21 @@ function normalizeGeneratedMdx(raw) {
 
 async function ensureSchema(sql) {
   await sql`
+    CREATE TABLE IF NOT EXISTS users (
+      id BIGSERIAL PRIMARY KEY,
+      username TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      display_name TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  await sql`
     CREATE TABLE IF NOT EXISTS notes (
       id BIGSERIAL PRIMARY KEY,
-      slug TEXT UNIQUE NOT NULL,
+      user_id BIGINT,
+      slug TEXT NOT NULL,
       title TEXT NOT NULL,
       topic TEXT NOT NULL,
       topic_zh TEXT NOT NULL,
@@ -1047,18 +1296,15 @@ async function ensureSchema(sql) {
       mdx_content TEXT NOT NULL,
       source_text TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (user_id, slug)
     )
   `;
-}
 
-function requireWriteKey(request, env) {
-  if (!env.WRITE_API_KEY) {
-    return true;
-  }
-
-  const provided = request.headers.get("X-Notes-Write-Key") || "";
-  return provided === env.WRITE_API_KEY;
+  await sql`ALTER TABLE notes ADD COLUMN IF NOT EXISTS user_id BIGINT`;
+  await sql`ALTER TABLE notes DROP CONSTRAINT IF EXISTS notes_slug_key`;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS notes_user_slug_unique_idx ON notes (user_id, slug)`;
+  await sql`CREATE INDEX IF NOT EXISTS notes_user_updated_idx ON notes (user_id, updated_at DESC)`;
 }
 
 function asBoolean(value) {
@@ -1126,6 +1372,116 @@ export default {
         return jsonResponse({ ok: true }, 200, corsOrigin);
       }
 
+      if (request.method === "POST" && url.pathname === "/auth/register") {
+        const secret = getAuthSecret(env);
+        if (!secret) {
+          return jsonResponse({ error: "AUTH_SECRET is missing." }, 500, corsOrigin);
+        }
+
+        const body = await request.json().catch(() => null);
+        if (!body || typeof body !== "object") {
+          return jsonResponse({ error: "Invalid JSON body." }, 400, corsOrigin);
+        }
+
+        const username = normalizeUsername(body.username);
+        const password = String(body.password ?? "");
+        const displayName = normalizeDisplayName(body.displayName);
+
+        if (!USERNAME_REGEX.test(username)) {
+          return jsonResponse(
+            { error: "Invalid username. Use 3-40 chars: lowercase letters, numbers, dot, underscore, dash." },
+            400,
+            corsOrigin,
+          );
+        }
+
+        if (password.length < 8 || password.length > 72) {
+          return jsonResponse({ error: "Password must be between 8 and 72 characters." }, 400, corsOrigin);
+        }
+
+        const existingUser = await sql`
+          SELECT id FROM users
+          WHERE username = ${username}
+          LIMIT 1
+        `;
+        if (existingUser.length) {
+          return jsonResponse({ error: "Username already exists." }, 409, corsOrigin);
+        }
+
+        const passwordHash = await hashPassword(password);
+        const inserted = await sql`
+          INSERT INTO users (username, password_hash, display_name, updated_at)
+          VALUES (${username}, ${passwordHash}, ${displayName}, NOW())
+          RETURNING id, username, display_name
+        `;
+
+        const user = toPublicUser(inserted[0]);
+        const token = await createAuthToken(secret, inserted[0]);
+
+        return jsonResponse({ success: true, user, token }, 201, corsOrigin);
+      }
+
+      if (request.method === "POST" && url.pathname === "/auth/login") {
+        const secret = getAuthSecret(env);
+        if (!secret) {
+          return jsonResponse({ error: "AUTH_SECRET is missing." }, 500, corsOrigin);
+        }
+
+        const body = await request.json().catch(() => null);
+        if (!body || typeof body !== "object") {
+          return jsonResponse({ error: "Invalid JSON body." }, 400, corsOrigin);
+        }
+
+        const username = normalizeUsername(body.username);
+        const password = String(body.password ?? "");
+
+        if (!USERNAME_REGEX.test(username) || !password) {
+          return jsonResponse({ error: "Invalid username or password." }, 400, corsOrigin);
+        }
+
+        const rows = await sql`
+          SELECT id, username, display_name, password_hash
+          FROM users
+          WHERE username = ${username}
+          LIMIT 1
+        `;
+
+        if (!rows.length) {
+          return jsonResponse({ error: "Invalid username or password." }, 401, corsOrigin);
+        }
+
+        const validPassword = await verifyPassword(password, rows[0].password_hash);
+        if (!validPassword) {
+          return jsonResponse({ error: "Invalid username or password." }, 401, corsOrigin);
+        }
+
+        const token = await createAuthToken(secret, rows[0]);
+        const user = toPublicUser(rows[0]);
+        await sql`UPDATE users SET updated_at = NOW() WHERE id = ${user.id}`;
+
+        return jsonResponse({ success: true, user, token }, 200, corsOrigin);
+      }
+
+      if (request.method === "GET" && url.pathname === "/auth/me") {
+        const authResolved = await resolveAuthenticatedUser(request, env, sql);
+        if (authResolved.error) {
+          return jsonResponse({ error: authResolved.error.message }, authResolved.error.status, corsOrigin);
+        }
+
+        return jsonResponse({ success: true, user: authResolved.user }, 200, corsOrigin);
+      }
+
+      const requiresUserAuth =
+        url.pathname === "/assistant" || url.pathname === "/notes" || url.pathname.startsWith("/notes/");
+      let authenticatedUser = null;
+      if (requiresUserAuth) {
+        const authResolved = await resolveAuthenticatedUser(request, env, sql);
+        if (authResolved.error) {
+          return jsonResponse({ error: authResolved.error.message }, authResolved.error.status, corsOrigin);
+        }
+        authenticatedUser = authResolved.user;
+      }
+
       if (request.method === "POST" && url.pathname === "/assistant") {
         if (!env.OPENAI_API_KEY) {
           return jsonResponse({ error: "OPENAI_API_KEY is missing." }, 500, corsOrigin);
@@ -1148,6 +1504,7 @@ export default {
       }
 
       if (request.method === "GET" && url.pathname === "/notes") {
+        const userId = Number(authenticatedUser?.id);
         const rawLimit = Number(url.searchParams.get("limit") || 20);
         const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(Math.floor(rawLimit), 300)) : 20;
         const includeContent = asBoolean(url.searchParams.get("include_content"));
@@ -1155,12 +1512,14 @@ export default {
           ? await sql`
               SELECT slug, title, topic, topic_zh, topic_en, tags, mdx_content, created_at, updated_at
               FROM notes
+              WHERE user_id = ${userId}
               ORDER BY updated_at DESC
               LIMIT ${limit}
             `
           : await sql`
               SELECT slug, title, topic, topic_zh, topic_en, tags, created_at, updated_at
               FROM notes
+              WHERE user_id = ${userId}
               ORDER BY updated_at DESC
               LIMIT ${limit}
             `;
@@ -1169,6 +1528,7 @@ export default {
       }
 
       if (request.method === "GET" && url.pathname.startsWith("/notes/")) {
+        const userId = Number(authenticatedUser?.id);
         const slug = decodeURIComponent(url.pathname.replace("/notes/", "")).trim();
         if (!slug) {
           return jsonResponse({ error: "Slug is required." }, 400, corsOrigin);
@@ -1177,7 +1537,7 @@ export default {
         const rows = await sql`
           SELECT slug, title, topic, topic_zh, topic_en, tags, mdx_content, created_at, updated_at
           FROM notes
-          WHERE slug = ${slug}
+          WHERE user_id = ${userId} AND slug = ${slug}
           LIMIT 1
         `;
 
@@ -1189,10 +1549,7 @@ export default {
       }
 
       if (request.method === "PATCH" && url.pathname.startsWith("/notes/")) {
-        if (!requireWriteKey(request, env)) {
-          return jsonResponse({ error: "Unauthorized write request." }, 401, corsOrigin);
-        }
-
+        const userId = Number(authenticatedUser?.id);
         const slug = decodeURIComponent(url.pathname.replace("/notes/", "")).trim();
         if (!slug) {
           return jsonResponse({ error: "Slug is required." }, 400, corsOrigin);
@@ -1206,7 +1563,7 @@ export default {
         const rows = await sql`
           SELECT slug, title, topic, topic_zh, topic_en, tags
           FROM notes
-          WHERE slug = ${slug}
+          WHERE user_id = ${userId} AND slug = ${slug}
           LIMIT 1
         `;
 
@@ -1238,7 +1595,7 @@ export default {
             topic_en = ${topicParts.topicEn},
             tags = ${JSON.stringify(nextTags)},
             updated_at = NOW()
-          WHERE slug = ${slug}
+          WHERE user_id = ${userId} AND slug = ${slug}
         `;
 
         return jsonResponse(
@@ -1262,10 +1619,7 @@ export default {
       }
 
       if (request.method === "DELETE" && url.pathname.startsWith("/notes/")) {
-        if (!requireWriteKey(request, env)) {
-          return jsonResponse({ error: "Unauthorized write request." }, 401, corsOrigin);
-        }
-
+        const userId = Number(authenticatedUser?.id);
         const slug = decodeURIComponent(url.pathname.replace("/notes/", "")).trim();
         if (!slug) {
           return jsonResponse({ error: "Slug is required." }, 400, corsOrigin);
@@ -1273,7 +1627,7 @@ export default {
 
         const deleted = await sql`
           DELETE FROM notes
-          WHERE slug = ${slug}
+          WHERE user_id = ${userId} AND slug = ${slug}
           RETURNING slug
         `;
 
@@ -1285,10 +1639,7 @@ export default {
       }
 
       if (request.method === "POST" && url.pathname === "/notes/generate") {
-        if (!requireWriteKey(request, env)) {
-          return jsonResponse({ error: "Unauthorized write request." }, 401, corsOrigin);
-        }
-
+        const userId = Number(authenticatedUser?.id);
         if (!env.OPENAI_API_KEY) {
           return jsonResponse({ error: "OPENAI_API_KEY is missing." }, 500, corsOrigin);
         }
@@ -1325,7 +1676,12 @@ export default {
         const slug = slugifyTitle(title);
         const topicParts = splitTopic(resolvedMeta.topic, title);
 
-        const existing = await sql`SELECT slug FROM notes WHERE slug = ${slug} LIMIT 1`;
+        const existing = await sql`
+          SELECT slug
+          FROM notes
+          WHERE user_id = ${userId} AND slug = ${slug}
+          LIMIT 1
+        `;
         if (existing.length && !overwrite) {
           return jsonResponse({ error: `slug ${slug} already exists.` }, 409, corsOrigin);
         }
@@ -1346,8 +1702,9 @@ export default {
         }
 
         await sql`
-          INSERT INTO notes (slug, title, topic, topic_zh, topic_en, tags, mdx_content, source_text, updated_at)
+          INSERT INTO notes (user_id, slug, title, topic, topic_zh, topic_en, tags, mdx_content, source_text, updated_at)
           VALUES (
+            ${userId},
             ${slug},
             ${title},
             ${topicParts.topic},
@@ -1358,7 +1715,7 @@ export default {
             ${sourceText},
             NOW()
           )
-          ON CONFLICT (slug)
+          ON CONFLICT (user_id, slug)
           DO UPDATE SET
             title = EXCLUDED.title,
             topic = EXCLUDED.topic,

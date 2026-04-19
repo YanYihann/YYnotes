@@ -4,10 +4,13 @@ This worker is the backend for GitHub Pages note generation and storage.
 
 ## Features
 
+- `POST /auth/register`: create account and return auth token
+- `POST /auth/login`: login and return auth token
+- `GET /auth/me`: verify token and return current user
 - `POST /notes/generate`: generate MDX via OpenAI and save to Neon
-- `GET /notes`: list latest notes
-- `GET /notes/:slug`: get a single note
-- `DELETE /notes/:slug`: delete one note by slug
+- `GET /notes`: list latest notes (current user only)
+- `GET /notes/:slug`: get a single note (current user only)
+- `DELETE /notes/:slug`: delete one note by slug (current user only)
 - `GET /health`: health check
 
 ## 1) Prepare Neon
@@ -21,14 +24,17 @@ cd cloud/neon-notes-worker
 npm install
 wrangler secret put DATABASE_URL
 wrangler secret put OPENAI_API_KEY
-# optional write protection
-wrangler secret put WRITE_API_KEY
+wrangler secret put AUTH_SECRET
 ```
 
 Edit `wrangler.toml` if needed:
 
 - `ALLOWED_ORIGIN`: set your Pages origin, e.g. `https://yanyihann.github.io`
 - `OPENAI_MODEL`: defaults to `gpt-4.1-mini`
+
+All `/notes*` and `/assistant` endpoints require:
+
+`Authorization: Bearer <token>`
 
 ## 3) Deploy
 
@@ -64,6 +70,6 @@ Re-run Pages workflow. Front-end generator will switch to cloud mode automatical
 }
 ```
 
-If `WRITE_API_KEY` is configured, include header:
+Auth endpoints return bearer tokens. Use them for all notes requests:
 
-`X-Notes-Write-Key: <key>`
+`Authorization: Bearer <token>`

@@ -1,4 +1,5 @@
 ﻿import Link from "next/link";
+import { AuthNavControls } from "@/components/auth/auth-nav-controls";
 import { LanguageToggle } from "@/components/language-toggle";
 import { NavLinks } from "@/components/nav-links";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -17,6 +18,7 @@ export function SiteHeader() {
 
         <nav aria-label="Primary" className="flex items-center gap-4">
           <NavLinks />
+          <AuthNavControls />
           <LanguageToggle />
           <ThemeToggle />
         </nav>

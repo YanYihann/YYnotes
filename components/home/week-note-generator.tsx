@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { useAuth } from "@/components/auth/auth-provider";
 import { WeekCard } from "@/components/week-card";
 
 type ExistingNote = {
@@ -40,7 +41,6 @@ type WeekNoteGeneratorProps = {
 };
 
 const CLOUD_API_BASE = process.env.NEXT_PUBLIC_NOTES_API_BASE?.trim() ?? "";
-const CLOUD_WRITE_KEY = process.env.NEXT_PUBLIC_NOTES_WRITE_KEY?.trim() ?? "";
 const IS_CLOUD_MODE = CLOUD_API_BASE.length > 0;
 
 function slugifyTitle(input: string): string {
@@ -202,6 +202,7 @@ async function callCloudGenerator(params: {
   sourceFile: File;
   overwrite: boolean;
   extraInstruction: string;
+  authToken: string;
 }): Promise<GenerationResult> {
   const extension = fileExtension(params.sourceFile.name);
   if (extension === "doc" || extension === "ppt") {
@@ -223,6 +224,9 @@ async function callCloudGenerator(params: {
 
   const response = await fetch(`${apiBase}/notes/generate`, {
     method: "POST",
+    headers: {
+      Authorization: `Bearer ${params.authToken}`,
+    },
     body,
   });
 
@@ -270,15 +274,13 @@ async function callCloudMetadataUpdate(params: {
   title: string;
   topic: string;
   tags: string[];
+  authToken: string;
 }): Promise<MetadataUpdateResult> {
   const apiBase = normalizeApiBase(CLOUD_API_BASE);
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    Authorization: `Bearer ${params.authToken}`,
   };
-
-  if (CLOUD_WRITE_KEY) {
-    headers["X-Notes-Write-Key"] = CLOUD_WRITE_KEY;
-  }
 
   const response = await fetch(`${apiBase}/notes/${encodeURIComponent(params.slug)}`, {
     method: "PATCH",
@@ -300,6 +302,7 @@ async function callCloudMetadataUpdate(params: {
 
 export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
   const router = useRouter();
+  const { session } = useAuth();
   const [title, setTitle] = useState("");
   const [topic, setTopic] = useState("");
   const [tags, setTags] = useState("");
@@ -344,6 +347,11 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
       return;
     }
 
+    if (IS_CLOUD_MODE && !session?.token) {
+      setError("请先登录后再生成云端笔记。");
+      return;
+    }
+
     setSubmitting(true);
     setError("");
     setResult(null);
@@ -356,6 +364,7 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
         sourceFile,
         overwrite,
         extraInstruction: extraInstruction.trim(),
+        authToken: session?.token || "",
       };
 
       const generationResult = IS_CLOUD_MODE ? await callCloudGenerator(payload) : await callLocalGenerator(payload);
@@ -377,6 +386,11 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
       return;
     }
 
+    if (IS_CLOUD_MODE && !session?.token) {
+      setError("登录状态已失效，请重新登录。");
+      return;
+    }
+
     setSavingMeta(true);
     setError("");
 
@@ -386,6 +400,7 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
         title: editTitle.trim(),
         topic: editTopic.trim(),
         tags: parseTagsInput(editTags),
+        authToken: session?.token || "",
       };
 
       const updated = IS_CLOUD_MODE ? await callCloudMetadataUpdate(payload) : await callLocalMetadataUpdate(payload);
@@ -426,7 +441,7 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
         </p>
         {IS_CLOUD_MODE ? (
           <p className="mt-2 rounded-apple border border-[#0071e3]/30 bg-[#0071e3]/[0.06] px-3 py-2 font-text text-[12px] leading-[1.4] text-black/75 dark:border-[#2997ff]/45 dark:bg-[#2997ff]/[0.1] dark:text-white/80">
-            当前为云端模式：将请求远程笔记 API 并存储到 Neon 数据库。
+            当前为云端模式：将请求远程笔记 API 并存储到 Neon 数据库，且只写入当前登录账号。
           </p>
         ) : null}
       </div>
@@ -504,10 +519,10 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
         <div className="md:col-span-2 flex flex-wrap items-center gap-3">
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || (IS_CLOUD_MODE && !session?.token)}
             className="inline-flex items-center rounded-apple bg-[#0071e3] px-5 py-2 font-text text-[15px] text-white transition hover:bg-[#0066cc] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
           >
-            {submitting ? "生成中..." : "生成并保存笔记"}
+            {submitting ? "生成中..." : IS_CLOUD_MODE && !session?.token ? "请先登录" : "生成并保存笔记"}
           </button>
 
           <Link

@@ -1,7 +1,9 @@
-﻿"use client";
+"use client";
 
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { LoginRequiredCard } from "@/components/auth/login-required-card";
+import { useAuth } from "@/components/auth/auth-provider";
 import { NoteView } from "@/components/notes/note-view";
 import {
   normalizeCloudNote,
@@ -52,6 +54,8 @@ function CloudStateCard({ message, error = false }: { message: string; error?: b
 }
 
 export function CloudNoteViewer() {
+  const { isReady, session } = useAuth();
+  const authToken = session?.token ?? "";
   const searchParams = useSearchParams();
   const slug = (searchParams.get("slug") ?? "").trim();
   const [loading, setLoading] = useState(false);
@@ -75,6 +79,13 @@ export function CloudNoteViewer() {
         return;
       }
 
+      if (!isReady || !authToken) {
+        setLoading(false);
+        setNote(null);
+        setAdjacentNav({});
+        return;
+      }
+
       setLoading(true);
       setError("");
 
@@ -84,6 +95,9 @@ export function CloudNoteViewer() {
         const noteResponse = await fetch(`${apiBase}/notes/${encodeURIComponent(slug)}`, {
           method: "GET",
           cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
         });
 
         const noteJson = (await noteResponse.json().catch(() => null)) as CloudNoteResponse | null;
@@ -97,6 +111,9 @@ export function CloudNoteViewer() {
           const listResponse = await fetch(`${apiBase}/notes?limit=200&include_content=1`, {
             method: "GET",
             cache: "no-store",
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+            },
           });
 
           const listJson = (await listResponse.json().catch(() => null)) as CloudListResponse | null;
@@ -124,9 +141,25 @@ export function CloudNoteViewer() {
     }
 
     loadNote();
-  }, [slug]);
+  }, [isReady, authToken, slug]);
 
   const normalizedNote = useMemo(() => normalizeCloudNote(note), [note]);
+
+  if (!isReady) {
+    return <CloudStateCard message="正在检查登录状态..." />;
+  }
+
+  if (!authToken) {
+    return (
+      <div className="mx-auto w-full max-w-[1720px] px-4 sm:px-6">
+        <LoginRequiredCard
+          redirectTo={slug ? `/notes/cloud?slug=${encodeURIComponent(slug)}` : "/notes"}
+          titleZh="登录后查看云端笔记"
+          titleEn="Sign In to View Cloud Note"
+        />
+      </div>
+    );
+  }
 
   if (loading) {
     return <CloudStateCard message="正在加载云端笔记..." />;

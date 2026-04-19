@@ -1,11 +1,10 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { LoginRequiredCard } from "@/components/auth/login-required-card";
+import { useAuth } from "@/components/auth/auth-provider";
 import { WeekCard } from "@/components/week-card";
-import {
-  normalizeCloudNote,
-  type CloudNoteRecord,
-} from "@/lib/cloud-note-normalizer";
+import { normalizeCloudNote, type CloudNoteRecord } from "@/lib/cloud-note-normalizer";
 
 type NoteListItem = {
   slug: string;
@@ -34,7 +33,6 @@ type NotesIndexClientProps = {
 };
 
 const CLOUD_API_BASE = process.env.NEXT_PUBLIC_NOTES_API_BASE?.trim() ?? "";
-const CLOUD_WRITE_KEY = process.env.NEXT_PUBLIC_NOTES_WRITE_KEY?.trim() ?? "";
 const IS_CLOUD_MODE = CLOUD_API_BASE.length > 0;
 
 function normalizeApiBase(input: string): string {
@@ -67,14 +65,18 @@ function sortNoteItems(rows: NoteListItem[]): NoteListItem[] {
 }
 
 export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
+  const { isReady, session } = useAuth();
+  const authToken = session?.token ?? "";
   const [notes, setNotes] = useState<NoteListItem[]>(() =>
-    sortNoteItems(
-      initialNotes.map((note, index) => ({
-        ...note,
-        viewHref: `/notes/${note.slug}`,
-        order: Number.isFinite(note.order) ? note.order : index,
-      })),
-    ),
+    IS_CLOUD_MODE
+      ? []
+      : sortNoteItems(
+          initialNotes.map((note, index) => ({
+            ...note,
+            viewHref: `/notes/${note.slug}`,
+            order: Number.isFinite(note.order) ? note.order : index,
+          })),
+        ),
   );
   const [loadingRemoteNotes, setLoadingRemoteNotes] = useState(false);
   const [search, setSearch] = useState("");
@@ -85,6 +87,17 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
   useEffect(() => {
     if (!IS_CLOUD_MODE) {
+      return;
+    }
+
+    if (!isReady) {
+      return;
+    }
+
+    if (!authToken) {
+      setNotes([]);
+      setError("");
+      setLoadingRemoteNotes(false);
       return;
     }
 
@@ -99,6 +112,9 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
         const response = await fetch(`${apiBase}/notes?limit=200&include_content=1`, {
           method: "GET",
           cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
         });
 
         const json = (await response.json().catch(() => null)) as NotesApiResponse | null;
@@ -129,7 +145,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isReady, authToken]);
 
   const topicOptions = useMemo(() => {
     const unique = new Set<string>();
@@ -173,7 +189,15 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
         return true;
       }
 
-      const haystack = [note.zhTitle, note.enTitle, note.descriptionZh, note.descriptionEn, note.weekLabelZh, note.weekLabelEn, note.tags.join(" ")]
+      const haystack = [
+        note.zhTitle,
+        note.enTitle,
+        note.descriptionZh,
+        note.descriptionEn,
+        note.weekLabelZh,
+        note.weekLabelEn,
+        note.tags.join(" "),
+      ]
         .join(" ")
         .toLowerCase();
 
@@ -198,15 +222,15 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
       let response: Response;
 
       if (IS_CLOUD_MODE) {
-        const apiBase = normalizeApiBase(CLOUD_API_BASE);
-        const headers: Record<string, string> = {};
-        if (CLOUD_WRITE_KEY) {
-          headers["X-Notes-Write-Key"] = CLOUD_WRITE_KEY;
+        if (!authToken) {
+          throw new Error("登录状态已失效，请重新登录。");
         }
-
+        const apiBase = normalizeApiBase(CLOUD_API_BASE);
         response = await fetch(`${apiBase}/notes/${encodeURIComponent(note.slug)}`, {
           method: "DELETE",
-          headers,
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
         });
       } else {
         response = await fetch(`/api/notes?slug=${encodeURIComponent(note.slug)}`, {
@@ -231,6 +255,18 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     setSearch("");
     setTopicFilter("");
     setTagFilter("");
+  }
+
+  if (IS_CLOUD_MODE && !isReady) {
+    return (
+      <article className="rounded-apple bg-white p-6 shadow-card dark:bg-[#272729]">
+        <p className="font-text text-[15px] text-black/72 dark:text-white/75">正在检查登录状态...</p>
+      </article>
+    );
+  }
+
+  if (IS_CLOUD_MODE && isReady && !authToken) {
+    return <LoginRequiredCard redirectTo="/notes" />;
   }
 
   return (
@@ -294,12 +330,6 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
           </p>
           {loadingRemoteNotes ? <p className="font-text text-[13px] text-[#0066cc] dark:text-[#2997ff]">正在加载云端笔记...</p> : null}
         </div>
-
-        {IS_CLOUD_MODE && !CLOUD_WRITE_KEY ? (
-          <p className="mt-2 font-text text-[12px] leading-[1.45] text-black/58 dark:text-white/62">
-            当前为云端模式。若 Worker 开启了 WRITE_API_KEY，请同步配置 NEXT_PUBLIC_NOTES_WRITE_KEY 以启用浏览器端删除。
-          </p>
-        ) : null}
 
         {error ? (
           <p className="mt-3 rounded-apple border border-[#b4232f]/30 bg-[#b4232f]/[0.08] px-3 py-2 font-text text-[13px] leading-[1.4] text-[#7f1820] dark:border-[#ff6a77]/35 dark:bg-[#ff6a77]/[0.12] dark:text-[#ffd5da]">
