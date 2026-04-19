@@ -64,6 +64,21 @@ function fileExtension(fileName: string): string {
   return fileName.slice(index + 1).toLowerCase();
 }
 
+function deriveTitleFromFileName(fileName: string): string {
+  const trimmed = fileName.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  const dot = trimmed.lastIndexOf(".");
+  const base = dot > 0 ? trimmed.slice(0, dot) : trimmed;
+
+  return base
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function buildNoteViewHref(slug: string): string {
   if (IS_CLOUD_MODE) {
     return `/notes/cloud?slug=${encodeURIComponent(slug)}`;
@@ -213,21 +228,30 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
   const [error, setError] = useState("");
   const [result, setResult] = useState<GenerationResult | null>(null);
 
-  const slugPreview = useMemo(() => slugifyTitle(title), [title]);
+  const slugPreview = useMemo(() => {
+    const manualTitle = title.trim();
+    if (manualTitle) {
+      return slugifyTitle(manualTitle);
+    }
+
+    if (sourceFile) {
+      const guessedTitle = deriveTitleFromFileName(sourceFile.name);
+      if (guessedTitle) {
+        return slugifyTitle(guessedTitle);
+      }
+    }
+
+    return "";
+  }, [title, sourceFile]);
 
   const existingSlugSet = useMemo(() => {
     return new Set(existingNotes.map((note) => note.slug));
   }, [existingNotes]);
 
-  const noteAlreadyExists = existingSlugSet.has(slugPreview);
+  const noteAlreadyExists = slugPreview ? existingSlugSet.has(slugPreview) : false;
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    if (!title.trim()) {
-      setError("请先填写笔记标题。");
-      return;
-    }
 
     if (!sourceFile) {
       setError("请先上传原始资料文件。");
@@ -279,7 +303,7 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
       <form onSubmit={onSubmit} className="grid gap-4 md:grid-cols-2">
         <label className="space-y-2 md:col-span-2">
           <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/60 dark:text-white/60">
-            标题（必填）
+            标题（可选，留空自动生成）
           </span>
           <input
             type="text"
@@ -288,7 +312,9 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
             placeholder="例如：极限与连续性核心概念"
             className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[15px] text-black/85 outline-none transition placeholder:text-black/45 focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/86 dark:placeholder:text-white/45"
           />
-          <p className="font-text text-[12px] leading-[1.4] text-black/55 dark:text-white/58">将生成 slug：{slugPreview}</p>
+          <p className="font-text text-[12px] leading-[1.4] text-black/55 dark:text-white/58">
+            {slugPreview ? `预计 slug：${slugPreview}` : "留空时将自动生成标题、主题、标签和 slug。"}
+          </p>
         </label>
 
         <label className="space-y-2">

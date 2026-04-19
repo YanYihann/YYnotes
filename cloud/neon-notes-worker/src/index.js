@@ -3,6 +3,7 @@ import JSZip from "jszip";
 
 const MAX_FILE_SIZE_BYTES = 4 * 1024 * 1024;
 const MAX_SOURCE_CHARS = 35_000;
+const MAX_METADATA_SOURCE_CHARS = 8_000;
 const MAX_EXTRA_INSTRUCTION_CHARS = 1_500;
 const MAX_NOTE_CONTEXT_CHARS = 14_000;
 const MAX_SELECTION_CHARS = 2_200;
@@ -117,6 +118,12 @@ function clampText(value, max) {
   }
 
   return trimmed.length > max ? `${trimmed.slice(0, max)}\n...[truncated]` : trimmed;
+}
+
+function stripCodeFence(raw) {
+  const trimmed = String(raw ?? "").trim();
+  const fenced = trimmed.match(/^```(?:json|md|mdx|markdown)?\s*([\s\S]*?)\s*```$/i);
+  return fenced ? fenced[1].trim() : trimmed;
 }
 
 function compressBlankLines(text) {
@@ -278,6 +285,223 @@ function parseTags(value) {
   }
 
   return Array.from(set);
+}
+
+function deriveTitleFromFileName(fileName) {
+  const normalized = String(fileName ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  const dotIndex = normalized.lastIndexOf(".");
+  const base = dotIndex > 0 ? normalized.slice(0, dotIndex) : normalized;
+
+  return base
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+}
+
+function deriveTitleFromSource(sourceText) {
+  const lines = normalizeNewlines(sourceText)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    const normalized = line
+      .replace(/^#{1,6}\s+/, "")
+      .replace(/^[-*+]\s+/, "")
+      .replace(/^\d+\.\s+/, "")
+      .replace(/^>\s+/, "")
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/\$([^$]+)\$/g, "$1")
+      .trim();
+
+    if (normalized.length >= 2) {
+      return normalized.slice(0, 80);
+    }
+  }
+
+  return "";
+}
+
+function fallbackTagsFromMetadata(title, topic) {
+  const candidates = [topic, title]
+    .flatMap((value) => String(value ?? "").split(/[\/|,，、]+/))
+    .map((value) => value.trim().replace(/^#+/, ""))
+    .filter((value) => value.length >= 2 && value.length <= 24);
+
+  const dedup = new Set();
+  for (const candidate of candidates) {
+    dedup.add(candidate);
+    if (dedup.size >= 6) {
+      break;
+    }
+  }
+
+  return Array.from(dedup);
+}
+
+function parseMetadataResponse(raw) {
+  const cleaned = stripCodeFence(raw).trim();
+  if (!cleaned) {
+    return {};
+  }
+
+  let jsonText = cleaned;
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    jsonText = cleaned.slice(firstBrace, lastBrace + 1);
+  }
+
+  try {
+    const parsed = JSON.parse(jsonText);
+    const title = typeof parsed?.title === "string" ? parsed.title.trim() : "";
+    const topic = typeof parsed?.topic === "string" ? parsed.topic.trim() : "";
+    const tags = parseTags(parsed?.tags);
+
+    return {
+      title: title || undefined,
+      topic: topic || undefined,
+      tags: tags.length ? tags : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+async function inferMissingMetadata({ env, sourceText, fileName }) {
+  const openaiBaseUrl = normalizeApiBase(env.OPENAI_BASE_URL);
+  const responsesEndpoint = `${openaiBaseUrl}/responses`;
+  const chatCompletionsEndpoint = `${openaiBaseUrl}/chat/completions`;
+  const modelName = env.OPENAI_MODEL || "gpt-4.1-mini";
+
+  const systemPrompt = [
+    "You generate metadata for a study note.",
+    "Return JSON only, no markdown, no explanation.",
+    'Schema: {"title":"...","topic":"...","tags":["...","..."]}',
+    "Rules:",
+    "- title: concise and specific",
+    "- topic: higher-level category, concise",
+    "- tags: 3 to 6 items",
+  ].join("\n");
+
+  const userPrompt = [
+    "请根据以下资料推断笔记元信息，并严格按 JSON 返回。",
+    `文件名：${fileName || "unknown"}`,
+    "",
+    "资料内容：",
+    clampText(sourceText, MAX_METADATA_SOURCE_CHARS),
+  ].join("\n");
+
+  const input = [
+    {
+      role: "system",
+      content: [{ type: "input_text", text: systemPrompt }],
+    },
+    {
+      role: "user",
+      content: [{ type: "input_text", text: userPrompt }],
+    },
+  ];
+
+  const response = await fetch(responsesEndpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: modelName,
+      input,
+    }),
+  });
+
+  const json = await response.json().catch(() => null);
+  if (response.ok) {
+    const text = extractResponsesText(json);
+    if (text) {
+      const parsed = parseMetadataResponse(text);
+      if (parsed.title || parsed.topic || parsed.tags?.length) {
+        return parsed;
+      }
+    }
+  }
+
+  const chatResponse = await fetch(chatCompletionsEndpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: modelName,
+      messages: flattenInputMessages(input),
+    }),
+  });
+
+  const chatJson = await chatResponse.json().catch(() => null);
+  if (!chatResponse.ok) {
+    const responsesError = response.ok
+      ? "Responses API returned success but no readable text."
+      : `responses: HTTP ${response.status} - ${extractProviderMessage(json)}`;
+    const chatError = `chat_completions: HTTP ${chatResponse.status} - ${extractProviderMessage(chatJson)}`;
+    throw new Error(`AI provider returned an error. ${responsesError} | ${chatError}`);
+  }
+
+  const chatText = extractChatCompletionsText(chatJson);
+  if (!chatText) {
+    return {};
+  }
+
+  return parseMetadataResponse(chatText);
+}
+
+async function resolveGenerationMetadata({ env, titleInput, topicInput, tagsInput, sourceText, fileName }) {
+  let title = String(titleInput ?? "").trim();
+  let topic = String(topicInput ?? "").trim();
+  let tags = Array.isArray(tagsInput) ? tagsInput.slice(0, 12) : [];
+
+  if (!title || !topic || !tags.length) {
+    try {
+      const inferred = await inferMissingMetadata({
+        env,
+        sourceText,
+        fileName,
+      });
+
+      if (!title && inferred.title) {
+        title = inferred.title.trim();
+      }
+
+      if (!topic && inferred.topic) {
+        topic = inferred.topic.trim();
+      }
+
+      if (!tags.length && Array.isArray(inferred.tags) && inferred.tags.length) {
+        tags = inferred.tags.slice(0, 12);
+      }
+    } catch {
+      // Best effort only. Fall through to deterministic heuristics below.
+    }
+  }
+
+  if (!title) {
+    title = deriveTitleFromSource(sourceText) || deriveTitleFromFileName(fileName) || "未命名笔记";
+  }
+
+  if (!tags.length) {
+    tags = fallbackTagsFromMetadata(title, topic);
+  }
+
+  return {
+    title: title.trim(),
+    topic: topic.trim(),
+    tags: tags.slice(0, 12),
+  };
 }
 
 function splitTopic(topicInput, title) {
@@ -719,6 +943,7 @@ async function parseGeneratePayload(request) {
       topicInput: String(formData.get("topic") || "").trim(),
       tags: parseTags(formData.get("tags")),
       sourceText: sourceFile instanceof File ? await extractSourceFromFile(sourceFile) : String(formData.get("sourceText") || "").trim(),
+      fileName: sourceFile instanceof File ? sourceFile.name : String(formData.get("fileName") || "").trim(),
       extraInstruction: clampText(String(formData.get("extraInstruction") || ""), MAX_EXTRA_INSTRUCTION_CHARS),
       promptTemplate: String(formData.get("promptTemplate") || "").trim(),
       overwrite: asBoolean(formData.get("overwrite")),
@@ -735,6 +960,7 @@ async function parseGeneratePayload(request) {
     topicInput: String(body.topic || "").trim(),
     tags: parseTags(body.tags),
     sourceText: clampText(String(body.sourceText || ""), MAX_SOURCE_CHARS),
+    fileName: String(body.fileName || "").trim(),
     extraInstruction: clampText(String(body.extraInstruction || ""), MAX_EXTRA_INSTRUCTION_CHARS),
     promptTemplate: String(body.promptTemplate || "").trim(),
     overwrite: Boolean(body.overwrite),
@@ -858,11 +1084,7 @@ export default {
           return jsonResponse({ error: message }, 400, corsOrigin);
         }
 
-        const { title, topicInput, tags, sourceText, extraInstruction, promptTemplate, overwrite } = payload;
-
-        if (!title) {
-          return jsonResponse({ error: "title is required." }, 400, corsOrigin);
-        }
+        const { title: titleInput, topicInput, tags: tagsInput, sourceText, fileName, extraInstruction, promptTemplate, overwrite } = payload;
 
         if (!sourceText) {
           return jsonResponse({ error: "sourceText is required." }, 400, corsOrigin);
@@ -872,8 +1094,19 @@ export default {
           return jsonResponse({ error: "promptTemplate is required." }, 400, corsOrigin);
         }
 
+        const resolvedMeta = await resolveGenerationMetadata({
+          env,
+          titleInput,
+          topicInput,
+          tagsInput,
+          sourceText,
+          fileName,
+        });
+
+        const title = resolvedMeta.title;
+        const tags = resolvedMeta.tags;
         const slug = slugifyTitle(title);
-        const topicParts = splitTopic(topicInput, title);
+        const topicParts = splitTopic(resolvedMeta.topic, title);
 
         const existing = await sql`SELECT slug FROM notes WHERE slug = ${slug} LIMIT 1`;
         if (existing.length && !overwrite) {
@@ -883,7 +1116,7 @@ export default {
         const mdxContent = await generateMdx({
           env,
           title,
-          topic: topicInput,
+          topic: resolvedMeta.topic,
           tags,
           sourceText,
           extraInstruction,

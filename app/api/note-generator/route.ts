@@ -19,6 +19,7 @@ const NOTES_DIR_PATH = path.join(process.cwd(), "笔记");
 const MAX_FILE_SIZE_BYTES = 4 * 1024 * 1024;
 const MAX_SOURCE_CHARS = 35_000;
 const MAX_STYLE_CONTEXT_CHARS = 16_000;
+const MAX_METADATA_SOURCE_CHARS = 8_000;
 const MAX_EXTRA_INSTRUCTION_CHARS = 1_500;
 const SUPPORTED_TEXT_EXTENSIONS = new Set(["txt", "md", "markdown", "tex", "csv", "rst"]);
 
@@ -35,6 +36,12 @@ type ProviderAttempt = {
   status?: number;
   message?: string;
   provider: "responses" | "chat_completions";
+};
+
+type InferredMetadata = {
+  title: string;
+  topic: string;
+  tags: string[];
 };
 
 function toInputItem(role: AssistantRole, text: string): OpenAIInputItem {
@@ -329,6 +336,204 @@ function parseTagsInput(raw: string): string[] {
   return Array.from(dedup);
 }
 
+function parseTagsUnknown(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw
+      .map((item) => String(item ?? "").trim())
+      .filter(Boolean)
+      .slice(0, 12);
+  }
+
+  if (typeof raw === "string") {
+    return parseTagsInput(raw);
+  }
+
+  return [];
+}
+
+function deriveTitleFromFileName(fileName: string): string {
+  const normalized = fileName.trim();
+  if (!normalized) {
+    return "";
+  }
+
+  const dotIndex = normalized.lastIndexOf(".");
+  const base = dotIndex > 0 ? normalized.slice(0, dotIndex) : normalized;
+
+  return base
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+}
+
+function deriveTitleFromSource(source: string): string {
+  const lines = normalizeNewlines(source)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    const normalized = line
+      .replace(/^#{1,6}\s+/, "")
+      .replace(/^[-*+]\s+/, "")
+      .replace(/^\d+\.\s+/, "")
+      .replace(/^>\s+/, "")
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/\$([^$]+)\$/g, "$1")
+      .trim();
+
+    if (normalized.length >= 2) {
+      return normalized.slice(0, 80);
+    }
+  }
+
+  return "";
+}
+
+function fallbackTagsFromMetadata(title: string, topic: string): string[] {
+  const candidates = [topic, title]
+    .flatMap((value) => value.split(/[\/|,，、]+/))
+    .map((value) => value.trim().replace(/^#+/, ""))
+    .filter((value) => value.length >= 2 && value.length <= 24);
+
+  const dedup = new Set<string>();
+  for (const candidate of candidates) {
+    dedup.add(candidate);
+    if (dedup.size >= 6) {
+      break;
+    }
+  }
+
+  return Array.from(dedup);
+}
+
+function parseMetadataResponse(raw: string): Partial<InferredMetadata> {
+  const cleaned = stripCodeFence(raw).trim();
+  if (!cleaned) {
+    return {};
+  }
+
+  let jsonText = cleaned;
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    jsonText = cleaned.slice(firstBrace, lastBrace + 1);
+  }
+
+  try {
+    const parsed = JSON.parse(jsonText) as {
+      title?: unknown;
+      topic?: unknown;
+      tags?: unknown;
+    };
+
+    const title = typeof parsed.title === "string" ? parsed.title.trim() : "";
+    const topic = typeof parsed.topic === "string" ? parsed.topic.trim() : "";
+    const tags = parseTagsUnknown(parsed.tags);
+
+    return {
+      title: title || undefined,
+      topic: topic || undefined,
+      tags: tags.length ? tags : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+async function inferMissingMetadata(args: {
+  sourceText: string;
+  fileName: string;
+}): Promise<Partial<InferredMetadata>> {
+  const systemPrompt = [
+    "You generate metadata for a study note.",
+    "Return JSON only, no markdown, no explanation.",
+    'Schema: {"title":"...","topic":"...","tags":["...","..."]}',
+    "Rules:",
+    "- title: concise and specific, max 24 Chinese chars or 12 English words",
+    "- topic: higher-level category, concise",
+    "- tags: 3 to 6 items",
+  ].join("\n");
+
+  const userPrompt = [
+    "请根据以下文件内容推断笔记元信息，并严格按 JSON 返回。",
+    `文件名：${args.fileName || "unknown"}`,
+    "",
+    "资料内容：",
+    clampText(args.sourceText, MAX_METADATA_SOURCE_CHARS),
+  ].join("\n");
+
+  const input: OpenAIInputItem[] = [toInputItem("system", systemPrompt), toInputItem("user", userPrompt)];
+  const abortController = new AbortController();
+  const timeout = setTimeout(() => abortController.abort(), 25_000);
+
+  try {
+    const responsesAttempt = await attemptResponses(input, abortController.signal);
+    if (responsesAttempt.ok && responsesAttempt.content) {
+      return parseMetadataResponse(responsesAttempt.content);
+    }
+
+    const chatAttempt = await attemptChatCompletions(input, abortController.signal);
+    if (chatAttempt.ok && chatAttempt.content) {
+      return parseMetadataResponse(chatAttempt.content);
+    }
+
+    return {};
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function resolveGenerationMetadata(args: {
+  titleInput: string;
+  topicInput: string;
+  tagsInput: string[];
+  sourceText: string;
+  fileName: string;
+}): Promise<InferredMetadata> {
+  let title = args.titleInput.trim();
+  let topic = args.topicInput.trim();
+  let tags = args.tagsInput.slice(0, 12);
+
+  if (!title || !topic || !tags.length) {
+    try {
+      const inferred = await inferMissingMetadata({
+        sourceText: args.sourceText,
+        fileName: args.fileName,
+      });
+
+      if (!title && inferred.title) {
+        title = inferred.title.trim();
+      }
+
+      if (!topic && inferred.topic) {
+        topic = inferred.topic.trim();
+      }
+
+      if (!tags.length && inferred.tags?.length) {
+        tags = inferred.tags.slice(0, 12);
+      }
+    } catch {
+      // Best effort. Fall through to deterministic heuristics below.
+    }
+  }
+
+  if (!title) {
+    title = deriveTitleFromSource(args.sourceText) || deriveTitleFromFileName(args.fileName) || "未命名笔记";
+  }
+
+  if (!tags.length) {
+    tags = fallbackTagsFromMetadata(title, topic);
+  }
+
+  return {
+    title: title.trim(),
+    topic: topic.trim(),
+    tags: tags.slice(0, 12),
+  };
+}
+
 function extractFrontmatterText(data: Record<string, unknown>, key: string): string | undefined {
   const value = data[key];
   if (typeof value !== "string") {
@@ -538,13 +743,9 @@ export async function POST(request: Request) {
     }
 
     const formData = await request.formData();
-    const title = String(formData.get("title") ?? "").trim();
+    const titleInput = String(formData.get("title") ?? "").trim();
     const topicInput = String(formData.get("topic") ?? "").trim();
     const tagsInput = String(formData.get("tags") ?? "").trim();
-
-    if (!title) {
-      return NextResponse.json({ error: "请先填写笔记标题。" }, { status: 400 });
-    }
 
     const sourceFile = formData.get("sourceFile");
     if (!(sourceFile instanceof File)) {
@@ -562,13 +763,26 @@ export async function POST(request: Request) {
     const overwrite = asBoolean(formData.get("overwrite"));
     const extraInstruction = String(formData.get("extraInstruction") ?? "");
 
+    const extractedSource = await extractSourceText(sourceFile);
+    if (!extractedSource || extractedSource.length < 40) {
+      return NextResponse.json({ error: "文档可解析内容过少，无法生成有效笔记。" }, { status: 400 });
+    }
+
+    const resolvedMeta = await resolveGenerationMetadata({
+      titleInput,
+      topicInput,
+      tagsInput: parseTagsInput(tagsInput),
+      sourceText: extractedSource,
+      fileName: sourceFile.name,
+    });
+
+    const title = resolvedMeta.title;
     const slug = slugifyTitle(title);
-    const tags = parseTagsInput(tagsInput);
-    const topicParts = splitTopic(topicInput, title);
+    const tags = resolvedMeta.tags;
+    const topicParts = splitTopic(resolvedMeta.topic, title);
 
     const existingNotes = await getWeekNotes();
     const existedBySlug = existingNotes.find((note) => note.slug === slug) ?? null;
-
     const targetFilePath = existedBySlug?.filePath ?? path.join(NOTES_DIR_PATH, `${slug}.mdx`);
 
     let fileExists = false;
@@ -588,11 +802,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const extractedSource = await extractSourceText(sourceFile);
-    if (!extractedSource || extractedSource.length < 40) {
-      return NextResponse.json({ error: "文档可解析内容过少，无法生成有效笔记。" }, { status: 400 });
-    }
-
     const promptTemplate = await loadPromptTemplate();
     const styleContext = buildStyleContext(existingNotes);
 
@@ -602,7 +811,7 @@ export async function POST(request: Request) {
         "user",
         buildUserPrompt({
           title,
-          topic: topicInput,
+          topic: resolvedMeta.topic,
           tags,
           extractedSource,
           styleContext,
