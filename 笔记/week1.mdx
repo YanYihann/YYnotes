@@ -1,0 +1,181 @@
+---
+title: Week 1 - Solving Single Nonlinear Equations
+description: Bilingual notes on bisection and Newton tangent methods.
+---
+
+# Week 1: Solving Single Nonlinear Equations
+# 第1周：单变量非线性方程求解
+
+These notes are polished from raw lecture text and formatted for direct MDX website use.
+本笔记由原始课堂文本整理而成，并已格式化为可直接用于网站的 MDX 内容。
+
+## Learning Objectives
+## 学习目标
+
+Understand what it means to solve a nonlinear equation $f(x)=0$ numerically.
+理解用数值方法求解非线性方程 $f(x)=0$ 的基本含义。
+
+Apply bisection when a sign-changing interval is available.
+在已知变号区间时应用二分法。
+
+Derive and use Newton's tangent method for fast local convergence.
+推导并使用牛顿切线法实现局部快速收敛。
+
+Compare robustness and convergence speed of bisection and Newton methods.
+比较二分法与牛顿法在稳定性和收敛速度上的差异。
+
+## Key Concepts
+## 关键概念
+
+A root is a value $x^*$ such that $f(x^*)=0$.
+根是满足 $f(x^*)=0$ 的数值 $x^*$。
+
+Bisection requires continuity and a sign change $f(a)f(b)<0$.
+二分法要求函数连续且满足端点变号 $f(a)f(b)<0$。
+
+Newton iteration uses derivative information: $x_{n+1}=x_n-\dfrac{f(x_n)}{f'(x_n)}$.
+牛顿迭代使用导数信息：$x_{n+1}=x_n-\dfrac{f(x_n)}{f'(x_n)}$。
+
+Notation standardization: iterate $x_n$, true root $\alpha$, error $e_n=x_n-\alpha$.
+记号统一：迭代值记为 $x_n$，真根记为 $\alpha$，误差记为 $e_n=x_n-\alpha$。
+
+## Definitions and Formulas
+## 定义与公式
+
+> **Definition Block: Intermediate Value Theorem**
+> **定义模块：介值定理**
+>
+> If $f\in C[a,b]$ and $f(a)f(b)<0$, then there exists $\alpha\in(a,b)$ with $f(\alpha)=0$.
+> 若 $f\in C[a,b]$ 且 $f(a)f(b)<0$，则存在 $\alpha\in(a,b)$ 使得 $f(\alpha)=0$。
+
+Bisection midpoint: $m_n=\dfrac{a_n+b_n}{2}$.
+二分中点：$m_n=\dfrac{a_n+b_n}{2}$。
+
+Bisection error bound: $|m_n-\alpha|\le \dfrac{b_0-a_0}{2^{n+1}}$.
+二分法误差界：$|m_n-\alpha|\le \dfrac{b_0-a_0}{2^{n+1}}$。
+
+Newton update for square roots: if $f(x)=x^2-c$, then $x_{n+1}=\dfrac{1}{2}\left(x_n+\dfrac{c}{x_n}\right)$.
+平方根问题的牛顿更新：若 $f(x)=x^2-c$，则 $x_{n+1}=\dfrac{1}{2}\left(x_n+\dfrac{c}{x_n}\right)$。
+
+Stopping criteria: $|x_{n+1}-x_n|<\varepsilon$ or $|f(x_n)|<\varepsilon$.
+停止准则：$|x_{n+1}-x_n|<\varepsilon$ 或 $|f(x_n)|<\varepsilon$。
+
+## Derivations
+## 推导
+
+### Newton Formula from Tangent Linearization
+### 由切线线性化推导牛顿公式
+
+Linearize $f$ at $x_n$: $f(x)\approx f(x_n)+f'(x_n)(x-x_n)$.
+在 $x_n$ 处线性化：$f(x)\approx f(x_n)+f'(x_n)(x-x_n)$。
+
+Set approximation to zero and solve for the next iterate.
+令线性近似等于零并求下一次迭代值。
+
+Thus $x_{n+1}=x_n-\dfrac{f(x_n)}{f'(x_n)}$.
+得到 $x_{n+1}=x_n-\dfrac{f(x_n)}{f'(x_n)}$。
+
+### Bisection Contraction
+### 二分法区间收缩
+
+Each iteration halves interval length: $|I_n|=\dfrac{|I_0|}{2^n}$.
+每次迭代将区间长度减半：$|I_n|=\dfrac{|I_0|}{2^n}$。
+
+Midpoint error is at most half interval length.
+中点误差不超过区间长度的一半。
+
+Therefore bisection is linearly convergent and globally reliable under assumptions.
+因此在满足条件时，二分法线性收敛且全局可靠。
+
+## Worked Examples
+## 例题精讲
+
+> **Example Block 1: Bisection for $x^3-x+1=0$**
+> **例题模块1：二分法求解 $x^3-x+1=0$**
+
+From the lecture table, $f(-2)=-5$ and $f(-1)=1$, so a root lies in $[-2,-1]$.
+由课堂表可得 $f(-2)=-5$、$f(-1)=1$，因此根位于 $[-2,-1]$。
+
+First three midpoints are $-1.5$, $-1.25$, and $-1.375$ with alternating signs.
+前三个中点为 $-1.5$、$-1.25$、$-1.375$，函数值符号交替。
+
+This brackets a root near $\alpha\approx -1.3247$.
+由此可将根定位在 $\alpha\approx -1.3247$ 附近。
+
+> **Example Block 2: Newton for $\sqrt{2}$**
+> **例题模块2：牛顿法求 $\sqrt{2}$**
+
+Set $f(x)=x^2-2$ and choose $x_0=1.5$.
+取 $f(x)=x^2-2$，初值 $x_0=1.5$。
+
+Iterates: $x_1=1.4166666667$, $x_2=1.4142156863$, $x_3=1.4142135624$.
+迭代结果：$x_1=1.4166666667$、$x_2=1.4142156863$、$x_3=1.4142135624$。
+
+The method converges rapidly to $\sqrt{2}$.
+该方法快速收敛到 $\sqrt{2}$。
+
+> **Example Block 3: Newton for $x^3-x+2=0$**
+> **例题模块3：牛顿法求解 $x^3-x+2=0$**
+
+Choose $x_0=-1$ from the sign test with $f(-1)=2$, $f(-2)=-4$.
+由变号检验 $f(-1)=2$、$f(-2)=-4$，取初值 $x_0=-1$。
+
+With $f'(x)=3x^2-1$, we get $x_1=-2$ and $x_2=-1.6363636364$.
+由 $f'(x)=3x^2-1$，得到 $x_1=-2$、$x_2=-1.6363636364$。
+
+## Error Analysis
+## 误差分析
+
+Bisection has guaranteed linear convergence: roughly $e_{n+1}\approx \dfrac{1}{2}e_n$.
+二分法具有有保证的线性收敛：近似满足 $e_{n+1}\approx \dfrac{1}{2}e_n$。
+
+Newton has local quadratic convergence near simple roots: $e_{n+1}\approx C e_n^2$.
+牛顿法在简单根附近具有局部二次收敛：$e_{n+1}\approx C e_n^2$。
+
+Newton may fail if $f'(x_n)$ is close to zero or if the initial guess is poor.
+当 $f'(x_n)$ 接近零或初值较差时，牛顿法可能失败。
+
+## Common Mistakes
+## 常见错误
+
+> **Warning Block**
+> **警示模块**
+
+Applying bisection without checking endpoint sign change.
+未检查端点变号就直接使用二分法。
+
+Using exact equality `f(x)==0` as stopping logic in floating-point arithmetic.
+在浮点计算中用 `f(x)==0` 作为停止条件。
+
+Using wrong derivative, such as miswriting $f'(x)=3x^2-1$.
+导数写错，例如把 $f'(x)=3x^2-1$ 写错。
+
+Stopping too early without tolerance-based criteria.
+没有基于容差的准则而过早停止。
+
+## Summary
+## 总结
+
+> **Summary Block**
+> **总结模块**
+
+Week 1 established the core root-finding framework: bracketing methods and tangent-based methods.
+第1周建立了求根的核心框架：区间法与切线法。
+
+Bisection is robust; Newton is fast when derivative information and good initial guesses are available.
+二分法稳健；在导数可用且初值较好时牛顿法更快。
+
+Both methods are foundational for later interpolation, differentiation, and integration algorithms.
+这两类方法为后续插值、数值微分与数值积分算法奠定基础。
+
+## Practice Questions
+## 练习题
+
+Use bisection on $x^3-x+1=0$ over $[-2,-1]$ for 8 steps and report the final error bound.
+在 $[-2,-1]$ 上对 $x^3-x+1=0$ 进行 8 步二分，并给出最终误差上界。
+
+Apply Newton's method to compute $\sqrt{3}$ from $x_0=1.8$ until $|x_{n+1}-x_n|<10^{-10}$.
+以 $x_0=1.8$ 为初值，用牛顿法求 $\sqrt{3}$，直到 $|x_{n+1}-x_n|<10^{-10}$。
+
+Explain when bisection is preferred over Newton in practical computation.
+说明在实际计算中何时应优先选择二分法而不是牛顿法。

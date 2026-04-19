@@ -14,6 +14,8 @@ export async function generateStaticParams() {
   return notes.map((note) => ({ slug: note.slug }));
 }
 
+export const dynamicParams = false;
+
 export async function generateMetadata({ params }: WeekPageProps): Promise<Metadata> {
   const { slug } = await params;
   const note = await getWeekBySlug(slug);
