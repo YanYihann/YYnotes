@@ -184,6 +184,25 @@ function Paragraph(props: ComponentPropsWithoutRef<"p">) {
   );
 }
 
+function H1(props: ComponentPropsWithoutRef<"h1">) {
+  const lineClass = getLineClass(props.children);
+  const children = lineClass === "line-en" ? props.children : highlightTerms(props.children, "h1");
+  const rest = { ...props };
+  delete (rest as { children?: ReactNode }).children;
+  return (
+    <h1
+      {...rest}
+      className={cn(
+        "mt-8 scroll-mt-28 font-display text-[clamp(2rem,3.8vw,3.5rem)] font-semibold leading-[1.07] tracking-tightDisplay text-[#1d1d1f] dark:text-white",
+        lineClass,
+        props.className,
+      )}
+    >
+      {children}
+    </h1>
+  );
+}
+
 function H2(props: ComponentPropsWithoutRef<"h2">) {
   const lineClass = getLineClass(props.children);
   const children = lineClass === "line-en" ? props.children : highlightTerms(props.children, "h2");
@@ -336,6 +355,7 @@ function TD(props: ComponentPropsWithoutRef<"td">) {
 }
 
 const components = {
+  h1: H1,
   p: Paragraph,
   h2: H2,
   h3: H3,

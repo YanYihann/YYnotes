@@ -10,6 +10,7 @@ import remarkMath from "remark-math";
 import allComponents from "@/components/mdx/mdx-components";
 
 const markdownComponents = {
+  h1: allComponents.h1,
   p: allComponents.p,
   h2: allComponents.h2,
   h3: allComponents.h3,
