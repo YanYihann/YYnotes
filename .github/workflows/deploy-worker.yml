@@ -14,7 +14,6 @@ permissions:
 
 jobs:
   deploy:
-    if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -31,17 +30,23 @@ jobs:
         working-directory: cloud/neon-notes-worker
         run: npm ci
 
+      - name: Check Cloudflare secrets
+        id: cf-secrets
+        run: |
+          if [ -z "${CLOUDFLARE_API_TOKEN}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID}" ]; then
+            echo "missing=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Worker auto deploy skipped. Please set repository secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID."
+          else
+            echo "missing=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       - name: Deploy to Cloudflare Workers
+        if: steps.cf-secrets.outputs.missing == 'false'
         working-directory: cloud/neon-notes-worker
         run: npx wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
-  secrets-missing:
-    if: ${{ !(secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '') }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Skip worker deploy when secrets are missing
-        run: |
-          echo "::warning::Worker auto deploy skipped. Please set repository secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID."
