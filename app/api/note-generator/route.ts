@@ -351,6 +351,14 @@ function parseTagsUnknown(raw: unknown): string[] {
   return [];
 }
 
+function hasChinese(value: string): boolean {
+  return /[\u4e00-\u9fff]/.test(value);
+}
+
+function extractChinesePhrases(value: string): string[] {
+  return (value.match(/[\u4e00-\u9fff]{2,}/g) ?? []).map((item) => item.trim()).filter(Boolean);
+}
+
 function deriveTitleFromFileName(fileName: string): string {
   const normalized = fileName.trim();
   if (!normalized) {
@@ -383,6 +391,23 @@ function deriveTitleFromSource(source: string): string {
       .replace(/\$([^$]+)\$/g, "$1")
       .trim();
 
+    if (normalized.length < 2 || !hasChinese(normalized)) {
+      continue;
+    }
+
+    return normalized.slice(0, 80);
+  }
+
+  for (const line of lines) {
+    const normalized = line
+      .replace(/^#{1,6}\s+/, "")
+      .replace(/^[-*+]\s+/, "")
+      .replace(/^\d+\.\s+/, "")
+      .replace(/^>\s+/, "")
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/\$([^$]+)\$/g, "$1")
+      .trim();
+
     if (normalized.length >= 2) {
       return normalized.slice(0, 80);
     }
@@ -392,10 +417,13 @@ function deriveTitleFromSource(source: string): string {
 }
 
 function fallbackTagsFromMetadata(title: string, topic: string): string[] {
-  const candidates = [topic, title]
-    .flatMap((value) => value.split(/[\/|,，、]+/))
+  const candidates = [
+    ...extractChinesePhrases(topic),
+    ...extractChinesePhrases(title),
+    ...[topic, title].flatMap((value) => value.split(/[\/|,，、]+/)),
+  ]
     .map((value) => value.trim().replace(/^#+/, ""))
-    .filter((value) => value.length >= 2 && value.length <= 24);
+    .filter((value) => value.length >= 2 && value.length <= 24 && hasChinese(value));
 
   const dedup = new Set<string>();
   for (const candidate of candidates) {
@@ -442,18 +470,47 @@ function parseMetadataResponse(raw: string): Partial<InferredMetadata> {
   }
 }
 
+function deriveTopicFromSource(source: string): string {
+  const lines = normalizeNewlines(source)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    const normalized = line
+      .replace(/^#{1,6}\s+/, "")
+      .replace(/^[-*+]\s+/, "")
+      .replace(/^\d+\.\s+/, "")
+      .replace(/^>\s+/, "")
+      .trim();
+
+    if (!normalized) {
+      continue;
+    }
+
+    const phrases = extractChinesePhrases(normalized);
+    const candidate = phrases.find((item) => item.length >= 2 && item.length <= 16);
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  return "";
+}
+
 async function inferMissingMetadata(args: {
   sourceText: string;
   fileName: string;
 }): Promise<Partial<InferredMetadata>> {
   const systemPrompt = [
-    "You generate metadata for a study note.",
-    "Return JSON only, no markdown, no explanation.",
+    "你是学习笔记元信息生成器。",
+    "必须返回 JSON，不要输出 markdown 和解释文字。",
     'Schema: {"title":"...","topic":"...","tags":["...","..."]}',
-    "Rules:",
-    "- title: concise and specific, max 24 Chinese chars or 12 English words",
-    "- topic: higher-level category, concise",
-    "- tags: 3 to 6 items",
+    "规则：",
+    "- title/topic/tags 必须是中文",
+    "- title 要具体、简洁，长度不超过 24 字",
+    "- topic 是更高层级分类，长度不超过 16 字",
+    "- tags 返回 3 到 6 个中文标签",
   ].join("\n");
 
   const userPrompt = [
@@ -523,8 +580,25 @@ async function resolveGenerationMetadata(args: {
     title = deriveTitleFromSource(args.sourceText) || deriveTitleFromFileName(args.fileName) || "未命名笔记";
   }
 
+  if (!hasChinese(title)) {
+    title = deriveTitleFromSource(args.sourceText) || "未命名笔记";
+  }
+
+  if (!topic) {
+    topic = deriveTopicFromSource(args.sourceText) || "未分类";
+  }
+
+  if (!hasChinese(topic)) {
+    topic = deriveTopicFromSource(args.sourceText) || "未分类";
+  }
+
+  tags = tags.filter((tag) => hasChinese(tag));
   if (!tags.length) {
     tags = fallbackTagsFromMetadata(title, topic);
+  }
+
+  if (!tags.length) {
+    tags = ["学习笔记", "知识整理"];
   }
 
   return {
@@ -704,6 +778,37 @@ function buildFrontmatter(args: {
   };
 }
 
+function normalizeMathDelimiters(text: string): string {
+  let output = text;
+
+  output = output.replace(/```(?:math|latex|tex)\s*\n([\s\S]*?)\n```/gi, (_match, body: string) => {
+    const normalized = body.trim();
+    if (!normalized) {
+      return "";
+    }
+    return `$$\n${normalized}\n$$`;
+  });
+
+  output = output.replace(/\\\[\s*([\s\S]*?)\s*\\\]/g, (_match, body: string) => {
+    const normalized = body.trim();
+    if (!normalized) {
+      return "";
+    }
+    return `$$\n${normalized}\n$$`;
+  });
+
+  output = output.replace(/\\\(\s*([\s\S]*?)\s*\\\)/g, (_match, body: string) => {
+    const normalized = body.trim();
+    if (!normalized) {
+      return "";
+    }
+    return `$${normalized}$`;
+  });
+
+  output = output.replace(/\$\$[\s\S]*?\$\$|\$[^$\n]+\$/g, (segment) => segment.replace(/\\\\([A-Za-z])/g, "\\$1"));
+  return output;
+}
+
 function normalizeGeneratedMdx(raw: string, args: {
   title: string;
   slug: string;
@@ -714,7 +819,7 @@ function normalizeGeneratedMdx(raw: string, args: {
 }): string {
   const cleaned = normalizeNewlines(stripCodeFence(raw));
   const parsed = matter(cleaned);
-  const content = parsed.content.trim();
+  const content = normalizeMathDelimiters(parsed.content.trim());
 
   if (!content) {
     throw new Error("AI 返回内容为空，无法生成 MDX。");

@@ -290,6 +290,42 @@ function splitMixedQuoteLine(line: string): string[] | null {
   return null;
 }
 
+function normalizeMathDelimiters(source: string): string {
+  let output = source;
+
+  // Convert fenced math blocks to KaTeX-friendly display math blocks.
+  output = output.replace(/```(?:math|latex|tex)\s*\n([\s\S]*?)\n```/gi, (_match, body: string) => {
+    const normalized = body.trim();
+    if (!normalized) {
+      return "";
+    }
+    return `$$\n${normalized}\n$$`;
+  });
+
+  // Convert \[...\] display math to $$...$$.
+  output = output.replace(/\\\[\s*([\s\S]*?)\s*\\\]/g, (_match, body: string) => {
+    const normalized = body.trim();
+    if (!normalized) {
+      return "";
+    }
+    return `$$\n${normalized}\n$$`;
+  });
+
+  // Convert \(...\) inline math to $...$.
+  output = output.replace(/\\\(\s*([\s\S]*?)\s*\\\)/g, (_match, body: string) => {
+    const normalized = body.trim();
+    if (!normalized) {
+      return "";
+    }
+    return `$${normalized}$`;
+  });
+
+  // Unescape over-escaped LaTeX commands inside math expressions.
+  output = output.replace(/\$\$[\s\S]*?\$\$|\$[^$\n]+\$/g, (segment) => segment.replace(/\\\\([A-Za-z])/g, "\\$1"));
+
+  return output;
+}
+
 function pushParagraphLine(output: string[], line: string) {
   output.push(line);
   if (isStandalonePlainLine(line)) {
@@ -512,7 +548,7 @@ function applySectionLists(markdown: string): string {
 }
 
 export function prepareNoteMarkdown(source: string): string {
-  return applySectionLists(preprocessBilingualMarkdown(source));
+  return applySectionLists(preprocessBilingualMarkdown(normalizeMathDelimiters(source)));
 }
 
 export async function renderWeekContent(note: WeekNote) {
