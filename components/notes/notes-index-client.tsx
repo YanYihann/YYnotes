@@ -28,6 +28,19 @@ type NotesApiResponse = {
   error?: string;
 };
 
+type NoteUpdateResponse = {
+  success?: boolean;
+  note?: {
+    slug?: string;
+    zhTitle?: string;
+    enTitle?: string;
+    weekLabelZh?: string;
+    weekLabelEn?: string;
+    topicZh?: string;
+  };
+  error?: string;
+};
+
 type CloudFolderRecord = {
   id?: unknown;
   name?: unknown;
@@ -78,6 +91,10 @@ function sortFolders(rows: FolderItem[]): FolderItem[] {
 
 function sanitizeFolderName(raw: string): string {
   return raw.replace(/\s+/g, " ").trim();
+}
+
+function sanitizeEditableText(raw: string, maxLength: number): string {
+  return raw.replace(/\s+/g, " ").trim().slice(0, maxLength);
 }
 
 function buildFolderStorageKey(params: { cloudMode: boolean; userId?: number }): string {
@@ -218,6 +235,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
   const [topicFilter, setTopicFilter] = useState("");
   const [folderFilter, setFolderFilter] = useState<FolderFilterValue>("");
   const [deletingSlug, setDeletingSlug] = useState("");
+  const [updatingSlug, setUpdatingSlug] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [assigningSlug, setAssigningSlug] = useState("");
   const [deletingFolderId, setDeletingFolderId] = useState("");
@@ -655,8 +673,103 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     setDraggingSlug("");
   }
 
+  async function handleEditNote(note: NoteListItem) {
+    if (deletingSlug || updatingSlug) {
+      return;
+    }
+
+    const titleInput = window.prompt("请输入新的笔记标题", note.zhTitle);
+    if (titleInput === null) {
+      return;
+    }
+
+    const nextTitle = sanitizeEditableText(titleInput, 80);
+    if (!nextTitle) {
+      setError("标题不能为空。");
+      return;
+    }
+
+    const topicInput = window.prompt("请输入新的主题名称", note.topicZh || note.weekLabelZh);
+    if (topicInput === null) {
+      return;
+    }
+
+    const nextTopic = sanitizeEditableText(topicInput, 64);
+    if (!nextTopic) {
+      setError("主题不能为空。");
+      return;
+    }
+
+    setUpdatingSlug(note.slug);
+    setError("");
+
+    try {
+      let response: Response;
+
+      if (IS_CLOUD_MODE) {
+        if (!authToken) {
+          throw new Error("登录状态已失效，请重新登录。");
+        }
+        const apiBase = normalizeApiBase(CLOUD_API_BASE);
+        response = await fetch(`${apiBase}/notes/${encodeURIComponent(note.slug)}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+          },
+          body: JSON.stringify({
+            title: nextTitle,
+            topic: nextTopic,
+          }),
+        });
+      } else {
+        response = await fetch(`/api/notes?slug=${encodeURIComponent(note.slug)}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            title: nextTitle,
+            topic: nextTopic,
+          }),
+        });
+      }
+
+      const json = (await response.json().catch(() => null)) as NoteUpdateResponse | null;
+      if (!response.ok || !json?.success) {
+        throw new Error(json?.error || "保存笔记信息失败。");
+      }
+
+      const resolvedTitle = sanitizeEditableText(String(json.note?.zhTitle ?? nextTitle), 80) || nextTitle;
+      const resolvedEnTitle = sanitizeEditableText(String(json.note?.enTitle ?? resolvedTitle), 80) || resolvedTitle;
+      const resolvedTopicZh = sanitizeEditableText(String(json.note?.topicZh ?? json.note?.weekLabelZh ?? nextTopic), 64) || nextTopic;
+      const resolvedWeekLabelZh = sanitizeEditableText(String(json.note?.weekLabelZh ?? resolvedTopicZh), 64) || resolvedTopicZh;
+      const resolvedWeekLabelEn =
+        sanitizeEditableText(String(json.note?.weekLabelEn ?? note.weekLabelEn ?? resolvedWeekLabelZh), 64) || resolvedWeekLabelZh;
+
+      setNotes((previous) =>
+        previous.map((item) =>
+          item.slug === note.slug
+            ? {
+                ...item,
+                zhTitle: resolvedTitle,
+                enTitle: resolvedEnTitle,
+                topicZh: resolvedTopicZh,
+                weekLabelZh: resolvedWeekLabelZh,
+                weekLabelEn: resolvedWeekLabelEn,
+              }
+            : item,
+        ),
+      );
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "保存笔记信息失败。");
+    } finally {
+      setUpdatingSlug("");
+    }
+  }
+
   async function handleDeleteNote(note: NoteListItem) {
-    if (deletingSlug) {
+    if (deletingSlug || updatingSlug) {
       return;
     }
 
@@ -916,7 +1029,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                       <div className="flex flex-wrap items-center gap-2">
                         <select
                           value={noteFolderId}
-                          disabled={assigningSlug === note.slug}
+                          disabled={assigningSlug === note.slug || updatingSlug === note.slug}
                           onChange={(event) => void assignFolder(note.slug, event.target.value || null)}
                           onClick={(event) => event.stopPropagation()}
                           className="max-w-[180px] rounded-capsule border border-black/20 bg-white px-3 py-1.5 font-text text-[12px] text-black/78 outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/22 dark:bg-[#202022] dark:text-white/80"
@@ -924,13 +1037,21 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                           <option value="">未归类</option>
                           {folders.map((folder) => (
                             <option key={folder.id} value={folder.id}>
-                              {folder.name}
-                            </option>
-                          ))}
-                        </select>
+                            {folder.name}
+                          </option>
+                        ))}
+                      </select>
                         <button
                           type="button"
-                          disabled={deletingSlug === note.slug}
+                          disabled={updatingSlug === note.slug || deletingSlug === note.slug}
+                          onClick={() => void handleEditNote(note)}
+                          className="inline-flex items-center rounded-capsule border border-[#0066cc] px-3 py-1.5 font-text text-[13px] tracking-tightCaption text-[#0066cc] transition hover:bg-[#0066cc]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-[#2997ff] dark:text-[#2997ff] dark:hover:bg-[#2997ff]/[0.14]"
+                        >
+                          {updatingSlug === note.slug ? "保存中..." : "编辑标题/主题"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={deletingSlug === note.slug || updatingSlug === note.slug}
                           onClick={() => handleDeleteNote(note)}
                           className="inline-flex items-center rounded-capsule border border-[#b4232f]/35 px-3 py-1.5 font-text text-[13px] tracking-tightCaption text-[#8f1d27] transition hover:bg-[#b4232f]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b4232f] dark:border-[#ff6a77]/40 dark:text-[#ffc4cb] dark:hover:bg-[#ff6a77]/[0.12]"
                         >
