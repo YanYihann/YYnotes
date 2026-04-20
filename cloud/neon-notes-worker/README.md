@@ -4,8 +4,9 @@ This worker is the backend for GitHub Pages note generation and storage.
 
 ## Features
 
-- `POST /auth/register`: create account and return auth token
-- `POST /auth/login`: login and return auth token
+- `POST /auth/register`: register with email/password and return auth token
+- `POST /auth/login`: login with email/password and return auth token
+- `POST /auth/google`: login/register with Google ID token and return auth token
 - `GET /auth/me`: verify token and return current user
 - `POST /notes/generate`: generate MDX via OpenAI and save to Neon
 - `GET /notes`: list latest notes (current user only)
@@ -30,12 +31,14 @@ npm install
 wrangler secret put DATABASE_URL
 wrangler secret put OPENAI_API_KEY
 wrangler secret put AUTH_SECRET
+wrangler secret put GOOGLE_CLIENT_ID
 ```
 
 Edit `wrangler.toml` if needed:
 
 - `ALLOWED_ORIGIN`: set your Pages origin, e.g. `https://yanyihann.github.io`
 - `OPENAI_MODEL`: defaults to `gpt-4.1-mini`
+- `GOOGLE_CLIENT_ID`: Google OAuth Web Client ID for `POST /auth/google`
 
 All `/notes*` and `/assistant` endpoints require:
 
@@ -58,6 +61,8 @@ In GitHub repo settings:
 - `Settings` -> `Secrets and variables` -> `Actions` -> `Variables`
 - Add variable `NEXT_PUBLIC_NOTES_API_BASE`
 - Value: your worker URL (without trailing slash)
+- Add variable `NEXT_PUBLIC_GOOGLE_CLIENT_ID`
+- Value: same Google OAuth Web Client ID used in worker `GOOGLE_CLIENT_ID`
 
 Re-run Pages workflow. Front-end generator will switch to cloud mode automatically.
 

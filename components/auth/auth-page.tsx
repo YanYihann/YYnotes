@@ -6,6 +6,72 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
 import { SignInPage, type SignInMode, type Testimonial } from "@/components/ui/sign-in";
 
+type GoogleCredentialResponse = {
+  credential?: string;
+};
+
+type GooglePromptMomentNotification = {
+  isNotDisplayed?: () => boolean;
+  isSkippedMoment?: () => boolean;
+  isDismissedMoment?: () => boolean;
+};
+
+declare global {
+  interface Window {
+    google?: {
+      accounts?: {
+        id?: {
+          initialize: (config: { client_id: string; callback: (response: GoogleCredentialResponse) => void }) => void;
+          prompt: (listener?: (notification: GooglePromptMomentNotification) => void) => void;
+        };
+      };
+    };
+  }
+}
+
+const GOOGLE_SCRIPT_ID = "google-identity-services";
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+let googleIdentityScriptPromise: Promise<void> | null = null;
+
+function loadGoogleIdentityScript(): Promise<void> {
+  if (typeof window === "undefined") {
+    return Promise.reject(new Error("Google 登录仅支持浏览器环境。"));
+  }
+
+  if (window.google?.accounts?.id) {
+    return Promise.resolve();
+  }
+
+  if (googleIdentityScriptPromise) {
+    return googleIdentityScriptPromise;
+  }
+
+  googleIdentityScriptPromise = new Promise<void>((resolve, reject) => {
+    const existing = document.getElementById(GOOGLE_SCRIPT_ID) as HTMLScriptElement | null;
+    if (existing) {
+      if (window.google?.accounts?.id) {
+        resolve();
+        return;
+      }
+
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("Google 登录脚本加载失败。")), { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = GOOGLE_SCRIPT_ID;
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Google 登录脚本加载失败。"));
+    document.head.appendChild(script);
+  });
+
+  return googleIdentityScriptPromise;
+}
+
 function normalizeRedirect(input: string): string {
   const raw = input.trim();
   if (!raw.startsWith("/")) {
@@ -19,6 +85,14 @@ function normalizeRedirect(input: string): string {
 
 function normalizeMode(input: string | null): SignInMode {
   return input === "register" ? "register" : "login";
+}
+
+function normalizeEmail(value: unknown): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function isValidEmail(value: string): boolean {
+  return EMAIL_REGEX.test(value);
 }
 
 const authTestimonials: Testimonial[] = [
@@ -45,11 +119,13 @@ const authTestimonials: Testimonial[] = [
 export function AuthPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { session, isReady, login, register, logout } = useAuth();
+  const { session, isReady, login, register, loginWithGoogle, logout } = useAuth();
   const [mode, setMode] = useState<SignInMode>(() => normalizeMode(searchParams.get("mode")));
   const [submitting, setSubmitting] = useState(false);
+  const [googleSubmitting, setGoogleSubmitting] = useState(false);
   const [error, setError] = useState("");
 
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim() ?? "";
   const redirectTo = useMemo(() => normalizeRedirect(searchParams.get("redirect") || "/notes"), [searchParams]);
 
   useEffect(() => {
@@ -57,20 +133,27 @@ export function AuthPage() {
     setMode(incomingMode);
   }, [searchParams]);
 
+  useEffect(() => {
+    if (!googleClientId) {
+      return;
+    }
+    void loadGoogleIdentityScript().catch(() => null);
+  }, [googleClientId]);
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (submitting || !isReady) {
+    if (submitting || googleSubmitting || !isReady) {
       return;
     }
 
     const formData = new FormData(event.currentTarget);
-    const username = String(formData.get("username") ?? "").trim().toLowerCase();
+    const email = normalizeEmail(formData.get("email"));
     const displayName = String(formData.get("displayName") ?? "").trim();
     const password = String(formData.get("password") ?? "");
     const confirmPassword = String(formData.get("confirmPassword") ?? "");
 
-    if (!username) {
-      setError("请输入用户名。");
+    if (!isValidEmail(email)) {
+      setError("请输入有效邮箱地址。");
       return;
     }
     if (password.length < 8) {
@@ -87,13 +170,13 @@ export function AuthPage() {
     try {
       if (mode === "register") {
         await register({
-          username,
+          email,
           displayName,
           password,
         });
       } else {
         await login({
-          username,
+          email,
           password,
         });
       }
@@ -104,6 +187,78 @@ export function AuthPage() {
       setError(submitError instanceof Error ? submitError.message : "认证失败，请稍后重试。");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleGoogleSignIn() {
+    if (googleSubmitting || submitting || !isReady) {
+      return;
+    }
+    if (!googleClientId) {
+      setError("未配置 Google 登录，请设置 NEXT_PUBLIC_GOOGLE_CLIENT_ID。");
+      return;
+    }
+
+    setGoogleSubmitting(true);
+    setError("");
+
+    try {
+      await loadGoogleIdentityScript();
+      const googleApi = window.google?.accounts?.id;
+      if (!googleApi) {
+        throw new Error("Google 登录初始化失败。");
+      }
+
+      const idToken = await new Promise<string>((resolve, reject) => {
+        let settled = false;
+        const timeoutId = window.setTimeout(() => {
+          if (!settled) {
+            settled = true;
+            reject(new Error("Google 登录超时，请重试。"));
+          }
+        }, 60000);
+
+        googleApi.initialize({
+          client_id: googleClientId,
+          callback: (response: GoogleCredentialResponse) => {
+            if (settled) {
+              return;
+            }
+            settled = true;
+            window.clearTimeout(timeoutId);
+            const credential = String(response?.credential ?? "").trim();
+            if (!credential) {
+              reject(new Error("Google 登录未返回有效令牌。"));
+              return;
+            }
+            resolve(credential);
+          },
+        });
+
+        googleApi.prompt((notification) => {
+          if (settled) {
+            return;
+          }
+          const failed =
+            Boolean(notification?.isNotDisplayed?.()) ||
+            Boolean(notification?.isSkippedMoment?.()) ||
+            Boolean(notification?.isDismissedMoment?.());
+
+          if (failed) {
+            settled = true;
+            window.clearTimeout(timeoutId);
+            reject(new Error("Google 登录已取消，或浏览器阻止了登录弹窗。"));
+          }
+        });
+      });
+
+      await loginWithGoogle(idToken);
+      router.push(redirectTo);
+      router.refresh();
+    } catch (googleError) {
+      setError(googleError instanceof Error ? googleError.message : "Google 登录失败，请稍后重试。");
+    } finally {
+      setGoogleSubmitting(false);
     }
   }
 
@@ -152,16 +307,17 @@ export function AuthPage() {
       <SignInPage
         mode={mode}
         showModeToggle
-        loading={submitting || !isReady}
+        loading={submitting || googleSubmitting || !isReady}
         errorMessage={error}
-        usernameFieldName="username"
+        usernameFieldName="email"
+        identifierInputType="email"
         usernameLabel={
           <>
-            用户名
-            <span className="ui-en ml-1">Username</span>
+            邮箱
+            <span className="ui-en ml-1">Email</span>
           </>
         }
-        usernamePlaceholder="例如：yynotes_user"
+        usernamePlaceholder="例如：name@example.com"
         displayNameLabel={
           <>
             显示名称（可选）
@@ -201,7 +357,8 @@ export function AuthPage() {
             <span className="ui-en ml-1">Create Account</span>
           </>
         }
-        showGoogleButton={false}
+        showGoogleButton
+        onGoogleSignIn={() => void handleGoogleSignIn()}
         onResetPassword={() => setError("当前版本暂不支持在线重置密码，请联系管理员。")}
         onModeChange={(nextMode) => {
           setError("");

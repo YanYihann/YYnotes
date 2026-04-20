@@ -46,6 +46,7 @@ interface SignInPageProps {
   loading?: boolean;
   errorMessage?: React.ReactNode;
   usernameFieldName?: string;
+  identifierInputType?: "text" | "email";
   usernameLabel?: React.ReactNode;
   usernamePlaceholder?: string;
   displayNameLabel?: React.ReactNode;
@@ -75,9 +76,7 @@ const GlassInputWrapper = ({ children }: { children: React.ReactNode }) => (
 );
 
 const TestimonialCard = ({ testimonial, delay }: { testimonial: Testimonial; delay: string }) => (
-  <div
-    className={`animate-testimonial ${delay} flex w-64 items-start gap-3 rounded-3xl border border-white/10 bg-black/45 p-5 backdrop-blur-xl`}
-  >
+  <div className={`animate-testimonial ${delay} flex w-64 items-start gap-3 rounded-3xl border border-white/10 bg-black/45 p-5 backdrop-blur-xl`}>
     <Image
       src={testimonial.avatarSrc}
       width={40}
@@ -104,6 +103,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
   loading = false,
   errorMessage,
   usernameFieldName = "email",
+  identifierInputType = "email",
   usernameLabel = "Email Address",
   usernamePlaceholder = "Enter your email address",
   displayNameLabel = "Display Name (optional)",
@@ -126,6 +126,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
   onModeChange,
 }) => {
   const [showPassword, setShowPassword] = useState(false);
+
   const helperText = useMemo(() => {
     return mode === "register"
       ? {
@@ -187,9 +188,9 @@ export const SignInPage: React.FC<SignInPageProps> = ({
                 <GlassInputWrapper>
                   <input
                     name={usernameFieldName}
-                    type="text"
+                    type={identifierInputType}
                     placeholder={usernamePlaceholder}
-                    autoComplete="username"
+                    autoComplete={identifierInputType === "email" ? "email" : "username"}
                     className="w-full rounded-2xl bg-transparent p-4 text-sm text-[#1d1d1f] outline-none placeholder:text-black/45 dark:text-white dark:placeholder:text-white/40"
                   />
                 </GlassInputWrapper>
@@ -274,10 +275,9 @@ export const SignInPage: React.FC<SignInPageProps> = ({
                       e.preventDefault();
                       onResetPassword?.();
                     }}
-                    className="text-[#0066cc] transition-colors hover:underline dark:text-[#2997ff]"
+                    className="text-[#9c7af2] transition-colors hover:underline"
                   >
-                    重置密码
-                    <span className="ui-en ml-1">Reset password</span>
+                    Reset password
                   </a>
                 ) : null}
               </div>
@@ -301,6 +301,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
                 </div>
 
                 <button
+                  type="button"
                   onClick={onGoogleSignIn}
                   className="animate-element animate-delay-1200 flex w-full items-center justify-center gap-3 rounded-2xl border border-black/15 py-4 transition-colors hover:bg-black/[0.03] dark:border-white/18 dark:hover:bg-white/[0.06]"
                 >
@@ -319,7 +320,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
                     e.preventDefault();
                     onModeChange(helperText.nextMode);
                   }}
-                  className="text-[#0066cc] transition-colors hover:underline dark:text-[#2997ff]"
+                  className="text-[#9c7af2] transition-colors hover:underline"
                 >
                   {helperText.action}
                 </a>

@@ -79,6 +79,7 @@ const PASSWORD_HASH_ITERATIONS = 100_000;
 const PASSWORD_SALT_BYTES = 16;
 const PASSWORD_HASH_BYTES = 32;
 const USERNAME_REGEX = /^[a-z0-9][a-z0-9._-]{2,39}$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
@@ -89,6 +90,15 @@ function getAuthSecret(env) {
 
 function normalizeUsername(value) {
   return String(value ?? "").trim().toLowerCase();
+}
+
+function normalizeEmail(value) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function isValidEmail(value) {
+  const email = normalizeEmail(value);
+  return email.length <= 254 && EMAIL_REGEX.test(email);
 }
 
 function normalizeDisplayName(value) {
@@ -279,6 +289,55 @@ async function verifyPassword(password, storedHash) {
   } catch {
     return false;
   }
+}
+
+function parseGoogleClientIds(rawValue) {
+  const raw = String(rawValue ?? "").trim();
+  if (!raw) {
+    return [];
+  }
+
+  return raw
+    .split(/[,\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+async function verifyGoogleIdToken(idToken, env) {
+  const token = String(idToken ?? "").trim();
+  if (!token) {
+    throw new Error("Google idToken is required.");
+  }
+
+  const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(token)}`, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+    },
+    cache: "no-store",
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload || typeof payload !== "object") {
+    throw new Error("Invalid Google token.");
+  }
+
+  const email = normalizeEmail(payload.email);
+  const emailVerified = String(payload.email_verified ?? "").toLowerCase() === "true" || payload.email_verified === true;
+  if (!isValidEmail(email) || !emailVerified) {
+    throw new Error("Google account email is invalid or not verified.");
+  }
+
+  const aud = String(payload.aud ?? "").trim();
+  const allowedClientIds = parseGoogleClientIds(env.GOOGLE_CLIENT_ID);
+  if (allowedClientIds.length && (!aud || !allowedClientIds.includes(aud))) {
+    throw new Error("Google token audience does not match GOOGLE_CLIENT_ID.");
+  }
+
+  return {
+    email,
+    displayName: normalizeDisplayName(payload.name) || email.split("@")[0],
+  };
 }
 
 async function resolveAuthenticatedUser(request, env, sql) {
@@ -1442,16 +1501,12 @@ export default {
           return jsonResponse({ error: "Invalid JSON body." }, 400, corsOrigin);
         }
 
-        const username = normalizeUsername(body.username);
+        const email = normalizeEmail(body.email ?? body.username);
         const password = String(body.password ?? "");
         const displayName = normalizeDisplayName(body.displayName);
 
-        if (!USERNAME_REGEX.test(username)) {
-          return jsonResponse(
-            { error: "Invalid username. Use 3-40 chars: lowercase letters, numbers, dot, underscore, dash." },
-            400,
-            corsOrigin,
-          );
+        if (!isValidEmail(email)) {
+          return jsonResponse({ error: "Invalid email address." }, 400, corsOrigin);
         }
 
         if (password.length < 8 || password.length > 72) {
@@ -1460,17 +1515,17 @@ export default {
 
         const existingUser = await sql`
           SELECT id FROM users
-          WHERE username = ${username}
+          WHERE username = ${email}
           LIMIT 1
         `;
         if (existingUser.length) {
-          return jsonResponse({ error: "Username already exists." }, 409, corsOrigin);
+          return jsonResponse({ error: "Email already exists." }, 409, corsOrigin);
         }
 
         const passwordHash = await hashPassword(password);
         const inserted = await sql`
           INSERT INTO users (username, password_hash, display_name, updated_at)
-          VALUES (${username}, ${passwordHash}, ${displayName}, NOW())
+          VALUES (${email}, ${passwordHash}, ${displayName}, NOW())
           RETURNING id, username, display_name
         `;
 
@@ -1491,33 +1546,96 @@ export default {
           return jsonResponse({ error: "Invalid JSON body." }, 400, corsOrigin);
         }
 
-        const username = normalizeUsername(body.username);
+        const email = normalizeEmail(body.email ?? body.username);
         const password = String(body.password ?? "");
 
-        if (!USERNAME_REGEX.test(username) || !password) {
-          return jsonResponse({ error: "Invalid username or password." }, 400, corsOrigin);
+        if ((!isValidEmail(email) && !USERNAME_REGEX.test(email)) || !password) {
+          return jsonResponse({ error: "Invalid email or password." }, 400, corsOrigin);
         }
 
         const rows = await sql`
           SELECT id, username, display_name, password_hash
           FROM users
-          WHERE username = ${username}
+          WHERE username = ${email}
           LIMIT 1
         `;
 
         if (!rows.length) {
-          return jsonResponse({ error: "Invalid username or password." }, 401, corsOrigin);
+          return jsonResponse({ error: "Invalid email or password." }, 401, corsOrigin);
         }
 
         const validPassword = await verifyPassword(password, rows[0].password_hash);
         if (!validPassword) {
-          return jsonResponse({ error: "Invalid username or password." }, 401, corsOrigin);
+          return jsonResponse({ error: "Invalid email or password." }, 401, corsOrigin);
         }
 
         const token = await createAuthToken(secret, rows[0]);
         const user = toPublicUser(rows[0]);
         await sql`UPDATE users SET updated_at = NOW() WHERE id = ${user.id}`;
 
+        return jsonResponse({ success: true, user, token }, 200, corsOrigin);
+      }
+
+      if (request.method === "POST" && url.pathname === "/auth/google") {
+        const secret = getAuthSecret(env);
+        if (!secret) {
+          return jsonResponse({ error: "AUTH_SECRET is missing." }, 500, corsOrigin);
+        }
+
+        if (!String(env.GOOGLE_CLIENT_ID ?? "").trim()) {
+          return jsonResponse({ error: "GOOGLE_CLIENT_ID is missing." }, 500, corsOrigin);
+        }
+
+        const body = await request.json().catch(() => null);
+        if (!body || typeof body !== "object") {
+          return jsonResponse({ error: "Invalid JSON body." }, 400, corsOrigin);
+        }
+
+        let verified;
+        try {
+          verified = await verifyGoogleIdToken(body.idToken, env);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Invalid Google token.";
+          return jsonResponse({ error: message }, 401, corsOrigin);
+        }
+
+        const email = verified.email;
+        const displayName = normalizeDisplayName(verified.displayName);
+
+        const existingRows = await sql`
+          SELECT id, username, display_name
+          FROM users
+          WHERE username = ${email}
+          LIMIT 1
+        `;
+
+        let userRow;
+        if (existingRows.length) {
+          userRow = existingRows[0];
+
+          if (displayName && !String(userRow.display_name ?? "").trim()) {
+            const updatedRows = await sql`
+              UPDATE users
+              SET display_name = ${displayName}, updated_at = NOW()
+              WHERE id = ${userRow.id}
+              RETURNING id, username, display_name
+            `;
+            userRow = updatedRows[0];
+          } else {
+            await sql`UPDATE users SET updated_at = NOW() WHERE id = ${userRow.id}`;
+          }
+        } else {
+          const generatedPasswordHash = await hashPassword(`google:${crypto.randomUUID()}:${Date.now()}`);
+          const insertedRows = await sql`
+            INSERT INTO users (username, password_hash, display_name, updated_at)
+            VALUES (${email}, ${generatedPasswordHash}, ${displayName}, NOW())
+            RETURNING id, username, display_name
+          `;
+          userRow = insertedRows[0];
+        }
+
+        const token = await createAuthToken(secret, userRow);
+        const user = toPublicUser(userRow);
         return jsonResponse({ success: true, user, token }, 200, corsOrigin);
       }
 

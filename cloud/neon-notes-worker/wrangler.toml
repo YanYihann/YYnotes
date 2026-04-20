@@ -11,3 +11,4 @@ OPENAI_BASE_URL = "https://api.openai-proxy.org/v1"
 # wrangler secret put DATABASE_URL
 # wrangler secret put OPENAI_API_KEY
 # wrangler secret put AUTH_SECRET
+# wrangler secret put GOOGLE_CLIENT_ID

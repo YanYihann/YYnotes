@@ -5,7 +5,7 @@ import type { AuthSession, AuthUser } from "@/lib/auth-session";
 import { getStoredAuthSession, normalizeAuthSession, setStoredAuthSession } from "@/lib/auth-session";
 
 type AuthCredentials = {
-  username: string;
+  email: string;
   password: string;
 };
 
@@ -19,6 +19,7 @@ type AuthContextValue = {
   isAuthenticated: boolean;
   login: (payload: AuthCredentials) => Promise<AuthSession>;
   register: (payload: RegisterPayload) => Promise<AuthSession>;
+  loginWithGoogle: (idToken: string) => Promise<AuthSession>;
   logout: () => void;
   setSession: (session: AuthSession | null) => void;
 };
@@ -142,20 +143,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const login = useCallback(async ({ username, password }: AuthCredentials) => {
+  const login = useCallback(async ({ email, password }: AuthCredentials) => {
     const sessionFromApi = await requestAuth("/auth/login", {
-      username,
+      email,
       password,
     });
     setSession(sessionFromApi);
     return sessionFromApi;
   }, [setSession]);
 
-  const register = useCallback(async ({ username, password, displayName }: RegisterPayload) => {
+  const register = useCallback(async ({ email, password, displayName }: RegisterPayload) => {
     const sessionFromApi = await requestAuth("/auth/register", {
-      username,
+      email,
       password,
       displayName,
+    });
+    setSession(sessionFromApi);
+    return sessionFromApi;
+  }, [setSession]);
+
+  const loginWithGoogle = useCallback(async (idToken: string) => {
+    const sessionFromApi = await requestAuth("/auth/google", {
+      idToken,
     });
     setSession(sessionFromApi);
     return sessionFromApi;
@@ -172,10 +181,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated: Boolean(session?.token),
       login,
       register,
+      loginWithGoogle,
       logout,
       setSession,
     }),
-    [session, isReady, login, register, logout, setSession],
+    [session, isReady, login, register, loginWithGoogle, logout, setSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
