@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import rehypeKatex from "rehype-katex";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -8,6 +8,7 @@ import remarkMath from "remark-math";
 import { useLanguage } from "@/components/language-provider";
 import { askNoteAssistant } from "@/lib/ai/client";
 import type { AssistantMessage, NoteAssistantRequest } from "@/lib/ai/note-assistant";
+import { PromptBox, type PromptAttachment, type PromptSubmitPayload } from "@/components/ui/chatgpt-prompt-input";
 
 type NoteAssistantPanelProps = {
   noteContext: {
@@ -36,25 +37,27 @@ type SavedQuestionRecord = {
 const STARTER_MESSAGE_ZH = "你好，我是当前笔记页的学习助手。你可以直接问答，或选中左侧笔记文本来进行针对性问答。";
 const STARTER_MESSAGE_EN = "Hi, I am your note-aware assistant for this page. You can ask directly or select text from the note on the left for targeted Q&A.";
 
-function buildStarterMessage(showEnglish: boolean): AssistantMessage {
-  return {
-    role: "assistant",
-    content: showEnglish ? `${STARTER_MESSAGE_ZH}\n\n${STARTER_MESSAGE_EN}` : STARTER_MESSAGE_ZH,
-  };
-}
-
 const HISTORY_STORAGE_KEY = "na_ai_question_history_v1";
 const MAX_SAVED_RECORDS = 160;
 const FONT_SIZE_STORAGE_KEY = "na_ai_font_size_v1";
 const DEFAULT_FONT_SIZE = 12;
 const MIN_FONT_SIZE = 12;
 const MAX_FONT_SIZE = 20;
+const MAX_ATTACHMENT_SNIPPET_CHARS = 1200;
+const MAX_ATTACHMENT_TOTAL_CHARS = 3000;
 
 function clampFontSize(value: number): number {
   if (Number.isNaN(value)) {
     return DEFAULT_FONT_SIZE;
   }
   return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, value));
+}
+
+function buildStarterMessage(showEnglish: boolean): AssistantMessage {
+  return {
+    role: "assistant",
+    content: showEnglish ? `${STARTER_MESSAGE_ZH}\n\n${STARTER_MESSAGE_EN}` : STARTER_MESSAGE_ZH,
+  };
 }
 
 function trimSelectionText(value: string): string {
@@ -70,16 +73,13 @@ function summarizeSelectionTextInline(value: string): string {
   if (!normalized) {
     return "";
   }
-
   const chars = Array.from(normalized);
   const headSize = 14;
   const tailSize = 10;
   const minLengthForEllipsis = headSize + tailSize + 4;
-
   if (chars.length <= minLengthForEllipsis) {
     return normalized;
   }
-
   return `${chars.slice(0, headSize).join("")}...${chars.slice(chars.length - tailSize).join("")}`;
 }
 
@@ -92,72 +92,22 @@ function serializeHistory(messages: AssistantMessage[]): AssistantMessage[] {
   return clean.slice(clean.length - maxMessages);
 }
 
-function isStandaloneAssistantFormulaLine(line: string): boolean {
-  const trimmed = line.trim();
-  if (!trimmed) {
-    return false;
-  }
-
-  if (/^(```|\$\$|#{1,6}\s|>\s|[-*+]\s|\d+\.\s)/.test(trimmed)) {
-    return false;
-  }
-
-  if (/^\$[^$\n]+\$$/.test(trimmed) || /^\\\([\s\S]*\\\)$/.test(trimmed) || /^\\\[[\s\S]*\\\]$/.test(trimmed)) {
-    return false;
-  }
-
-  const hasChinese = /[\u4e00-\u9fff]/.test(trimmed);
-  const hasLetters = /[A-Za-z]/.test(trimmed);
-  const hasMathSignal = /[=+\-*/^<>_{}()[\]\\]|∑|∫|√|≈|≤|≥|±|\d/.test(trimmed);
-
-  return !hasChinese && hasLetters && hasMathSignal && !/[A-Za-z]{3,}\s+[A-Za-z]{3,}/.test(trimmed);
-}
-
-function wrapAssistantFormulaLines(markdown: string): string {
-  const lines = markdown.split(/\r?\n/);
-  const output: string[] = [];
-  let inCodeFence = false;
-  let inMathBlock = false;
-
-  for (const line of lines) {
-    if (/^\s*```/.test(line)) {
-      inCodeFence = !inCodeFence;
-      output.push(line);
-      continue;
-    }
-
-    if (!inCodeFence && /^\s*\$\$/.test(line)) {
-      inMathBlock = !inMathBlock;
-      output.push(line);
-      continue;
-    }
-
-    if (inCodeFence || inMathBlock) {
-      output.push(line);
-      continue;
-    }
-
-    if (isStandaloneAssistantFormulaLine(line)) {
-      output.push("$$");
-      output.push(line.trim());
-      output.push("$$");
-      continue;
-    }
-
-    output.push(line);
-  }
-
-  return output.join("\n");
-}
-
 function normalizeAssistantMarkdown(text: string): string {
-  const normalized = text
+  const lines = text
+    .replace(/\r\n?/g, "\n")
     .replace(/\\\[/g, "$$")
     .replace(/\\\]/g, "$$")
-    .replace(/\\\(/g, "$")
-    .replace(/\\\)/g, "$");
+    .split("\n");
 
-  return wrapAssistantFormulaLines(normalized);
+  const transformed = lines.map((line) => {
+    const trimmed = line.trim();
+    if (/^\$[^$\n]+\$$/.test(trimmed)) {
+      return `$$\n${trimmed.slice(1, -1).trim()}\n$$`;
+    }
+    return line;
+  });
+
+  return transformed.join("\n");
 }
 
 function buildRecordTitle(question: string): string {
@@ -166,15 +116,13 @@ function buildRecordTitle(question: string): string {
     return "未命名提问";
   }
 
-  const punctuationIndex = clean.search(/[。！？!?]/u);
+  const punctuationIndex = clean.search(/[。！？?!.]/u);
   if (punctuationIndex > 7 && punctuationIndex <= 28) {
     return clean.slice(0, punctuationIndex + 1);
   }
-
   if (clean.length <= 28) {
     return clean;
   }
-
   return `${clean.slice(0, 28)}...`;
 }
 
@@ -210,6 +158,66 @@ function parseSavedRecords(raw: string | null): SavedQuestionRecord[] {
   }
 }
 
+function isTextAttachment(file: File): boolean {
+  const textType = file.type.startsWith("text/");
+  const textExt = /\.(txt|md|markdown|json|csv|tsv|tex|log|py|js|jsx|ts|tsx|java|c|cpp|h|hpp)$/i.test(file.name);
+  return textType || textExt;
+}
+
+function formatAttachmentSize(size: number): string {
+  if (size < 1024) {
+    return `${size}B`;
+  }
+  if (size < 1024 * 1024) {
+    return `${(size / 1024).toFixed(1)}KB`;
+  }
+  return `${(size / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+async function buildQuestionWithAttachments(question: string, attachments: PromptAttachment[]): Promise<string> {
+  const cleanQuestion = question.trim();
+  if (attachments.length === 0) {
+    return cleanQuestion;
+  }
+
+  const baseQuestion = cleanQuestion || "请结合我上传的资料回答。";
+  const attachmentLines: string[] = [];
+  let remainingChars = MAX_ATTACHMENT_TOTAL_CHARS;
+
+  for (const attachment of attachments.slice(0, 8)) {
+    const isVoice = attachment.source === "voice";
+    const sourceLabel = isVoice ? "语音" : "文件";
+    attachmentLines.push(
+      `- ${sourceLabel}：${attachment.name}（${attachment.type || "unknown"}, ${formatAttachmentSize(attachment.size)}）`,
+    );
+
+    if (!isTextAttachment(attachment.file) || attachment.file.size > 512 * 1024) {
+      continue;
+    }
+
+    try {
+      const rawText = await attachment.file.text();
+      const normalized = rawText.replace(/\s+/g, " ").trim();
+      if (!normalized) {
+        continue;
+      }
+      const snippetLength = Math.min(MAX_ATTACHMENT_SNIPPET_CHARS, remainingChars);
+      if (snippetLength <= 0) {
+        attachmentLines.push("- 更多附件文本已省略（超出长度限制）。");
+        break;
+      }
+
+      const snippet = normalized.slice(0, snippetLength);
+      remainingChars -= snippet.length;
+      attachmentLines.push(`  摘录：${snippet}${normalized.length > snippet.length ? "..." : ""}`);
+    } catch {
+      attachmentLines.push("  摘录读取失败，已仅提供文件元信息。");
+    }
+  }
+
+  return `${baseQuestion}\n\n【用户上传内容】\n${attachmentLines.join("\n")}\n\n请结合上述上传内容与当前笔记上下文回答。`;
+}
+
 export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
   const { showEnglish } = useLanguage();
   const [messages, setMessages] = useState<AssistantMessage[]>(() => [buildStarterMessage(showEnglish)]);
@@ -229,9 +237,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
   const mobileMessagesRef = useRef<HTMLDivElement>(null);
   const fullscreenMessagesRef = useRef<HTMLDivElement>(null);
 
-  const noteRecords = useMemo(() => {
-    return savedRecords.filter((record) => record.noteSlug === noteContext.slug);
-  }, [savedRecords, noteContext.slug]);
+  const noteRecords = useMemo(() => savedRecords.filter((record) => record.noteSlug === noteContext.slug), [savedRecords, noteContext.slug]);
 
   const selectedRecord = useMemo(() => {
     if (!selectedRecordId) {
@@ -259,7 +265,6 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
       if (!selection || selection.rangeCount === 0) {
         return;
       }
-
       const text = trimSelectionText(selection.toString());
       const anchorNode = selection.anchorNode;
       const focusNode = selection.focusNode;
@@ -270,14 +275,9 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
       }
 
       const inAnyNoteRoot = noteRoots.some((root) => root.contains(anchorNode) && root.contains(focusNode));
-      if (!inAnyNoteRoot) {
+      if (!inAnyNoteRoot || !text) {
         return;
       }
-
-      if (!text) {
-        return;
-      }
-
       setSelectedText(text);
     };
 
@@ -289,8 +289,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
 
   useEffect(() => {
     const raw = window.localStorage.getItem(HISTORY_STORAGE_KEY);
-    const parsed = parseSavedRecords(raw);
-    setSavedRecords(parsed);
+    setSavedRecords(parseSavedRecords(raw));
     setHistoryLoaded(true);
   }, []);
 
@@ -334,10 +333,10 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
   }, [historyOpen, noteRecords, savedRecords, selectedRecordId]);
 
   const requestAssistant = useCallback(
-    async (question: string, quickAction?: string) => {
+    async (question: string, quickAction?: string): Promise<boolean> => {
       const normalizedQuestion = question.trim();
       if (!normalizedQuestion || loading) {
-        return;
+        return false;
       }
 
       setError("");
@@ -376,9 +375,11 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
 
         setSavedRecords((current) => [record, ...current].slice(0, MAX_SAVED_RECORDS));
         setSelectedRecordId(record.id);
+        return true;
       } catch (requestError) {
         const message = requestError instanceof Error ? requestError.message : "请求失败，请稍后重试。";
         setError(message);
+        return false;
       } finally {
         setLoading(false);
       }
@@ -386,24 +387,21 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
     [loading, messages, noteContext, selectedText],
   );
 
-  const submitInput = useCallback(async () => {
-    const question = input.trim();
-    if (!question) {
-      return;
-    }
-    setInput("");
-    await requestAssistant(question);
-  }, [input, requestAssistant]);
-
-  const onTextareaKeyDown = useCallback(
-    async (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (event.key !== "Enter" || event.shiftKey) {
-        return;
+  const submitPrompt = useCallback(
+    async (payload: PromptSubmitPayload): Promise<boolean> => {
+      const originalQuestion = payload.text.trim();
+      if (!originalQuestion && payload.attachments.length === 0) {
+        return false;
       }
-      event.preventDefault();
-      await submitInput();
+
+      const enrichedQuestion = await buildQuestionWithAttachments(originalQuestion, payload.attachments);
+      const success = await requestAssistant(enrichedQuestion);
+      if (success) {
+        setInput("");
+      }
+      return success;
     },
-    [submitInput],
+    [requestAssistant],
   );
 
   const decreaseFontSize = useCallback(() => {
@@ -461,7 +459,10 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
 
   const renderAssistantMarkdown = (content: string) => (
     <div className="assistant-prose font-text" style={messageTextStyle}>
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: "ignore" }]]}
+      >
         {normalizeAssistantMarkdown(content)}
       </ReactMarkdown>
     </div>
@@ -509,14 +510,14 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
 
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <label htmlFor="note-assistant-input" className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/55 dark:text-white/60">
-            {"\u63d0\u95ee"}
+          <label className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/55 dark:text-white/60">
+            提问
             <span className="ui-en ml-1">Ask a Question</span>
           </label>
           {selectedText ? (
             <div className="inline-flex max-w-[70%] items-center gap-1 rounded-capsule border border-[#0071e3]/35 bg-[#0071e3]/[0.06] px-2 py-0.5 dark:border-[#2997ff]/45 dark:bg-[#2997ff]/[0.1]">
               <span className="shrink-0 font-text text-[10px] font-semibold uppercase tracking-[0.06em] text-black/66 dark:text-white/72">
-                {"\u5df2\u9009\u6587\u672c"}
+                已选文本
               </span>
               <span className="min-w-0 truncate font-text text-[10px] leading-[1.2] text-black/75 dark:text-white/78">
                 {summarizeSelectionTextInline(selectedText)}
@@ -526,31 +527,22 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
                 onClick={() => setSelectedText("")}
                 className="shrink-0 rounded-capsule border border-black/20 px-1.5 py-[1px] text-[10px] tracking-tightCaption text-black/70 transition hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/25 dark:text-white/74 dark:hover:bg-white/[0.07]"
               >
-                {"\u6e05\u9664"}
+                清除
                 <span className="ui-en ml-1">Clear</span>
               </button>
             </div>
           ) : null}
         </div>
-        <textarea
-          id="note-assistant-input"
+
+        <PromptBox
           value={input}
-          onChange={(event) => setInput(event.target.value)}
-          onKeyDown={onTextareaKeyDown}
-          rows={3}
+          onValueChange={setInput}
+          onSubmitPrompt={submitPrompt}
+          disabled={loading}
           placeholder="例如：比较本页里的两种方法，并说明误差差异。"
-          className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-black/85 shadow-none outline-none transition placeholder:text-black/45 focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/86 dark:placeholder:text-white/45"
-          style={messageTextStyle}
+          textareaStyle={messageTextStyle}
+          className="rounded-apple"
         />
-        <button
-          type="button"
-          onClick={submitInput}
-          disabled={loading || !input.trim()}
-          className="inline-flex items-center rounded-apple bg-[#0071e3] px-4 py-1.5 font-text text-[14px] text-white transition hover:bg-[#0066cc] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
-        >
-          发送提问
-          <span className="ui-en ml-1">Send</span>
-        </button>
       </div>
     </div>
   );
@@ -594,8 +586,8 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
 
       {desktopFullscreen ? (
         <div className="fixed inset-0 z-[90] hidden overflow-y-auto bg-black/60 backdrop-blur-[2px] lg:block">
-          <div className="mx-4 my-4 h-[calc(100dvh-2rem)] rounded-[12px] bg-[#f5f5f7] p-4 shadow-card dark:bg-[#111113]">
-            <div className="flex h-full flex-col">
+          <div className="mx-4 my-4 min-h-[calc(100dvh-2rem)] rounded-[12px] bg-[#f5f5f7] p-4 shadow-card dark:bg-[#111113]">
+            <div className="flex min-h-[calc(100dvh-4rem)] flex-col">
               <header className="mb-3 flex items-center justify-between gap-3">
                 <p className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px] text-[#1d1d1f] dark:text-white">
                   AI 学习助手
