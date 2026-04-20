@@ -264,25 +264,25 @@ export function AuthPage() {
 
   if (session) {
     return (
-      <div className="bg-black py-14 dark">
+      <div className="bg-background py-14">
         <div className="mx-auto w-full max-w-[980px] px-4 sm:px-6">
-          <article className="rounded-apple border border-white/10 bg-[#151516] p-6 shadow-card sm:p-8">
-            <p className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/55 dark:text-white/58">
+          <article className="rounded-apple border border-border bg-card p-6 text-card-foreground shadow-card sm:p-8">
+            <p className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
               YYNotes Account
             </p>
-            <h1 className="mt-3 font-display text-[clamp(1.8rem,4.4vw,2.8rem)] font-semibold leading-[1.1] tracking-tightDisplay text-[#1d1d1f] dark:text-white">
+            <h1 className="mt-3 font-display text-[clamp(1.8rem,4.4vw,2.8rem)] font-semibold leading-[1.1] tracking-tightDisplay text-foreground">
               已登录
-              <span className="ui-en mt-1 block text-[0.54em] font-normal text-black/68 dark:text-white/72">
+              <span className="ui-en mt-1 block text-[0.54em] font-normal text-muted-foreground">
                 You are signed in
               </span>
             </h1>
-            <p className="mt-4 font-text text-[15px] text-black/78 dark:text-white/80">
+            <p className="mt-4 font-text text-[15px] text-muted-foreground">
               当前账号：{session.user.displayName || session.user.username}
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <Link
                 href={redirectTo}
-                className="inline-flex items-center rounded-apple bg-[#0071e3] px-5 py-2 font-text text-[15px] text-white transition hover:bg-[#0066cc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+                className="inline-flex items-center rounded-apple bg-primary px-5 py-2 font-text text-[15px] text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
               >
                 打开我的笔记
                 <span className="ui-en ml-1">Open Notes</span>
@@ -290,7 +290,7 @@ export function AuthPage() {
               <button
                 type="button"
                 onClick={logout}
-                className="inline-flex items-center rounded-capsule border border-white/22 px-4 py-1.5 font-text text-[14px] tracking-tightCaption text-white/82 transition hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3]"
+                className="inline-flex items-center rounded-capsule border border-border px-4 py-1.5 font-text text-[14px] tracking-tightCaption text-muted-foreground transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 切换账号
                 <span className="ui-en ml-1">Switch Account</span>
@@ -303,7 +303,7 @@ export function AuthPage() {
   }
 
   return (
-    <div className="bg-black dark">
+    <div className="bg-background">
       <SignInPage
         mode={mode}
         showModeToggle

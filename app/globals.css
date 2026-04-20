@@ -1,31 +1,82 @@
-﻿@tailwind base;
+@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --bg-light: #f5f5f7;
-  --bg-dark: #000000;
-  --text-primary: #1d1d1f;
-  --text-secondary: rgba(0, 0, 0, 0.8);
-  --text-inverse: #ffffff;
-  --interactive: #0071e3;
-  --interactive-hover: #0066cc;
-  --interactive-soft: #2997ff;
+  --background: 240 10% 96%;
+  --foreground: 240 5% 12%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 5% 12%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 5% 12%;
+  --primary: 210 100% 44%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 240 8% 92%;
+  --secondary-foreground: 240 5% 22%;
+  --muted: 240 8% 92%;
+  --muted-foreground: 240 4% 40%;
+  --accent: 240 8% 90%;
+  --accent-foreground: 240 5% 22%;
+  --destructive: 353 69% 43%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 240 7% 84%;
+  --input: 240 7% 84%;
+  --ring: 210 100% 44%;
+
+  --bg-light: hsl(var(--background));
+  --bg-dark: hsl(240 9% 7%);
+  --text-primary: hsl(var(--foreground));
+  --text-secondary: hsl(var(--muted-foreground));
+  --text-inverse: hsl(var(--primary-foreground));
+  --interactive: hsl(var(--primary));
+  --interactive-hover: hsl(210 100% 40%);
+  --interactive-soft: hsl(205 100% 58%);
 }
 
 .dark {
-  --bg-light: #161617;
-  --text-primary: #ffffff;
-  --text-secondary: rgba(255, 255, 255, 0.84);
+  --background: 240 6% 9%;
+  --foreground: 0 0% 96%;
+  --card: 240 4% 16%;
+  --card-foreground: 0 0% 96%;
+  --popover: 240 4% 15%;
+  --popover-foreground: 0 0% 96%;
+  --primary: 205 100% 58%;
+  --primary-foreground: 240 10% 12%;
+  --secondary: 240 4% 20%;
+  --secondary-foreground: 0 0% 90%;
+  --muted: 240 4% 19%;
+  --muted-foreground: 240 4% 66%;
+  --accent: 240 4% 23%;
+  --accent-foreground: 0 0% 95%;
+  --destructive: 352 100% 71%;
+  --destructive-foreground: 0 0% 12%;
+  --border: 240 4% 26%;
+  --input: 240 4% 26%;
+  --ring: 205 100% 58%;
+
+  --bg-light: hsl(var(--background));
+  --text-primary: hsl(var(--foreground));
+  --text-secondary: hsl(var(--muted-foreground));
 }
 
 html {
   scroll-behavior: smooth;
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
 }
 
 body {
-  background: var(--bg-light);
-  color: var(--text-primary);
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
   font-family: "SF Pro Text", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
   letter-spacing: -0.374px;
   text-rendering: optimizeLegibility;
@@ -50,36 +101,36 @@ body {
 }
 
 .section-dark {
-  background: #000000;
-  color: #ffffff;
+  background: hsl(240 9% 7%);
+  color: hsl(var(--primary-foreground));
 }
 
 .section-light {
-  background: #f5f5f7;
-  color: #1d1d1f;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
 }
 
 .dark .section-light {
-  background: #111113;
-  color: #ffffff;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
 }
 
 .dark .section-dark {
-  background: #000000;
-  color: #ffffff;
+  background: hsl(240 9% 7%);
+  color: hsl(var(--primary-foreground));
 }
 
 .anchor-link {
   margin-left: 0.5rem;
   font-size: 0.8em;
   text-decoration: none;
-  color: #0066cc;
+  color: hsl(var(--primary));
   opacity: 0;
   transition: opacity 160ms ease;
 }
 
 .dark .anchor-link {
-  color: #2997ff;
+  color: hsl(var(--primary));
 }
 
 h2:hover .anchor-link,
@@ -99,37 +150,37 @@ h3:hover .anchor-link {
   font-weight: 600;
   line-height: 1.07;
   letter-spacing: -0.28px;
-  color: #1d1d1f;
+  color: hsl(var(--foreground));
 }
 
 .dark .note-prose h1 {
-  color: #ffffff;
+  color: hsl(var(--foreground));
 }
 
 .note-prose hr {
   margin: 2rem 0;
-  border-color: rgba(0, 0, 0, 0.08);
+  border-color: hsl(var(--border));
 }
 
 .dark .note-prose hr {
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: hsl(var(--border));
 }
 
 .note-prose .line-zh {
-  color: rgba(0, 0, 0, 0.9);
+  color: hsl(var(--foreground) / 0.92);
 }
 
 .dark .note-prose .line-zh {
-  color: rgba(255, 255, 255, 0.92);
+  color: hsl(var(--foreground) / 0.92);
 }
 
 .note-prose .line-en {
-  color: rgba(0, 0, 0, 0.62);
+  color: hsl(var(--muted-foreground));
   font-size: 0.94em;
 }
 
 .dark .note-prose .line-en {
-  color: rgba(255, 255, 255, 0.66);
+  color: hsl(var(--muted-foreground));
 }
 
 .note-prose h2.line-en {
@@ -211,22 +262,22 @@ h3:hover .anchor-link {
 
 .assistant-prose hr {
   margin: 0.7rem 0;
-  border-color: rgba(0, 0, 0, 0.12);
+  border-color: hsl(var(--border));
 }
 
 .dark .assistant-prose hr {
-  border-color: rgba(255, 255, 255, 0.18);
+  border-color: hsl(var(--border));
 }
 
 .assistant-prose code {
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.06);
+  background: hsl(var(--muted));
   padding: 0.05rem 0.25rem;
   font-size: 0.92em;
 }
 
 .dark .assistant-prose code {
-  background: rgba(255, 255, 255, 0.1);
+  background: hsl(var(--muted));
 }
 
 .assistant-prose .katex-display {
@@ -234,7 +285,7 @@ h3:hover .anchor-link {
 }
 
 ::selection {
-  background: rgba(0, 113, 227, 0.24);
+  background: hsl(var(--primary) / 0.24);
   color: inherit;
 }
 
@@ -338,20 +389,20 @@ h3:hover .anchor-link {
   width: 16px;
   height: 16px;
   border-radius: 4px;
-  border: 1px solid rgba(0, 0, 0, 0.28);
-  background: #fff;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
   position: relative;
   transition: all 120ms ease;
 }
 
 .custom-checkbox:focus-visible {
-  outline: 2px solid #0071e3;
+  outline: 2px solid hsl(var(--ring));
   outline-offset: 2px;
 }
 
 .custom-checkbox:checked {
-  background: #0071e3;
-  border-color: #0071e3;
+  background: hsl(var(--primary));
+  border-color: hsl(var(--primary));
 }
 
 .custom-checkbox:checked::after {
@@ -359,7 +410,7 @@ h3:hover .anchor-link {
   position: absolute;
   width: 4px;
   height: 8px;
-  border: solid #fff;
+  border: solid hsl(var(--primary-foreground));
   border-width: 0 2px 2px 0;
   top: 1px;
   left: 5px;
@@ -367,8 +418,8 @@ h3:hover .anchor-link {
 }
 
 .dark .custom-checkbox {
-  border-color: rgba(255, 255, 255, 0.35);
-  background: rgba(255, 255, 255, 0.04);
+  border-color: hsl(var(--border));
+  background: hsl(var(--card));
 }
 
 @media (max-width: 834px) {

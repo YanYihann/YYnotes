@@ -143,8 +143,8 @@ export function HomeCloudNotesSections() {
     return (
       <section className="section-light py-16">
         <div className="mx-auto w-full max-w-[1100px] px-4 sm:px-6">
-          <article className="rounded-apple bg-white p-6 shadow-card dark:bg-[#272729]">
-            <p className="font-text text-[15px] text-black/72 dark:text-white/75">正在检查登录状态...</p>
+          <article className="rounded-apple bg-card p-6 text-card-foreground shadow-card">
+            <p className="font-text text-[15px] text-muted-foreground">正在检查登录状态...</p>
           </article>
         </div>
       </section>
@@ -173,11 +173,11 @@ export function HomeCloudNotesSections() {
         <div className="mx-auto w-full max-w-[1100px] px-4 sm:px-6">
           <div className="mb-8 flex items-end justify-between gap-6">
             <div>
-              <h2 className="font-display text-[40px] font-semibold leading-[1.1] text-[#1d1d1f] dark:text-white">
+              <h2 className="font-display text-[40px] font-semibold leading-[1.1] text-foreground">
                 我的笔记
-                <span className="ui-en mt-1 block text-[0.52em] font-normal text-black/70 dark:text-white/75">My Notes</span>
+                <span className="ui-en mt-1 block text-[0.52em] font-normal text-muted-foreground">My Notes</span>
               </h2>
-              <p className="mt-2 max-w-[720px] font-text text-[17px] leading-[1.47] text-black/75 dark:text-white/75">
+              <p className="mt-2 max-w-[720px] font-text text-[17px] leading-[1.47] text-muted-foreground">
                 仅展示当前账号生成和管理的云端笔记。
                 <span className="ui-en ml-1">Showing only cloud notes that belong to your account.</span>
               </p>
@@ -187,7 +187,7 @@ export function HomeCloudNotesSections() {
           <WeekNoteGenerator existingNotes={notes.map((note) => ({ slug: note.slug }))} />
 
           {loading ? (
-            <p className="mb-4 font-text text-[14px] text-[#0066cc] dark:text-[#2997ff]">正在加载云端笔记...</p>
+            <p className="mb-4 font-text text-[14px] text-primary">正在加载云端笔记...</p>
           ) : null}
 
           {error ? (
@@ -213,7 +213,7 @@ export function HomeCloudNotesSections() {
           </div>
 
           {!loading && !error && notes.length === 0 ? (
-            <p className="mt-5 rounded-apple border border-black/12 bg-white px-4 py-3 font-text text-[14px] leading-[1.45] text-black/72 dark:border-white/15 dark:bg-[#272729] dark:text-white/74">
+            <p className="mt-5 rounded-apple border border-border bg-card px-4 py-3 font-text text-[14px] leading-[1.45] text-muted-foreground">
               你还没有云端笔记，先在上方生成第一篇笔记。
             </p>
           ) : null}
@@ -232,7 +232,7 @@ export function HomeCloudNotesSections() {
               <span className="ui-en ml-1">Auto-extracted from your own notes for quick navigation.</span>
             </p>
           </div>
-          <ul className="space-y-2 rounded-apple bg-white/10 p-5">
+          <ul className="space-y-2 rounded-apple bg-card/20 p-5">
             {topics.map((topic) => (
               <li key={topic} className="font-text text-[17px] leading-[1.47] text-white/88">
                 {topic}

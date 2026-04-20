@@ -1,4 +1,4 @@
-﻿import type { Metadata } from "next";
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import { CloudNoteViewer } from "@/components/notes/cloud-note-viewer";
 
@@ -13,8 +13,8 @@ export default function CloudNotePage() {
       <Suspense
         fallback={
           <div className="mx-auto w-full max-w-[1720px] px-4 sm:px-6">
-            <article className="rounded-apple bg-white px-5 py-8 shadow-card dark:bg-[#272729] sm:px-8 md:px-10">
-              <p className="font-text text-[15px] text-black/72 dark:text-white/75">正在加载云端笔记...</p>
+            <article className="rounded-apple bg-card px-5 py-8 text-card-foreground shadow-card sm:px-8 md:px-10">
+              <p className="font-text text-[15px] text-muted-foreground">���ڼ����ƶ˱ʼ�...</p>
             </article>
           </div>
         }

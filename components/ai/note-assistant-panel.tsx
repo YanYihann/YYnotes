@@ -425,12 +425,12 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
   );
 
   const renderFontSizeControls = (compact = false) => (
-    <div className="inline-flex items-center gap-1 rounded-capsule border border-black/20 bg-white/75 px-1 py-0.5 dark:border-white/25 dark:bg-white/[0.04]">
+    <div className="inline-flex items-center gap-1 rounded-capsule border border-border bg-card/80 px-1 py-0.5">
       <button
         type="button"
         onClick={decreaseFontSize}
         disabled={fontSizePx <= MIN_FONT_SIZE}
-        className="rounded-capsule px-1.5 py-0 text-[11px] font-semibold tracking-tightCaption text-black/74 transition hover:bg-black/[0.06] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:text-white/78 dark:hover:bg-white/[0.08]"
+        className="rounded-capsule px-1.5 py-0 text-[11px] font-semibold tracking-tightCaption text-muted-foreground transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         aria-label="Decrease assistant font size"
         title="A-"
       >
@@ -439,7 +439,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
       <button
         type="button"
         onClick={resetFontSize}
-        className="rounded-capsule px-1.5 py-0 text-[10px] tracking-tightCaption text-black/62 transition hover:bg-black/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:text-white/68 dark:hover:bg-white/[0.08]"
+        className="rounded-capsule px-1.5 py-0 text-[10px] tracking-tightCaption text-muted-foreground transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         title="Reset font size"
       >
         {compact ? `${fontSizePx}px` : `A ${fontSizePx}px`}
@@ -448,7 +448,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
         type="button"
         onClick={increaseFontSize}
         disabled={fontSizePx >= MAX_FONT_SIZE}
-        className="rounded-capsule px-1.5 py-0 text-[11px] font-semibold tracking-tightCaption text-black/74 transition hover:bg-black/[0.06] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:text-white/78 dark:hover:bg-white/[0.08]"
+        className="rounded-capsule px-1.5 py-0 text-[11px] font-semibold tracking-tightCaption text-muted-foreground transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         aria-label="Increase assistant font size"
         title="A+"
       >
@@ -470,18 +470,18 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
 
   const renderChatBody = (messagesRef: RefObject<HTMLDivElement | null>) => (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <div ref={messagesRef} className="min-h-0 flex-1 overflow-y-auto rounded-apple border border-black/10 bg-white p-3 dark:border-white/10 dark:bg-[#1d1d1f]">
+      <div ref={messagesRef} className="min-h-0 flex-1 overflow-y-auto rounded-apple border border-border bg-card p-3">
         <div className="space-y-3">
           {messages.map((message, index) => (
             <div
               key={`${message.role}-${index}`}
               className={`rounded-apple px-3 py-2 ${
                 message.role === "assistant"
-                  ? "bg-black/[0.04] text-black/82 dark:bg-white/[0.09] dark:text-white/86"
-                  : "ml-5 bg-[#0071e3]/[0.12] text-black/88 dark:bg-[#2997ff]/[0.2] dark:text-white"
+                  ? "bg-muted text-foreground"
+                  : "ml-5 bg-primary/15 text-foreground"
               }`}
             >
-              <p className="mb-1 font-text text-[11px] font-semibold uppercase tracking-[0.08em] text-black/55 dark:text-white/60">
+              <p className="mb-1 font-text text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                 {message.role === "assistant" ? "AI Study Assistant" : "You"}
               </p>
               {message.role === "assistant" ? (
@@ -494,7 +494,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
             </div>
           ))}
           {loading ? (
-            <p className="font-text text-[13px] leading-[1.45] text-black/62 dark:text-white/66">
+            <p className="font-text text-[13px] leading-[1.45] text-muted-foreground">
               正在整理当前页面上下文并生成回答...
               <span className="ui-en ml-1">Thinking with current note context...</span>
             </p>
@@ -510,22 +510,22 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
 
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <label className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/55 dark:text-white/60">
+          <label className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             提问
             <span className="ui-en ml-1">Ask a Question</span>
           </label>
           {selectedText ? (
-            <div className="inline-flex max-w-[70%] items-center gap-1 rounded-capsule border border-[#0071e3]/35 bg-[#0071e3]/[0.06] px-2 py-0.5 dark:border-[#2997ff]/45 dark:bg-[#2997ff]/[0.1]">
-              <span className="shrink-0 font-text text-[10px] font-semibold uppercase tracking-[0.06em] text-black/66 dark:text-white/72">
+            <div className="inline-flex max-w-[70%] items-center gap-1 rounded-capsule border border-primary/35 bg-primary/10 px-2 py-0.5">
+              <span className="shrink-0 font-text text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                 已选文本
               </span>
-              <span className="min-w-0 truncate font-text text-[10px] leading-[1.2] text-black/75 dark:text-white/78">
+              <span className="min-w-0 truncate font-text text-[10px] leading-[1.2] text-muted-foreground">
                 {summarizeSelectionTextInline(selectedText)}
               </span>
               <button
                 type="button"
                 onClick={() => setSelectedText("")}
-                className="shrink-0 rounded-capsule border border-black/20 px-1.5 py-[1px] text-[10px] tracking-tightCaption text-black/70 transition hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/25 dark:text-white/74 dark:hover:bg-white/[0.07]"
+                className="shrink-0 rounded-capsule border border-border px-1.5 py-[1px] text-[10px] tracking-tightCaption text-muted-foreground transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 清除
                 <span className="ui-en ml-1">Clear</span>
@@ -549,14 +549,14 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
 
   return (
     <>
-      <section className="sticky top-20 hidden h-[calc(100dvh-5.75rem)] self-start rounded-apple bg-white/90 p-5 shadow-card backdrop-blur-sm dark:bg-[#272729]/95 lg:flex lg:flex-col">
+      <section className="sticky top-20 hidden h-[calc(100dvh-5.75rem)] self-start rounded-apple bg-card/95 p-5 text-card-foreground shadow-card backdrop-blur-sm lg:flex lg:flex-col">
         <header className="mb-4 flex items-center justify-between gap-3">
           <div>
-            <p className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/55 dark:text-white/60">
+            <p className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
               AI 学习助手
               <span className="ui-en ml-1">Study Assistant</span>
             </p>
-            <p className="mt-1 font-text text-[13px] leading-[1.35] text-black/70 dark:text-white/72">
+            <p className="mt-1 font-text text-[13px] leading-[1.35] text-muted-foreground">
               当前页面：{noteContext.weekLabelZh}
               <span className="ui-en ml-1">{noteContext.weekLabelEn}</span>
             </p>
@@ -566,7 +566,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
             <button
               type="button"
               onClick={() => setHistoryOpen(true)}
-              className="rounded-capsule border border-black/20 px-2.5 py-0.5 text-[11px] tracking-tightCaption text-black/72 transition hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/25 dark:text-white/78 dark:hover:bg-white/[0.07]"
+              className="rounded-capsule border border-border px-2.5 py-0.5 text-[11px] tracking-tightCaption text-muted-foreground transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               提问历史
               <span className="ui-en ml-1">History</span>
@@ -574,7 +574,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
             <button
               type="button"
               onClick={() => setDesktopFullscreen(true)}
-              className="rounded-capsule border border-black/20 px-2.5 py-0.5 text-[11px] tracking-tightCaption text-black/72 transition hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/25 dark:text-white/78 dark:hover:bg-white/[0.07]"
+              className="rounded-capsule border border-border px-2.5 py-0.5 text-[11px] tracking-tightCaption text-muted-foreground transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               全屏
               <span className="ui-en ml-1">Fullscreen</span>
@@ -586,18 +586,18 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
 
       {desktopFullscreen ? (
         <div className="fixed inset-0 z-[90] hidden overflow-y-auto bg-black/60 backdrop-blur-[2px] lg:block">
-          <div className="mx-4 my-4 min-h-[calc(100dvh-2rem)] rounded-[12px] bg-[#f5f5f7] p-4 shadow-card dark:bg-[#111113]">
+          <div className="mx-4 my-4 min-h-[calc(100dvh-2rem)] rounded-[12px] bg-background p-4 shadow-card">
             <div className="flex min-h-[calc(100dvh-4rem)] flex-col">
               <header className="mb-3 flex items-center justify-between gap-3">
-                <p className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px] text-[#1d1d1f] dark:text-white">
+                <p className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px] text-foreground">
                   AI 学习助手
-                  <span className="ui-en ml-2 text-[0.75em] font-normal text-black/70 dark:text-white/72">Fullscreen</span>
+                  <span className="ui-en ml-2 text-[0.75em] font-normal text-muted-foreground">Fullscreen</span>
                 </p>
                 {renderFontSizeControls()}
                 <button
                   type="button"
                   onClick={() => setDesktopFullscreen(false)}
-                  className="rounded-capsule border border-black/20 px-3 py-1 text-[12px] tracking-tightCaption text-black/72 transition hover:bg-black/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/25 dark:text-white/78 dark:hover:bg-white/[0.08]"
+                  className="rounded-capsule border border-border px-3 py-1 text-[12px] tracking-tightCaption text-muted-foreground transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   退出全屏
                   <span className="ui-en ml-1">Exit</span>
@@ -611,17 +611,17 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
 
       {historyOpen ? (
         <div className="fixed inset-0 z-[95] bg-black/60 backdrop-blur-[2px]">
-          <div className="absolute inset-3 rounded-[12px] bg-[#f5f5f7] p-3 shadow-card dark:bg-[#111113] md:inset-6 md:p-4">
+          <div className="absolute inset-3 rounded-[12px] bg-background p-3 shadow-card md:inset-6 md:p-4">
             <div className="flex h-full flex-col">
               <header className="mb-3 flex items-center justify-between gap-3">
-                <p className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px] text-[#1d1d1f] dark:text-white">
+                <p className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px] text-foreground">
                   提问历史
-                  <span className="ui-en ml-2 text-[0.75em] font-normal text-black/70 dark:text-white/72">Question History</span>
+                  <span className="ui-en ml-2 text-[0.75em] font-normal text-muted-foreground">Question History</span>
                 </p>
                 <button
                   type="button"
                   onClick={() => setHistoryOpen(false)}
-                  className="rounded-capsule border border-black/20 px-3 py-1 text-[12px] tracking-tightCaption text-black/72 transition hover:bg-black/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/25 dark:text-white/78 dark:hover:bg-white/[0.08]"
+                  className="rounded-capsule border border-border px-3 py-1 text-[12px] tracking-tightCaption text-muted-foreground transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   关闭
                   <span className="ui-en ml-1">Close</span>
@@ -629,10 +629,10 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
               </header>
 
               <div className="grid min-h-0 flex-1 gap-3 md:grid-cols-[300px_minmax(0,1fr)]">
-                <section className="min-h-0 overflow-y-auto rounded-apple border border-black/12 bg-white p-2 dark:border-white/12 dark:bg-[#1d1d1f]">
+                <section className="min-h-0 overflow-y-auto rounded-apple border border-border bg-card p-2">
                   <div className="space-y-2">
                     {noteRecords.length === 0 ? (
-                      <p className="px-2 py-3 font-text text-[13px] leading-[1.45] text-black/62 dark:text-white/66">
+                      <p className="px-2 py-3 font-text text-[13px] leading-[1.45] text-muted-foreground">
                         暂无提问记录。
                         <span className="ui-en ml-1">No history yet.</span>
                       </p>
@@ -647,13 +647,13 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
                             onClick={() => setSelectedRecordId(record.id)}
                             className={`w-full rounded-apple border px-3 py-2 text-left transition ${
                               active
-                                ? "border-[#0071e3]/45 bg-[#0071e3]/[0.08]"
-                                : "border-black/10 bg-white hover:bg-black/[0.03] dark:border-white/12 dark:bg-[#232326] dark:hover:bg-white/[0.08]"
+                                ? "border-primary/50 bg-primary/10"
+                                : "border-border bg-card hover:bg-accent"
                             }`}
                           >
-                            <p className="font-text text-[13px] font-semibold leading-[1.4] text-black/82 dark:text-white/86">{record.title}</p>
-                            <p className="mt-1 line-clamp-2 font-text text-[12px] leading-[1.4] text-black/63 dark:text-white/65">{record.question}</p>
-                            <p className="mt-1 font-text text-[11px] leading-[1.35] text-black/52 dark:text-white/55">{timeLabel}</p>
+                            <p className="font-text text-[13px] font-semibold leading-[1.4] text-foreground">{record.title}</p>
+                            <p className="mt-1 line-clamp-2 font-text text-[12px] leading-[1.4] text-muted-foreground">{record.question}</p>
+                            <p className="mt-1 font-text text-[11px] leading-[1.35] text-muted-foreground">{timeLabel}</p>
                           </button>
                         );
                       })
@@ -661,31 +661,31 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
                   </div>
                 </section>
 
-                <section className="min-h-0 overflow-y-auto rounded-apple border border-black/12 bg-white p-4 dark:border-white/12 dark:bg-[#1d1d1f]">
+                <section className="min-h-0 overflow-y-auto rounded-apple border border-border bg-card p-4">
                   {selectedRecord ? (
                     <div className="space-y-4">
                       <div>
-                        <p className="font-display text-[19px] font-semibold leading-[1.2] text-[#1d1d1f] dark:text-white">{selectedRecord.title}</p>
-                        <p className="mt-1 font-text text-[12px] leading-[1.4] text-black/60 dark:text-white/62">
+                        <p className="font-display text-[19px] font-semibold leading-[1.2] text-foreground">{selectedRecord.title}</p>
+                        <p className="mt-1 font-text text-[12px] leading-[1.4] text-muted-foreground">
                           {selectedRecord.weekLabelZh}
                           <span className="ui-en ml-1">{selectedRecord.weekLabelEn}</span>
                         </p>
                       </div>
 
-                      <div className="rounded-apple bg-black/[0.04] px-3 py-2 dark:bg-white/[0.08]">
-                        <p className="mb-1 font-text text-[11px] font-semibold uppercase tracking-[0.08em] text-black/55 dark:text-white/60">Question</p>
-                        <p className="font-text text-black/84 dark:text-white/88" style={messageTextStyle}>
+                      <div className="rounded-apple bg-muted px-3 py-2">
+                        <p className="mb-1 font-text text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Question</p>
+                        <p className="font-text text-foreground" style={messageTextStyle}>
                           {selectedRecord.question}
                         </p>
                       </div>
 
-                      <div className="rounded-apple bg-black/[0.04] px-3 py-2 dark:bg-white/[0.08]">
-                        <p className="mb-1 font-text text-[11px] font-semibold uppercase tracking-[0.08em] text-black/55 dark:text-white/60">Answer</p>
+                      <div className="rounded-apple bg-muted px-3 py-2">
+                        <p className="mb-1 font-text text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Answer</p>
                         {renderAssistantMarkdown(selectedRecord.answer)}
                       </div>
                     </div>
                   ) : (
-                    <p className="font-text text-[14px] leading-[1.45] text-black/62 dark:text-white/66">
+                    <p className="font-text text-[14px] leading-[1.45] text-muted-foreground">
                       请选择一条提问记录查看详情。
                       <span className="ui-en ml-1">Select a history card to view details.</span>
                     </p>
@@ -701,7 +701,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
-          className="fixed bottom-5 right-4 z-[60] inline-flex items-center rounded-capsule bg-[#0071e3] px-4 py-2 font-text text-[14px] text-white shadow-card transition hover:bg-[#0066cc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+          className="fixed bottom-5 right-4 z-[60] inline-flex items-center rounded-capsule bg-primary px-4 py-2 font-text text-[14px] text-primary-foreground shadow-card transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
         >
           AI 学习助手
           <span className="ui-en ml-1">Ask AI</span>
@@ -709,18 +709,18 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
 
         {mobileOpen ? (
           <div className="fixed inset-0 z-[70] bg-black/45 backdrop-blur-[1px]">
-            <div className="absolute inset-x-0 bottom-0 flex h-[min(88dvh,calc(100dvh-1rem))] flex-col rounded-t-[18px] bg-[#f5f5f7] p-4 dark:bg-[#151516]">
+            <div className="absolute inset-x-0 bottom-0 flex h-[min(88dvh,calc(100dvh-1rem))] flex-col rounded-t-[18px] bg-background p-4">
               <header className="mb-3 flex items-center justify-between">
-                <p className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px] text-[#1d1d1f] dark:text-white">
+                <p className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px] text-foreground">
                   AI 学习助手
-                  <span className="ui-en ml-2 text-[0.75em] font-normal text-black/70 dark:text-white/72">Study Assistant</span>
+                  <span className="ui-en ml-2 text-[0.75em] font-normal text-muted-foreground">Study Assistant</span>
                 </p>
                 <div className="flex items-center gap-2">
                   {renderFontSizeControls(true)}
                   <button
                     type="button"
                     onClick={() => setHistoryOpen(true)}
-                    className="rounded-capsule border border-black/20 px-3 py-1 text-[12px] tracking-tightCaption text-black/72 transition hover:bg-black/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/25 dark:text-white/78 dark:hover:bg-white/[0.08]"
+                    className="rounded-capsule border border-border px-3 py-1 text-[12px] tracking-tightCaption text-muted-foreground transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     历史
                     <span className="ui-en ml-1">History</span>
@@ -728,7 +728,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
                   <button
                     type="button"
                     onClick={() => setMobileOpen(false)}
-                    className="rounded-capsule border border-black/20 px-3 py-1 text-[12px] tracking-tightCaption text-black/72 transition hover:bg-black/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/25 dark:text-white/78 dark:hover:bg-white/[0.08]"
+                    className="rounded-capsule border border-border px-3 py-1 text-[12px] tracking-tightCaption text-muted-foreground transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     关闭
                     <span className="ui-en ml-1">Close</span>

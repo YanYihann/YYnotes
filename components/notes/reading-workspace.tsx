@@ -80,14 +80,14 @@ export function ReadingWorkspace({ headings, noteContext, children }: ReadingWor
           <button
             type="button"
             onClick={() => setTocCollapsed((value) => !value)}
-            className="inline-flex items-center rounded-capsule border border-black/20 px-3 py-1.5 font-text text-[12px] tracking-tightCaption text-black/72 transition hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/25 dark:text-white/76 dark:hover:bg-white/[0.08]"
+            className="inline-flex items-center rounded-capsule border border-border px-3 py-1.5 font-text text-[12px] tracking-tightCaption text-muted-foreground transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {tocCollapsed ? "展开目录" : "折叠目录"}
             <span className="ui-en ml-1">{tocCollapsed ? "Show TOC" : "Hide TOC"}</span>
           </button>
 
-          <div className="flex items-center gap-3 rounded-capsule border border-black/15 bg-white px-3 py-1 dark:border-white/18 dark:bg-[#2a2a2d]">
-            <label htmlFor="ai-width-slider" className="font-text text-[12px] tracking-tightCaption text-black/68 dark:text-white/72">
+          <div className="flex items-center gap-3 rounded-capsule border border-border bg-card px-3 py-1">
+            <label htmlFor="ai-width-slider" className="font-text text-[12px] tracking-tightCaption text-muted-foreground">
               AI宽度
               <span className="ui-en ml-1">AI Width</span>
             </label>
@@ -99,7 +99,7 @@ export function ReadingWorkspace({ headings, noteContext, children }: ReadingWor
               step={10}
               value={aiWidth}
               onChange={(event) => setAiWidth(Number(event.target.value))}
-              className="h-1 w-28 accent-[#0071e3]"
+              className="h-1 w-28 accent-primary"
             />
           </div>
         </div>
@@ -118,7 +118,7 @@ export function ReadingWorkspace({ headings, noteContext, children }: ReadingWor
               type="button"
               aria-label="Resize assistant width"
               onMouseDown={() => setDragging(true)}
-              className="absolute -left-3 top-1/2 hidden h-14 w-2 -translate-y-1/2 cursor-col-resize rounded-capsule bg-black/12 transition hover:bg-[#0071e3]/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:bg-white/20 xl:block"
+              className="absolute -left-3 top-1/2 hidden h-14 w-2 -translate-y-1/2 cursor-col-resize rounded-capsule bg-border transition hover:bg-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring xl:block"
             />
             <NoteAssistantPanel noteContext={noteContext} />
           </div>

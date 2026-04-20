@@ -38,12 +38,12 @@ function normalizeApiBase(input: string): string {
 function CloudStateCard({ message, error = false }: { message: string; error?: boolean }) {
   return (
     <div className="mx-auto w-full max-w-[1720px] px-4 sm:px-6">
-      <article className="rounded-apple bg-white px-5 py-8 shadow-card dark:bg-[#272729] sm:px-8 md:px-10">
+      <article className="rounded-apple bg-card px-5 py-8 text-card-foreground shadow-card sm:px-8 md:px-10">
         <p
           className={
             error
               ? "rounded-apple border border-[#b4232f]/30 bg-[#b4232f]/[0.08] px-3 py-2 font-text text-[13px] leading-[1.4] text-[#7f1820] dark:border-[#ff6a77]/35 dark:bg-[#ff6a77]/[0.12] dark:text-[#ffd5da]"
-              : "font-text text-[15px] text-black/72 dark:text-white/75"
+              : "font-text text-[15px] text-muted-foreground"
           }
         >
           {message}

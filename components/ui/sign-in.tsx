@@ -70,13 +70,13 @@ interface SignInPageProps {
 }
 
 const GlassInputWrapper = ({ children }: { children: React.ReactNode }) => (
-  <div className="rounded-2xl border border-black/15 bg-white/80 backdrop-blur-sm transition-colors focus-within:border-[#0071e3] dark:border-white/20 dark:bg-[#1b1b1d]">
+  <div className="rounded-2xl border border-input bg-card/90 backdrop-blur-sm transition-colors focus-within:border-ring">
     {children}
   </div>
 );
 
 export const SignInPage: React.FC<SignInPageProps> = ({
-  title = <span className="font-light tracking-tighter text-[#1d1d1f] dark:text-white">Welcome</span>,
+  title = <span className="font-light tracking-tighter text-foreground">Welcome</span>,
   description = "Access your account and continue your journey with us.",
   mode = "login",
   showModeToggle = false,
@@ -126,21 +126,21 @@ export const SignInPage: React.FC<SignInPageProps> = ({
       <section className="flex flex-1 items-center justify-center p-8">
         <div className="w-full max-w-md">
           <div className="flex flex-col gap-6">
-            <h1 className="animate-element animate-delay-100 font-display text-4xl font-semibold leading-tight text-[#1d1d1f] dark:text-white md:text-5xl">
+            <h1 className="animate-element animate-delay-100 font-display text-4xl font-semibold leading-tight text-foreground md:text-5xl">
               {title}
             </h1>
             {description ? (
-              <p className="animate-element animate-delay-200 font-text text-black/70 dark:text-white/75">{description}</p>
+              <p className="animate-element animate-delay-200 font-text text-muted-foreground">{description}</p>
             ) : null}
 
             {showModeToggle ? (
-              <div className="animate-element animate-delay-300 inline-flex w-fit rounded-capsule border border-black/15 bg-black/[0.03] p-1 dark:border-white/20 dark:bg-white/[0.06]">
+              <div className="animate-element animate-delay-300 inline-flex w-fit rounded-capsule border border-border bg-muted/50 p-1">
                 <button
                   type="button"
                   onClick={() => onModeChange?.("login")}
                   className={cn(
                     "rounded-capsule px-4 py-1.5 font-text text-[13px] tracking-tightCaption transition",
-                    mode === "login" ? "bg-[#0071e3] text-white" : "text-white/74 hover:text-white",
+                    mode === "login" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
                   )}
                 >
                   登录
@@ -151,7 +151,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
                   onClick={() => onModeChange?.("register")}
                   className={cn(
                     "rounded-capsule px-4 py-1.5 font-text text-[13px] tracking-tightCaption transition",
-                    mode === "register" ? "bg-[#0071e3] text-white" : "text-white/74 hover:text-white",
+                    mode === "register" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
                   )}
                 >
                   注册
@@ -162,35 +162,35 @@ export const SignInPage: React.FC<SignInPageProps> = ({
 
             <form className="space-y-5" onSubmit={onSignIn}>
               <div className="animate-element animate-delay-400">
-                <label className="text-sm font-medium text-black/65 dark:text-white/70">{usernameLabel}</label>
+                <label className="text-sm font-medium text-muted-foreground">{usernameLabel}</label>
                 <GlassInputWrapper>
                   <input
                     name={usernameFieldName}
                     type={identifierInputType}
                     placeholder={usernamePlaceholder}
                     autoComplete={identifierInputType === "email" ? "email" : "username"}
-                    className="w-full rounded-2xl bg-transparent p-4 text-sm text-[#1d1d1f] outline-none placeholder:text-black/45 dark:text-white dark:placeholder:text-white/40"
+                    className="w-full rounded-2xl bg-transparent p-4 text-sm text-foreground outline-none placeholder:text-muted-foreground"
                   />
                 </GlassInputWrapper>
               </div>
 
               {showDisplayNameField ? (
                 <div className="animate-element animate-delay-500">
-                  <label className="text-sm font-medium text-black/65 dark:text-white/70">{displayNameLabel}</label>
+                  <label className="text-sm font-medium text-muted-foreground">{displayNameLabel}</label>
                   <GlassInputWrapper>
                     <input
                       name="displayName"
                       type="text"
                       placeholder={displayNamePlaceholder}
                       autoComplete="nickname"
-                      className="w-full rounded-2xl bg-transparent p-4 text-sm text-[#1d1d1f] outline-none placeholder:text-black/45 dark:text-white dark:placeholder:text-white/40"
+                      className="w-full rounded-2xl bg-transparent p-4 text-sm text-foreground outline-none placeholder:text-muted-foreground"
                     />
                   </GlassInputWrapper>
                 </div>
               ) : null}
 
               <div className="animate-element animate-delay-600">
-                <label className="text-sm font-medium text-black/65 dark:text-white/70">{passwordLabel}</label>
+                <label className="text-sm font-medium text-muted-foreground">{passwordLabel}</label>
                 <GlassInputWrapper>
                   <div className="relative">
                     <input
@@ -198,7 +198,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
                       type={showPassword ? "text" : "password"}
                       placeholder={passwordPlaceholder}
                       autoComplete={mode === "login" ? "current-password" : "new-password"}
-                      className="w-full rounded-2xl bg-transparent p-4 pr-12 text-sm text-[#1d1d1f] outline-none placeholder:text-black/45 dark:text-white dark:placeholder:text-white/40"
+                      className="w-full rounded-2xl bg-transparent p-4 pr-12 text-sm text-foreground outline-none placeholder:text-muted-foreground"
                     />
                     <button
                       type="button"
@@ -207,9 +207,9 @@ export const SignInPage: React.FC<SignInPageProps> = ({
                       className="absolute inset-y-0 right-3 flex items-center"
                     >
                       {showPassword ? (
-                        <EyeOff className="h-5 w-5 text-black/45 transition-colors hover:text-black/75 dark:text-white/45 dark:hover:text-white/78" />
+                        <EyeOff className="h-5 w-5 text-muted-foreground transition-colors hover:text-foreground" />
                       ) : (
-                        <Eye className="h-5 w-5 text-black/45 transition-colors hover:text-black/75 dark:text-white/45 dark:hover:text-white/78" />
+                        <Eye className="h-5 w-5 text-muted-foreground transition-colors hover:text-foreground" />
                       )}
                     </button>
                   </div>
@@ -218,14 +218,14 @@ export const SignInPage: React.FC<SignInPageProps> = ({
 
               {showConfirmPasswordField ? (
                 <div className="animate-element animate-delay-700">
-                  <label className="text-sm font-medium text-black/65 dark:text-white/70">{confirmPasswordLabel}</label>
+                  <label className="text-sm font-medium text-muted-foreground">{confirmPasswordLabel}</label>
                   <GlassInputWrapper>
                     <input
                       name="confirmPassword"
                       type={showPassword ? "text" : "password"}
                       placeholder={confirmPasswordPlaceholder}
                       autoComplete="new-password"
-                      className="w-full rounded-2xl bg-transparent p-4 text-sm text-[#1d1d1f] outline-none placeholder:text-black/45 dark:text-white dark:placeholder:text-white/40"
+                      className="w-full rounded-2xl bg-transparent p-4 text-sm text-foreground outline-none placeholder:text-muted-foreground"
                     />
                   </GlassInputWrapper>
                 </div>
@@ -241,7 +241,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
                 {showRememberMe ? (
                   <label className="flex cursor-pointer items-center gap-3">
                     <input type="checkbox" name="rememberMe" className="custom-checkbox" />
-                    <span className="text-black/78 dark:text-white/85">{rememberLabel}</span>
+                    <span className="text-muted-foreground">{rememberLabel}</span>
                   </label>
                 ) : (
                   <span />
@@ -253,7 +253,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
                       e.preventDefault();
                       onResetPassword?.();
                     }}
-                    className="text-[#9c7af2] transition-colors hover:underline"
+                    className="text-primary transition-colors hover:underline"
                   >
                     Reset password
                   </a>
@@ -263,17 +263,17 @@ export const SignInPage: React.FC<SignInPageProps> = ({
               <button
                 type="submit"
                 disabled={loading}
-                className="animate-element animate-delay-900 w-full rounded-2xl bg-[#0071e3] py-4 font-medium text-white transition-colors hover:bg-[#0066cc] disabled:cursor-not-allowed disabled:opacity-60"
+                className="animate-element animate-delay-900 w-full rounded-2xl bg-primary py-4 font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {loading ? "处理中..." : mode === "register" ? submitTextRegister : submitTextLogin}
+                {loading ? "处理�?.." : mode === "register" ? submitTextRegister : submitTextLogin}
               </button>
             </form>
 
             {showGoogleButton && onGoogleSignIn ? (
               <>
                 <div className="animate-element animate-delay-1000 relative flex items-center justify-center">
-                  <span className="w-full border-t border-black/12 dark:border-white/15" />
-                  <span className="absolute bg-[#f5f5f7] px-4 text-sm text-black/52 dark:bg-[#161617] dark:text-white/60">
+                  <span className="w-full border-t border-border" />
+                  <span className="absolute bg-background px-4 text-sm text-muted-foreground">
                     Or continue with
                   </span>
                 </div>
@@ -281,7 +281,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
                 <button
                   type="button"
                   onClick={onGoogleSignIn}
-                  className="animate-element animate-delay-1200 flex w-full items-center justify-center gap-3 rounded-2xl border border-black/15 py-4 transition-colors hover:bg-black/[0.03] dark:border-white/18 dark:hover:bg-white/[0.06]"
+                  className="animate-element animate-delay-1200 flex w-full items-center justify-center gap-3 rounded-2xl border border-border py-4 transition-colors hover:bg-accent"
                 >
                   <GoogleIcon />
                   Continue with Google
@@ -290,7 +290,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
             ) : null}
 
             {onModeChange ? (
-              <p className="animate-element animate-delay-1400 text-center text-sm text-black/58 dark:text-white/62">
+              <p className="animate-element animate-delay-1400 text-center text-sm text-muted-foreground">
                 {helperText.lead}{" "}
                 <a
                   href="#"
@@ -298,7 +298,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
                     e.preventDefault();
                     onModeChange(helperText.nextMode);
                   }}
-                  className="text-[#9c7af2] transition-colors hover:underline"
+                  className="text-primary transition-colors hover:underline"
                 >
                   {helperText.action}
                 </a>

@@ -837,8 +837,8 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
   if (IS_CLOUD_MODE && !isReady) {
     return (
-      <article className="rounded-apple bg-white p-6 shadow-card dark:bg-[#272729]">
-        <p className="font-text text-[15px] text-black/72 dark:text-white/75">正在检查登录状态...</p>
+      <article className="rounded-apple bg-card p-6 text-card-foreground shadow-card">
+        <p className="font-text text-[15px] text-muted-foreground">正在检查登录状态...</p>
       </article>
     );
   }
@@ -849,20 +849,20 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
   return (
     <>
-      <section className="mb-6 rounded-apple bg-white p-4 shadow-card dark:bg-[#272729]">
+      <section className="mb-6 rounded-apple bg-card p-4 text-card-foreground shadow-card">
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             disabled={creatingFolder}
             onClick={handleCreateFolderButtonClick}
-            className="inline-flex h-[38px] items-center rounded-capsule border border-[#0066cc] px-4 font-text text-[14px] tracking-tightCaption text-[#0066cc] transition hover:bg-[#0066cc]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-[#2997ff] dark:text-[#2997ff] dark:hover:bg-[#2997ff]/[0.14]"
+            className="inline-flex h-[38px] items-center rounded-capsule border border-primary/60 px-4 font-text text-[14px] tracking-tightCaption text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {creatingFolder ? "创建中..." : "新建文件夹"}
           </button>
-          <p className="font-text text-[13px] text-black/65 dark:text-white/68">
+          <p className="font-text text-[13px] text-muted-foreground">
             总笔记 {notes.length} 条
           </p>
-          {loadingRemoteNotes ? <p className="font-text text-[13px] text-[#0066cc] dark:text-[#2997ff]">正在加载云端数据...</p> : null}
+          {loadingRemoteNotes ? <p className="font-text text-[13px] text-primary">正在加载云端数据...</p> : null}
         </div>
 
         {error ? (
@@ -870,7 +870,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
             {error}
           </p>
         ) : null}
-        <p className="mt-3 font-text text-[13px] text-black/65 dark:text-white/70">点击文件夹即可在下方查看对应笔记，点击同一文件夹可收起。</p>
+        <p className="mt-3 font-text text-[13px] text-muted-foreground">点击文件夹即可在下方查看对应笔记，点击同一文件夹可收起。</p>
 
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <div
@@ -891,17 +891,17 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
             onDrop={(event) => void handleFolderDrop(null, event)}
             className={`rounded-apple border px-3 py-3 transition ${
               folderFilter === "uncategorized"
-                ? "border-[#0071e3] bg-[#0071e3]/[0.1] dark:border-[#2997ff] dark:bg-[#2997ff]/[0.18]"
+                ? "border-primary/60 bg-primary/10"
                 : dragOverTarget === "uncategorized"
-                ? "border-[#0071e3] bg-[#0071e3]/[0.08] dark:border-[#2997ff] dark:bg-[#2997ff]/[0.16]"
-                : "border-black/12 bg-black/[0.02] dark:border-white/16 dark:bg-white/[0.04]"
+                ? "border-primary/50 bg-primary/10"
+                : "border-border bg-muted/40"
             }`}
           >
-            <p className="font-text text-[13px] font-semibold text-black/80 dark:text-white/84">
+            <p className="font-text text-[13px] font-semibold text-foreground">
               未归类
-              <span className="ui-en ml-1 text-black/62 dark:text-white/66">Uncategorized</span>
+              <span className="ui-en ml-1 text-muted-foreground">Uncategorized</span>
             </p>
-            <p className="mt-1 font-text text-[12px] text-black/62 dark:text-white/68">{folderCounts.uncategorized ?? 0} 条笔记</p>
+            <p className="mt-1 font-text text-[12px] text-muted-foreground">{folderCounts.uncategorized ?? 0} 条笔记</p>
           </div>
 
           {folders.map((folder) => (
@@ -924,14 +924,14 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
               onDrop={(event) => void handleFolderDrop(folder.id, event)}
               className={`rounded-apple border px-3 py-3 transition ${
                 folderFilter === `folder:${folder.id}`
-                  ? "border-[#0071e3] bg-[#0071e3]/[0.1] dark:border-[#2997ff] dark:bg-[#2997ff]/[0.18]"
+                  ? "border-primary/60 bg-primary/10"
                   : dragOverTarget === folder.id
-                  ? "border-[#0071e3] bg-[#0071e3]/[0.08] dark:border-[#2997ff] dark:bg-[#2997ff]/[0.16]"
-                  : "border-black/12 bg-black/[0.02] dark:border-white/16 dark:bg-white/[0.04]"
+                  ? "border-primary/50 bg-primary/10"
+                  : "border-border bg-muted/40"
               }`}
             >
               <div className="flex items-start justify-between gap-2">
-                <p className="font-text text-[13px] font-semibold text-black/80 dark:text-white/84">{folder.name}</p>
+                <p className="font-text text-[13px] font-semibold text-foreground">{folder.name}</p>
                 <button
                   type="button"
                   disabled={deletingFolderId === folder.id}
@@ -944,7 +944,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                   {deletingFolderId === folder.id ? "删除中..." : "删除"}
                 </button>
               </div>
-              <p className="mt-1 font-text text-[12px] text-black/62 dark:text-white/68">{folderCounts[folder.id] ?? 0} 条笔记</p>
+              <p className="mt-1 font-text text-[12px] text-muted-foreground">{folderCounts[folder.id] ?? 0} 条笔记</p>
             </div>
           ))}
         </div>
@@ -952,25 +952,25 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
       {folderFilter ? (
         <>
-          <section className="mb-6 rounded-apple bg-white p-4 shadow-card dark:bg-[#272729]">
+          <section className="mb-6 rounded-apple bg-card p-4 text-card-foreground shadow-card">
             <div className="grid gap-3 md:grid-cols-3">
               <label className="space-y-1 md:col-span-2">
-                <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/60 dark:text-white/60">关键词</span>
+                <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">关键词</span>
                 <input
                   type="text"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="搜索标题或主题"
-                  className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[14px] text-black/85 outline-none transition placeholder:text-black/45 focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/86 dark:placeholder:text-white/45"
+                  className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </label>
 
               <label className="space-y-1">
-                <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/60 dark:text-white/60">主题</span>
+                <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">主题</span>
                 <select
                   value={topicFilter}
                   onChange={(event) => setTopicFilter(event.target.value)}
-                  className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[14px] text-black/85 outline-none transition focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/86"
+                  className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <option value="">全部主题</option>
                   {topicOptions.map((topic) => (
@@ -983,7 +983,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
             </div>
 
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <p className="font-text text-[13px] text-black/65 dark:text-white/68">
+              <p className="font-text text-[13px] text-muted-foreground">
                 当前文件夹：{activeFolderLabel}，共 {filteredNotes.length} 条
               </p>
             </div>
@@ -1029,7 +1029,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                           disabled={assigningSlug === note.slug || updatingSlug === note.slug}
                           onChange={(event) => void assignFolder(note.slug, event.target.value || null)}
                           onClick={(event) => event.stopPropagation()}
-                          className="w-full rounded-capsule border border-black/16 bg-white px-3 py-1.5 font-text text-[12px] text-black/75 outline-none transition focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/22 dark:bg-[#202022] dark:text-white/80"
+                          className="w-full rounded-capsule border border-input bg-background px-3 py-1.5 font-text text-[12px] text-muted-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           <option value="">未归类</option>
                           {folders.map((folder) => (
@@ -1043,7 +1043,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                             type="button"
                             disabled={updatingSlug === note.slug || deletingSlug === note.slug}
                             onClick={() => void handleEditNote(note)}
-                            className="inline-flex items-center rounded-capsule border border-[#0066cc] px-3 py-1.5 font-text text-[12px] tracking-tightCaption text-[#0066cc] transition hover:bg-[#0066cc]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-[#2997ff] dark:text-[#2997ff] dark:hover:bg-[#2997ff]/[0.14]"
+                            className="inline-flex items-center rounded-capsule border border-primary/60 px-3 py-1.5 font-text text-[12px] tracking-tightCaption text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
                             {updatingSlug === note.slug ? "保存中..." : "编辑标题/主题"}
                           </button>
@@ -1055,7 +1055,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                           >
                             {deletingSlug === note.slug ? "删除中..." : "删除"}
                           </button>
-                          <span className="ml-auto font-text text-[11px] text-black/55 dark:text-white/60">
+                          <span className="ml-auto font-text text-[11px] text-muted-foreground">
                             {noteFolderName ? noteFolderName : "未归类"}
                           </span>
                         </div>
@@ -1068,13 +1068,13 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
           </div>
 
           {!filteredNotes.length ? (
-            <p className="mt-6 rounded-apple border border-black/12 bg-white px-4 py-3 font-text text-[14px] leading-[1.45] text-black/72 dark:border-white/15 dark:bg-[#272729] dark:text-white/74">
+            <p className="mt-6 rounded-apple border border-border bg-card px-4 py-3 font-text text-[14px] leading-[1.45] text-muted-foreground">
               当前文件夹下没有匹配条件的笔记，请调整关键词或主题。
             </p>
           ) : null}
         </>
       ) : (
-        <p className="mt-2 rounded-apple border border-black/12 bg-white px-4 py-3 font-text text-[14px] leading-[1.45] text-black/72 dark:border-white/15 dark:bg-[#272729] dark:text-white/74">
+        <p className="mt-2 rounded-apple border border-border bg-card px-4 py-3 font-text text-[14px] leading-[1.45] text-muted-foreground">
           请先点击上方文件夹（或未归类）查看对应笔记。
         </p>
       )}

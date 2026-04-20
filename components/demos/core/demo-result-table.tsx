@@ -1,4 +1,4 @@
-﻿import type { ReactNode } from "react";
+import type { ReactNode } from "react";
 
 type Column<T> = {
   key: string;
@@ -15,12 +15,12 @@ type DemoResultTableProps<T> = {
 
 export function DemoResultTable<T>({ columns, rows, captionZh, captionEn }: DemoResultTableProps<T>) {
   return (
-    <section className="overflow-hidden rounded-apple bg-white shadow-card dark:bg-[#272729]">
+    <section className="overflow-hidden rounded-apple bg-card text-card-foreground shadow-card">
       {(captionZh || captionEn) && (
-        <header className="border-b border-black/10 px-4 py-3 dark:border-white/10">
-          <p className="font-text text-[14px] font-semibold tracking-tightCaption text-black/78 dark:text-white/82">
+        <header className="border-b border-border px-4 py-3">
+          <p className="font-text text-[14px] font-semibold tracking-tightCaption text-muted-foreground">
             {captionZh}
-            {captionEn ? <span className="ui-en ml-1 font-normal text-black/58 dark:text-white/64">{captionEn}</span> : null}
+            {captionEn ? <span className="ui-en ml-1 font-normal text-muted-foreground">{captionEn}</span> : null}
           </p>
         </header>
       )}
@@ -32,7 +32,7 @@ export function DemoResultTable<T>({ columns, rows, captionZh, captionEn }: Demo
               {columns.map((column) => (
                 <th
                   key={column.key}
-                  className="border-b border-black/10 px-4 py-2 font-text text-[13px] font-semibold tracking-tightCaption text-black/70 dark:border-white/10 dark:text-white/78"
+                  className="border-b border-border px-4 py-2 font-text text-[13px] font-semibold tracking-tightCaption text-muted-foreground"
                 >
                   {column.title}
                 </th>
@@ -41,9 +41,9 @@ export function DemoResultTable<T>({ columns, rows, captionZh, captionEn }: Demo
           </thead>
           <tbody>
             {rows.map((row, rowIndex) => (
-              <tr key={rowIndex} className="border-b border-black/5 last:border-none dark:border-white/5">
+              <tr key={rowIndex} className="border-b border-border/50 last:border-none">
                 {columns.map((column) => (
-                  <td key={column.key} className="px-4 py-2.5 font-text text-[14px] tracking-tightCaption text-black/78 dark:text-white/82">
+                  <td key={column.key} className="px-4 py-2.5 font-text text-[14px] tracking-tightCaption text-muted-foreground">
                     {column.render(row)}
                   </td>
                 ))}

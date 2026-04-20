@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useState } from "react";
 import {
@@ -30,10 +30,10 @@ function GridRefinementStrip({ a, b, levels }: { a: number; b: number; levels: n
   const fineNodes = Array.from({ length: fineN + 1 }, (_, i) => left + ((right - left) * i) / fineN);
 
   return (
-    <section className="rounded-apple bg-white px-4 py-4 shadow-card dark:bg-[#272729] sm:px-5">
-      <h3 className="mb-2 font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px] text-[#1d1d1f] dark:text-white">
-        粗网格 vs 细网格
-        <span className="ui-en ml-1 font-text text-[15px] font-normal tracking-tightCaption text-black/58 dark:text-white/66">Coarse vs Fine Grid</span>
+    <section className="rounded-apple bg-card px-4 py-4 text-card-foreground shadow-card sm:px-5">
+      <h3 className="mb-2 font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px] text-foreground">
+        ������ vs ϸ����
+        <span className="ui-en ml-1 font-text text-[15px] font-normal tracking-tightCaption text-muted-foreground">Coarse vs Fine Grid</span>
       </h3>
       <svg viewBox={`0 0 ${width} ${height}`} className="w-full">
         <line x1={margin.left} y1={48} x2={width - margin.right} y2={48} stroke="rgba(0,0,0,0.35)" strokeWidth={1} />
@@ -94,7 +94,7 @@ export function RombergDemo() {
 
   return (
     <div className="grid gap-5 lg:grid-cols-[330px_minmax(0,1fr)]">
-      <DemoControlPanel titleZh="Romberg 参数" titleEn="Romberg Controls">
+      <DemoControlPanel titleZh="Romberg ����" titleEn="Romberg Controls">
         <FunctionSelector
           presetId={presetId}
           setPresetId={setPresetId}
@@ -104,45 +104,45 @@ export function RombergDemo() {
 
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="space-y-1.5">
-            <span className="font-text text-[14px] font-semibold tracking-tightCaption text-black/75 dark:text-white/78">区间起点 a</span>
+            <span className="font-text text-[14px] font-semibold tracking-tightCaption text-muted-foreground">������� a</span>
             <input
               value={aValue}
               onChange={(event) => setAValue(event.target.value)}
-              className="w-full rounded-apple border border-black/10 bg-[#fafafc] px-3 py-2 font-text text-[15px] outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/25 dark:border-white/10 dark:bg-[#1d1d1f]"
+              className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[15px] outline-none focus:border-ring focus:ring-2 focus:ring-ring/25"
             />
           </label>
           <label className="space-y-1.5">
-            <span className="font-text text-[14px] font-semibold tracking-tightCaption text-black/75 dark:text-white/78">区间终点 b</span>
+            <span className="font-text text-[14px] font-semibold tracking-tightCaption text-muted-foreground">�����յ� b</span>
             <input
               value={bValue}
               onChange={(event) => setBValue(event.target.value)}
-              className="w-full rounded-apple border border-black/10 bg-[#fafafc] px-3 py-2 font-text text-[15px] outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/25 dark:border-white/10 dark:bg-[#1d1d1f]"
+              className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[15px] outline-none focus:border-ring focus:ring-2 focus:ring-ring/25"
             />
           </label>
         </div>
 
         <label className="space-y-1.5">
-          <span className="font-text text-[14px] font-semibold tracking-tightCaption text-black/75 dark:text-white/78">
-            Romberg 层数
-            <span className="ui-en ml-1 font-normal text-black/58 dark:text-white/64">Refinement Levels</span>
+          <span className="font-text text-[14px] font-semibold tracking-tightCaption text-muted-foreground">
+            Romberg ����
+            <span className="ui-en ml-1 font-normal text-muted-foreground">Refinement Levels</span>
           </span>
           <input
             value={levelsValue}
             onChange={(event) => setLevelsValue(event.target.value)}
-            className="w-full rounded-apple border border-black/10 bg-[#fafafc] px-3 py-2 font-text text-[15px] outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/25 dark:border-white/10 dark:bg-[#1d1d1f]"
+            className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[15px] outline-none focus:border-ring focus:ring-2 focus:ring-ring/25"
           />
         </label>
 
         {errorMessage ? (
           <p className="rounded-apple bg-[#f5d9dc] px-3 py-2 font-text text-[14px] tracking-tightCaption text-[#8c1d26] dark:bg-[#4a2126] dark:text-[#ff9aa5]">
-            输入错误：{errorMessage}
+            �������{errorMessage}
             <span className="ui-en ml-1">Input error: {errorMessage}</span>
           </p>
         ) : null}
 
-        <StepExplanationCard titleZh="学习提示" titleEn="Study Hint">
+        <StepExplanationCard titleZh="ѧϰ��ʾ" titleEn="Study Hint">
           <p>
-            先看第一列梯形估计，再看右上角外推值，体会“误差主项被抵消”的过程。
+            �ȿ���һ�����ι��ƣ��ٿ����Ͻ�����ֵ����ᡰ�������������Ĺ��̡�
             <span className="ui-en ml-1">Observe base trapezoid estimates first, then follow the extrapolated upper-right values.</span>
           </p>
         </StepExplanationCard>
@@ -154,16 +154,16 @@ export function RombergDemo() {
             <GridRefinementStrip a={a} b={b} levels={computation.levels} />
 
             <DemoFormulaPanel
-              titleZh="Romberg 外推核心"
+              titleZh="Romberg ���ƺ���"
               titleEn="Romberg Extrapolation Core"
               items={[
                 {
-                  zh: "梯形基线",
+                  zh: "���λ���",
                   en: "Trapezoid Base",
                   latex: "R_{k,0}=T_{2^k}",
                 },
                 {
-                  zh: "外推更新",
+                  zh: "���Ƹ���",
                   en: "Extrapolation Update",
                   latex: "R_{k,j}=R_{k,j-1}+\\dfrac{R_{k,j-1}-R_{k-1,j-1}}{4^j-1}",
                 },
@@ -171,7 +171,7 @@ export function RombergDemo() {
             />
 
             <DemoResultTable
-              captionZh="梯形基线估计"
+              captionZh="���λ��߹���"
               captionEn="Base Trapezoid Estimates"
               rows={computation.baseRows}
               columns={[
@@ -185,7 +185,7 @@ export function RombergDemo() {
             <RombergTable table={computation.table} />
 
             <DemoResultTable
-              captionZh="最终外推结果"
+              captionZh="�������ƽ��"
               captionEn="Final Extrapolated Estimate"
               rows={[computation]}
               columns={[

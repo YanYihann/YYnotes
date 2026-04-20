@@ -1,4 +1,4 @@
-﻿import { cloneElement, isValidElement } from "react";
+import { cloneElement, isValidElement } from "react";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import {
   DefinitionBlock,
@@ -14,24 +14,24 @@ import {
 import { cn } from "@/lib/utils";
 
 const KEY_TERMS: Array<{ zh: string; en: string }> = [
-  { zh: "黎曼近似", en: "Riemann Approximation" },
-  { zh: "二分法", en: "Bisection Method" },
-  { zh: "牛顿法", en: "Newton's Method" },
-  { zh: "割线法", en: "Secant Method" },
-  { zh: "穆勒法", en: "Muller Method" },
-  { zh: "差商", en: "Divided Difference" },
-  { zh: "拉格朗日插值", en: "Lagrange Interpolation" },
-  { zh: "埃尔米特插值", en: "Hermite Interpolation" },
-  { zh: "数值积分", en: "Numerical Integration" },
-  { zh: "梯形公式", en: "Trapezoidal Rule" },
-  { zh: "辛普森公式", en: "Simpson's Rule" },
-  { zh: "龙格现象", en: "Runge Phenomenon" },
-  { zh: "误差", en: "Error" },
-  { zh: "收敛", en: "Convergence" },
-  { zh: "迭代", en: "Iteration" },
-  { zh: "雅可比迭代", en: "Jacobi Iteration" },
-  { zh: "高斯-赛德尔", en: "Gauss-Seidel" },
-  { zh: "线性方程组", en: "Linear System" },
+  { zh: "��������", en: "Riemann Approximation" },
+  { zh: "���ַ�", en: "Bisection Method" },
+  { zh: "ţ�ٷ�", en: "Newton's Method" },
+  { zh: "���߷�", en: "Secant Method" },
+  { zh: "���շ�", en: "Muller Method" },
+  { zh: "����", en: "Divided Difference" },
+  { zh: "�������ղ�ֵ", en: "Lagrange Interpolation" },
+  { zh: "�������ز�ֵ", en: "Hermite Interpolation" },
+  { zh: "��ֵ����", en: "Numerical Integration" },
+  { zh: "���ι�ʽ", en: "Trapezoidal Rule" },
+  { zh: "����ɭ��ʽ", en: "Simpson's Rule" },
+  { zh: "��������", en: "Runge Phenomenon" },
+  { zh: "���", en: "Error" },
+  { zh: "����", en: "Convergence" },
+  { zh: "����", en: "Iteration" },
+  { zh: "�ſɱȵ���", en: "Jacobi Iteration" },
+  { zh: "��˹-���¶�", en: "Gauss-Seidel" },
+  { zh: "���Է�����", en: "Linear System" },
 ];
 
 function escapeRegExp(value: string): string {
@@ -41,7 +41,7 @@ function escapeRegExp(value: string): string {
 const TERM_PATTERNS = Array.from(
   new Set(
     KEY_TERMS.flatMap((term) => [
-      `${term.zh}（${term.en}）`,
+      `${term.zh}��${term.en}��`,
       `${term.zh}(${term.en})`,
       term.zh,
     ]),
@@ -87,7 +87,7 @@ function detectLineLanguage(children: ReactNode): "zh" | "en" | "mixed" {
       (word) => !["sin", "cos", "tan", "cot", "sec", "csc", "log", "ln", "exp", "lim", "max", "min"].includes(word),
     );
     const hasNaturalEnglishPhrase = /\b[A-Za-z]{2,}(?:[-'][A-Za-z]{2,})?[,:;)]?\s+[A-Za-z]{2,}\b/.test(normalizedText);
-    const hasMathSignal = /[=+\-*/^<>_{}()[\]\\]|∑|∫|√|≈|≤|≥|±|\d/.test(normalizedText);
+    const hasMathSignal = /[=+\-*/^<>_{}()[\]\\]|��|��|��|��|��|��|��|\d/.test(normalizedText);
     const looksLikeFormula = hasMathSignal && !hasNaturalEnglishPhrase && nonMathWords.length === 0;
 
     if (looksLikeFormula) {
@@ -177,7 +177,7 @@ function Paragraph(props: ComponentPropsWithoutRef<"p">) {
   return (
     <p
       {...rest}
-      className={cn("my-5 font-text text-[17px] leading-[1.7] tracking-tightBody text-black/80 dark:text-white/85", lineClass, props.className)}
+      className={cn("my-5 font-text text-[17px] leading-[1.7] tracking-tightBody text-muted-foreground", lineClass, props.className)}
     >
       {children}
     </p>
@@ -193,7 +193,7 @@ function H1(props: ComponentPropsWithoutRef<"h1">) {
     <h1
       {...rest}
       className={cn(
-        "mt-8 scroll-mt-28 font-display text-[clamp(2rem,3.8vw,3.5rem)] font-semibold leading-[1.07] tracking-tightDisplay text-[#1d1d1f] dark:text-white",
+        "mt-8 scroll-mt-28 font-display text-[clamp(2rem,3.8vw,3.5rem)] font-semibold leading-[1.07] tracking-tightDisplay text-foreground",
         lineClass,
         props.className,
       )}
@@ -212,7 +212,7 @@ function H2(props: ComponentPropsWithoutRef<"h2">) {
     <h2
       {...rest}
       className={cn(
-        "mt-14 scroll-mt-28 font-display text-[40px] font-semibold leading-[1.1] tracking-tightDisplay text-[#1d1d1f] dark:text-white",
+        "mt-14 scroll-mt-28 font-display text-[40px] font-semibold leading-[1.1] tracking-tightDisplay text-foreground",
         lineClass,
         props.className,
       )}
@@ -231,7 +231,7 @@ function H3(props: ComponentPropsWithoutRef<"h3">) {
     <h3
       {...rest}
       className={cn(
-        "mt-10 scroll-mt-28 font-display text-[28px] font-normal leading-[1.14] tracking-[0.196px] text-[#1d1d1f] dark:text-white",
+        "mt-10 scroll-mt-28 font-display text-[28px] font-normal leading-[1.14] tracking-[0.196px] text-foreground",
         lineClass,
         props.className,
       )}
@@ -250,7 +250,7 @@ function H4(props: ComponentPropsWithoutRef<"h4">) {
     <h4
       {...rest}
       className={cn(
-        "mt-8 font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px] text-[#1d1d1f] dark:text-white",
+        "mt-8 font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px] text-foreground",
         lineClass,
         props.className,
       )}
@@ -261,11 +261,11 @@ function H4(props: ComponentPropsWithoutRef<"h4">) {
 }
 
 function UL(props: ComponentPropsWithoutRef<"ul">) {
-  return <ul {...props} className={cn("my-5 list-disc space-y-2 pl-6 text-[17px] leading-[1.6] text-black/80 dark:text-white/85", props.className)} />;
+  return <ul {...props} className={cn("my-5 list-disc space-y-2 pl-6 text-[17px] leading-[1.6] text-muted-foreground", props.className)} />;
 }
 
 function OL(props: ComponentPropsWithoutRef<"ol">) {
-  return <ol {...props} className={cn("my-5 list-decimal space-y-2 pl-6 text-[17px] leading-[1.6] text-black/80 dark:text-white/85", props.className)} />;
+  return <ol {...props} className={cn("my-5 list-decimal space-y-2 pl-6 text-[17px] leading-[1.6] text-muted-foreground", props.className)} />;
 }
 
 function LI(props: ComponentPropsWithoutRef<"li">) {
@@ -285,7 +285,7 @@ function A(props: ComponentPropsWithoutRef<"a">) {
     <a
       {...props}
       className={cn(
-        "text-[#0066cc] underline-offset-4 transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent dark:text-[#2997ff]",
+        "text-primary underline-offset-4 transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
         props.className,
       )}
     />
@@ -301,7 +301,7 @@ function Blockquote(props: ComponentPropsWithoutRef<"blockquote">) {
     <blockquote
       {...rest}
       className={cn(
-        "my-7 rounded-apple border-l-[3px] border-black/50 bg-white/60 px-4 py-3 text-[16px] italic leading-[1.6] text-black/75 dark:border-white/50 dark:bg-[#272729] dark:text-white/80",
+        "my-7 rounded-apple border-l-[3px] border-border bg-card/85 px-4 py-3 text-[16px] italic leading-[1.6] text-muted-foreground",
         props.className,
       )}
     >
@@ -315,7 +315,7 @@ function Pre(props: ComponentPropsWithoutRef<"pre">) {
     <pre
       {...props}
       className={cn(
-        "my-7 overflow-x-auto rounded-apple bg-[#1d1d1f] px-4 py-4 font-mono text-[14px] leading-[1.55] text-white shadow-card",
+        "my-7 overflow-x-auto rounded-apple bg-secondary px-4 py-4 font-mono text-[14px] leading-[1.55] text-secondary-foreground shadow-card",
         props.className,
       )}
     />
@@ -327,7 +327,7 @@ function Code(props: ComponentPropsWithoutRef<"code">) {
     <code
       {...props}
       className={cn(
-        "rounded bg-black/[0.06] px-1.5 py-0.5 font-mono text-[14px] text-[#1d1d1f] dark:bg-white/[0.12] dark:text-white",
+        "rounded bg-muted px-1.5 py-0.5 font-mono text-[14px] text-foreground",
         props.className,
       )}
     />
@@ -335,7 +335,7 @@ function Code(props: ComponentPropsWithoutRef<"code">) {
 }
 
 function Table(props: ComponentPropsWithoutRef<"table">) {
-  return <table {...props} className={cn("my-7 w-full border-collapse overflow-hidden rounded-apple bg-white/80 text-left text-[15px] dark:bg-[#272729]", props.className)} />;
+  return <table {...props} className={cn("my-7 w-full border-collapse overflow-hidden rounded-apple bg-card text-left text-[15px]", props.className)} />;
 }
 
 function TH(props: ComponentPropsWithoutRef<"th">) {
@@ -343,7 +343,7 @@ function TH(props: ComponentPropsWithoutRef<"th">) {
     <th
       {...props}
       className={cn(
-        "border-b border-black/10 px-4 py-2 font-text text-[14px] font-semibold tracking-tightCaption text-black/80 dark:border-white/15 dark:text-white/85",
+        "border-b border-border px-4 py-2 font-text text-[14px] font-semibold tracking-tightCaption text-foreground",
         props.className,
       )}
     />
@@ -351,7 +351,7 @@ function TH(props: ComponentPropsWithoutRef<"th">) {
 }
 
 function TD(props: ComponentPropsWithoutRef<"td">) {
-  return <td {...props} className={cn("border-b border-black/10 px-4 py-2 text-[15px] text-black/75 dark:border-white/10 dark:text-white/80", props.className)} />;
+  return <td {...props} className={cn("border-b border-border px-4 py-2 text-[15px] text-muted-foreground", props.className)} />;
 }
 
 const components = {

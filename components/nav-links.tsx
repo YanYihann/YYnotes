@@ -1,12 +1,12 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { href: "/", zh: "首页", en: "Home" },
-  { href: "/notes", zh: "笔记", en: "Notes" },
+  { href: "/", zh: "��ҳ", en: "Home" },
+  { href: "/notes", zh: "�ʼ�", en: "Notes" },
 ];
 
 export function NavLinks() {
@@ -22,7 +22,7 @@ export function NavLinks() {
             key={item.href}
             href={item.href}
             className={cn(
-              "rounded-capsule px-3 py-1 font-text text-[12px] tracking-[0.02em] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] focus-visible:ring-offset-2 focus-visible:ring-offset-black",
+              "rounded-capsule px-3 py-1 font-text text-[12px] tracking-[0.02em] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-black",
               isActive ? "text-white underline decoration-white/70 underline-offset-4" : "text-white/85 hover:text-white",
             )}
           >

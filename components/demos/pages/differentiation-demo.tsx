@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useState } from "react";
 import {
@@ -49,7 +49,7 @@ export function DifferentiationDemo() {
 
   return (
     <div className="grid gap-5 lg:grid-cols-[330px_minmax(0,1fr)]">
-      <DemoControlPanel titleZh="参数输入" titleEn="Input Parameters">
+      <DemoControlPanel titleZh="��������" titleEn="Input Parameters">
         <FunctionSelector
           presetId={presetId}
           setPresetId={setPresetId}
@@ -59,40 +59,40 @@ export function DifferentiationDemo() {
 
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="space-y-1.5">
-            <span className="font-text text-[14px] font-semibold tracking-tightCaption text-black/75 dark:text-white/78">
-              评估点 x
-              <span className="ui-en ml-1 font-normal text-black/58 dark:text-white/64">Evaluation Point</span>
+            <span className="font-text text-[14px] font-semibold tracking-tightCaption text-muted-foreground">
+              ������ x
+              <span className="ui-en ml-1 font-normal text-muted-foreground">Evaluation Point</span>
             </span>
             <input
               value={xValue}
               onChange={(event) => setXValue(event.target.value)}
-              className="w-full rounded-apple border border-black/10 bg-[#fafafc] px-3 py-2 font-text text-[15px] text-[#1d1d1f] outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/25 dark:border-white/10 dark:bg-[#1d1d1f] dark:text-white"
+              className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[15px] text-foreground outline-none focus:border-ring focus:ring-2 focus:ring-ring/25"
             />
           </label>
 
           <label className="space-y-1.5">
-            <span className="font-text text-[14px] font-semibold tracking-tightCaption text-black/75 dark:text-white/78">
-              步长 h
-              <span className="ui-en ml-1 font-normal text-black/58 dark:text-white/64">Step Size</span>
+            <span className="font-text text-[14px] font-semibold tracking-tightCaption text-muted-foreground">
+              ���� h
+              <span className="ui-en ml-1 font-normal text-muted-foreground">Step Size</span>
             </span>
             <input
               value={hValue}
               onChange={(event) => setHValue(event.target.value)}
-              className="w-full rounded-apple border border-black/10 bg-[#fafafc] px-3 py-2 font-text text-[15px] text-[#1d1d1f] outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/25 dark:border-white/10 dark:bg-[#1d1d1f] dark:text-white"
+              className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[15px] text-foreground outline-none focus:border-ring focus:ring-2 focus:ring-ring/25"
             />
           </label>
         </div>
 
         {errorMessage ? (
           <p className="rounded-apple bg-[#f5d9dc] px-3 py-2 font-text text-[14px] tracking-tightCaption text-[#8c1d26] dark:bg-[#4a2126] dark:text-[#ff9aa5]">
-            输入错误：{errorMessage}
+            �������{errorMessage}
             <span className="ui-en ml-1">Input error: {errorMessage}</span>
           </p>
         ) : null}
 
-        <StepExplanationCard titleZh="学习提示" titleEn="Study Hint">
+        <StepExplanationCard titleZh="ѧϰ��ʾ" titleEn="Study Hint">
           <p>
-            先固定同一个 x，再逐步减小 h，观察 Forward/Backward/Central 的误差如何变化。
+            �ȹ̶�ͬһ�� x�����𲽼�С h���۲� Forward/Backward/Central �������α仯��
             <span className="ui-en ml-1">Keep x fixed and decrease h to inspect each method error behavior.</span>
           </p>
         </StepExplanationCard>
@@ -102,7 +102,7 @@ export function DifferentiationDemo() {
         {model && computation ? (
           <>
             <FunctionPlot
-              titleZh="采样点与函数曲线"
+              titleZh="�������뺯������"
               titleEn="Sampled Points on the Curve"
               fn={model.fn}
               domain={[computation.x - 4 * computation.h, computation.x + 4 * computation.h]}
@@ -110,14 +110,14 @@ export function DifferentiationDemo() {
             />
 
             <DemoFormulaPanel
-              titleZh="本页使用公式"
+              titleZh="��ҳʹ�ù�ʽ"
               titleEn="Formulas Used"
               items={[
-                { zh: "前向差分", en: "Forward Difference", latex: "D^{+}f(x)=\\dfrac{f(x+h)-f(x)}{h}" },
-                { zh: "后向差分", en: "Backward Difference", latex: "D^{-}f(x)=\\dfrac{f(x)-f(x-h)}{h}" },
-                { zh: "中心差分", en: "Central Difference", latex: "f'(x)\\approx\\dfrac{f(x+h)-f(x-h)}{2h}" },
+                { zh: "ǰ����", en: "Forward Difference", latex: "D^{+}f(x)=\\dfrac{f(x+h)-f(x)}{h}" },
+                { zh: "������", en: "Backward Difference", latex: "D^{-}f(x)=\\dfrac{f(x)-f(x-h)}{h}" },
+                { zh: "���Ĳ��", en: "Central Difference", latex: "f'(x)\\approx\\dfrac{f(x+h)-f(x-h)}{2h}" },
                 {
-                  zh: "三点二阶导",
+                  zh: "������׵�",
                   en: "3-point Second Derivative",
                   latex: "f''(x)\\approx\\dfrac{f(x+h)-2f(x)+f(x-h)}{h^2}",
                 },
@@ -125,24 +125,24 @@ export function DifferentiationDemo() {
             />
 
             <DemoResultTable
-              captionZh={`方法结果：f(x)=${model.expression}`}
+              captionZh={`���������f(x)=${model.expression}`}
               captionEn={`Results for f(x)=${model.expression}`}
               rows={computation.results}
               columns={[
-                { key: "method", title: "Method / 方法", render: (row) => row.label },
+                { key: "method", title: "Method / ����", render: (row) => row.label },
                 { key: "formula", title: "Formula", render: (row) => <MathFormula latex={row.formula} className="text-[12px]" /> },
-                { key: "value", title: "Approximation / 近似", render: (row) => formatNumber(row.value, 10) },
+                { key: "value", title: "Approximation / ����", render: (row) => formatNumber(row.value, 10) },
                 {
                   key: "reference",
-                  title: "Reference / 参考值",
+                  title: "Reference / �ο�ֵ",
                   render: (row) => (row.reference !== undefined ? formatNumber(row.reference, 10) : "--"),
                 },
-                { key: "error", title: "Error / 误差", render: (row) => <ErrorBadge error={row.error} /> },
+                { key: "error", title: "Error / ���", render: (row) => <ErrorBadge error={row.error} /> },
               ]}
             />
 
             <DemoResultTable
-              captionZh="采样表"
+              captionZh="������"
               captionEn="Sample Table"
               rows={computation.samples}
               columns={[

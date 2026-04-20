@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useState } from "react";
 import {
@@ -56,10 +56,10 @@ function ErrorTrendChart({ rows }: { rows: TrendPoint[] }) {
   };
 
   return (
-    <section className="rounded-apple bg-white px-4 py-4 shadow-card dark:bg-[#272729] sm:px-5">
-      <h3 className="mb-3 font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px] text-[#1d1d1f] dark:text-white">
-        误差随 n 的变化趋势
-        <span className="ui-en ml-1 font-text text-[15px] font-normal tracking-tightCaption text-black/58 dark:text-white/66">Error Trend vs n (log scale)</span>
+    <section className="rounded-apple bg-card px-4 py-4 text-card-foreground shadow-card sm:px-5">
+      <h3 className="mb-3 font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px] text-foreground">
+        ����� n �ı仯����
+        <span className="ui-en ml-1 font-text text-[15px] font-normal tracking-tightCaption text-muted-foreground">Error Trend vs n (log scale)</span>
       </h3>
 
       <svg viewBox={`0 0 ${width} ${height}`} className="w-full">
@@ -76,10 +76,10 @@ function ErrorTrendChart({ rows }: { rows: TrendPoint[] }) {
         ))}
       </svg>
 
-      <div className="mt-2 flex flex-wrap gap-3 text-[12px] text-black/70 dark:text-white/74">
-        <span>● Right Endpoint</span>
-        <span>● Trapezoidal</span>
-        <span>● Simpson (dashed)</span>
+      <div className="mt-2 flex flex-wrap gap-3 text-[12px] text-muted-foreground">
+        <span>�� Right Endpoint</span>
+        <span>�� Trapezoidal</span>
+        <span>�� Simpson (dashed)</span>
       </div>
     </section>
   );
@@ -126,7 +126,7 @@ export function IntegrationComparisonDemo() {
 
   return (
     <div className="grid gap-5 lg:grid-cols-[330px_minmax(0,1fr)]">
-      <DemoControlPanel titleZh="对比参数" titleEn="Comparison Controls">
+      <DemoControlPanel titleZh="�ԱȲ���" titleEn="Comparison Controls">
         <FunctionSelector
           presetId={presetId}
           setPresetId={setPresetId}
@@ -136,53 +136,53 @@ export function IntegrationComparisonDemo() {
 
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="space-y-1.5">
-            <span className="font-text text-[14px] font-semibold tracking-tightCaption text-black/75 dark:text-white/78">区间 [a,b]</span>
+            <span className="font-text text-[14px] font-semibold tracking-tightCaption text-muted-foreground">���� [a,b]</span>
             <div className="grid grid-cols-2 gap-2">
               <input
                 value={aValue}
                 onChange={(event) => setAValue(event.target.value)}
-                className="w-full rounded-apple border border-black/10 bg-[#fafafc] px-3 py-2 font-text text-[15px] outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/25 dark:border-white/10 dark:bg-[#1d1d1f]"
+                className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[15px] outline-none focus:border-ring focus:ring-2 focus:ring-ring/25"
               />
               <input
                 value={bValue}
                 onChange={(event) => setBValue(event.target.value)}
-                className="w-full rounded-apple border border-black/10 bg-[#fafafc] px-3 py-2 font-text text-[15px] outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/25 dark:border-white/10 dark:bg-[#1d1d1f]"
+                className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[15px] outline-none focus:border-ring focus:ring-2 focus:ring-ring/25"
               />
             </div>
           </label>
 
           <label className="space-y-1.5">
-            <span className="font-text text-[14px] font-semibold tracking-tightCaption text-black/75 dark:text-white/78">当前 n</span>
+            <span className="font-text text-[14px] font-semibold tracking-tightCaption text-muted-foreground">��ǰ n</span>
             <input
               value={nValue}
               onChange={(event) => setNValue(event.target.value)}
-              className="w-full rounded-apple border border-black/10 bg-[#fafafc] px-3 py-2 font-text text-[15px] outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/25 dark:border-white/10 dark:bg-[#1d1d1f]"
+              className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[15px] outline-none focus:border-ring focus:ring-2 focus:ring-ring/25"
             />
           </label>
         </div>
 
         <label className="space-y-1.5">
-          <span className="font-text text-[14px] font-semibold tracking-tightCaption text-black/75 dark:text-white/78">
-            趋势深度（2^k）
-            <span className="ui-en ml-1 font-normal text-black/58 dark:text-white/64">Trend Depth</span>
+          <span className="font-text text-[14px] font-semibold tracking-tightCaption text-muted-foreground">
+            ������ȣ�2^k��
+            <span className="ui-en ml-1 font-normal text-muted-foreground">Trend Depth</span>
           </span>
           <input
             value={maxPower}
             onChange={(event) => setMaxPower(event.target.value)}
-            className="w-full rounded-apple border border-black/10 bg-[#fafafc] px-3 py-2 font-text text-[15px] outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/25 dark:border-white/10 dark:bg-[#1d1d1f]"
+            className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[15px] outline-none focus:border-ring focus:ring-2 focus:ring-ring/25"
           />
         </label>
 
         {errorMessage ? (
           <p className="rounded-apple bg-[#f5d9dc] px-3 py-2 font-text text-[14px] tracking-tightCaption text-[#8c1d26] dark:bg-[#4a2126] dark:text-[#ff9aa5]">
-            输入错误：{errorMessage}
+            �������{errorMessage}
             <span className="ui-en ml-1">Input error: {errorMessage}</span>
           </p>
         ) : null}
 
-        <StepExplanationCard titleZh="学习提示" titleEn="Study Hint">
+        <StepExplanationCard titleZh="ѧϰ��ʾ" titleEn="Study Hint">
           <p>
-            如果参考值存在，优先观察误差列和趋势图；通常 Simpson 收敛更快。
+            ����ο�ֵ���ڣ����ȹ۲�����к�����ͼ��ͨ�� Simpson �������졣
             <span className="ui-en ml-1">When a reference value exists, inspect the error columns and trend plot; Simpson usually converges faster.</span>
           </p>
         </StepExplanationCard>
@@ -193,13 +193,13 @@ export function IntegrationComparisonDemo() {
 
         {reference !== undefined ? (
           <DemoResultTable
-            captionZh="参考积分值"
+            captionZh="�ο�����ֵ"
             captionEn="Reference Integral"
             rows={[{ reference }]}
             columns={[
               {
                 key: "reference",
-                title: "I = ∫f(x)dx",
+                title: "I = ��f(x)dx",
                 render: (row) => formatNumber(row.reference, 12),
               },
             ]}
@@ -210,7 +210,7 @@ export function IntegrationComparisonDemo() {
 
         {trendRows.length ? (
           <DemoResultTable
-            captionZh="收敛数据表"
+            captionZh="�������ݱ�"
             captionEn="Convergence Data"
             rows={trendRows}
             columns={[

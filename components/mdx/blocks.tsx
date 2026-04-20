@@ -1,4 +1,4 @@
-﻿import type { ReactNode } from "react";
+import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 type StudyBlockProps = {
@@ -11,19 +11,19 @@ type Variant = "theorem" | "definition" | "example" | "warning" | "summary" | "f
 
 const variantClasses: Record<Variant, string> = {
   theorem:
-    "bg-white/80 text-[#1d1d1f] dark:bg-[#272729] dark:text-white border-l-[3px] border-[#1d1d1f] dark:border-white/70",
+    "bg-card text-card-foreground border-l-[3px] border-foreground/70",
   definition:
-    "bg-white/80 text-[#1d1d1f] dark:bg-[#272729] dark:text-white border-l-[3px] border-black/50 dark:border-white/50",
+    "bg-card text-card-foreground border-l-[3px] border-border",
   example:
-    "bg-white/80 text-[#1d1d1f] dark:bg-[#272729] dark:text-white border-l-[3px] border-black/40 dark:border-white/40",
+    "bg-card text-card-foreground border-l-[3px] border-border",
   warning:
-    "bg-[#f5f5f7] text-[#1d1d1f] dark:bg-[#242426] dark:text-white border-l-[3px] border-black dark:border-white",
+    "bg-muted text-foreground border-l-[3px] border-foreground/80",
   summary:
-    "bg-[#f5f5f7] text-[#1d1d1f] dark:bg-[#28282a] dark:text-white border-l-[3px] border-black/60 dark:border-white/60",
+    "bg-muted text-foreground border-l-[3px] border-border",
   formula:
-    "bg-white/90 text-[#1d1d1f] dark:bg-[#2a2a2d] dark:text-white border-l-[3px] border-black/60 dark:border-white/60",
+    "bg-card text-card-foreground border-l-[3px] border-border",
   practice:
-    "bg-[#f5f5f7] text-[#1d1d1f] dark:bg-[#28282a] dark:text-white border-l-[3px] border-black dark:border-white",
+    "bg-muted text-foreground border-l-[3px] border-foreground/80",
 };
 
 const labels: Record<Variant, string> = {
@@ -44,7 +44,7 @@ function StudyBlock({
 }: StudyBlockProps & { variant: Variant }) {
   return (
     <section className={cn("my-8 rounded-apple px-5 py-4 shadow-card/20", variantClasses[variant], className)}>
-      <p className="mb-2 font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/70 dark:text-white/75">
+      <p className="mb-2 font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
         {title ?? labels[variant]}
       </p>
       <div className="font-text text-[16px] leading-[1.6] tracking-tightBody">{children}</div>

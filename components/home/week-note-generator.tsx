@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -88,7 +88,7 @@ function deriveTitleFromFileName(fileName: string): string {
 
 function parseTagsInput(raw: string): string[] {
   const dedup = new Set<string>();
-  for (const token of raw.split(/[，,、|]/)) {
+  for (const token of raw.split(/[��,��|]/)) {
     const cleaned = token.trim().replace(/^#+/, "");
     if (!cleaned) {
       continue;
@@ -156,7 +156,7 @@ async function loadPromptTemplateFromSite(): Promise<string> {
     }
   }
 
-  throw new Error(`无法读取 prompt.md，请确认该文件已发布到站点根目录。已尝试路径：${candidates.join("，")}`);
+  throw new Error(`�޷���ȡ prompt.md����ȷ�ϸ��ļ��ѷ�����վ���Ŀ¼���ѳ���·����${candidates.join("��")}`);
 }
 
 async function callLocalGenerator(params: {
@@ -185,11 +185,11 @@ async function callLocalGenerator(params: {
   const json = (await response.json().catch(() => null)) as { error?: string } & Partial<GenerationResult> | null;
 
   if (!response.ok || !json) {
-    throw new Error(json?.error || "生成失败，请稍后重试。");
+    throw new Error(json?.error || "����ʧ�ܣ����Ժ����ԡ�");
   }
 
   if (!json.success || !json.slug) {
-    throw new Error("生成结果无效，请重试。");
+    throw new Error("���ɽ����Ч�������ԡ�");
   }
 
   return json as GenerationResult;
@@ -206,7 +206,7 @@ async function callCloudGenerator(params: {
 }): Promise<GenerationResult> {
   const extension = fileExtension(params.sourceFile.name);
   if (extension === "doc" || extension === "ppt") {
-    throw new Error("暂不支持旧版 .doc / .ppt，请先另存为 .docx / .pptx 后再上传。");
+    throw new Error("�ݲ�֧�־ɰ� .doc / .ppt���������Ϊ .docx / .pptx �����ϴ���");
   }
 
   const promptTemplate = await loadPromptTemplateFromSite();
@@ -233,11 +233,11 @@ async function callCloudGenerator(params: {
   const json = (await response.json().catch(() => null)) as { error?: string } & Partial<GenerationResult> | null;
 
   if (!response.ok || !json) {
-    throw new Error(json?.error || "云端生成失败，请稍后重试。");
+    throw new Error(json?.error || "�ƶ�����ʧ�ܣ����Ժ����ԡ�");
   }
 
   if (!json.success || !json.slug) {
-    throw new Error("云端返回了无效结果，请重试。");
+    throw new Error("�ƶ˷�������Ч����������ԡ�");
   }
 
   return json as GenerationResult;
@@ -259,11 +259,11 @@ async function callLocalMetadataUpdate(params: {
 
   const json = (await response.json().catch(() => null)) as { error?: string } & Partial<MetadataUpdateResult> | null;
   if (!response.ok || !json) {
-    throw new Error(json?.error || "更新元信息失败，请稍后重试。");
+    throw new Error(json?.error || "����Ԫ��Ϣʧ�ܣ����Ժ����ԡ�");
   }
 
   if (!json.success || !json.slug) {
-    throw new Error("元信息更新结果无效，请重试。");
+    throw new Error("Ԫ��Ϣ���½����Ч�������ԡ�");
   }
 
   return json as MetadataUpdateResult;
@@ -290,11 +290,11 @@ async function callCloudMetadataUpdate(params: {
 
   const json = (await response.json().catch(() => null)) as { error?: string } & Partial<MetadataUpdateResult> | null;
   if (!response.ok || !json) {
-    throw new Error(json?.error || "云端元信息更新失败，请稍后重试。");
+    throw new Error(json?.error || "�ƶ�Ԫ��Ϣ����ʧ�ܣ����Ժ����ԡ�");
   }
 
   if (!json.success || !json.slug) {
-    throw new Error("云端元信息更新结果无效，请重试。");
+    throw new Error("�ƶ�Ԫ��Ϣ���½����Ч�������ԡ�");
   }
 
   return json as MetadataUpdateResult;
@@ -343,12 +343,12 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
     event.preventDefault();
 
     if (!sourceFile) {
-      setError("请先上传原始资料文件。");
+      setError("�����ϴ�ԭʼ�����ļ���");
       return;
     }
 
     if (IS_CLOUD_MODE && !session?.token) {
-      setError("请先登录后再生成云端笔记。");
+      setError("���ȵ�¼���������ƶ˱ʼǡ�");
       return;
     }
 
@@ -375,7 +375,7 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
       setEditTags((generationResult.note?.tags ?? parseTagsInput(payload.tags)).join(", "));
       router.refresh();
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "生成失败，请稍后重试。");
+      setError(submitError instanceof Error ? submitError.message : "����ʧ�ܣ����Ժ����ԡ�");
     } finally {
       setSubmitting(false);
     }
@@ -387,7 +387,7 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
     }
 
     if (IS_CLOUD_MODE && !session?.token) {
-      setError("登录状态已失效，请重新登录。");
+      setError("��¼״̬��ʧЧ�������µ�¼��");
       return;
     }
 
@@ -423,120 +423,120 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
 
       router.refresh();
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "更新元信息失败，请稍后重试。");
+      setError(saveError instanceof Error ? saveError.message : "����Ԫ��Ϣʧ�ܣ����Ժ����ԡ�");
     } finally {
       setSavingMeta(false);
     }
   }
 
   return (
-    <section className="mb-8 rounded-apple bg-white p-5 shadow-card dark:bg-[#272729]">
+    <section className="mb-8 rounded-apple bg-card p-5 text-card-foreground shadow-card">
       <div className="mb-4">
-        <h3 className="font-display text-[28px] font-normal leading-[1.14] tracking-[0.196px] text-[#1d1d1f] dark:text-white">
-          上传资料并生成笔记
+        <h3 className="font-display text-[28px] font-normal leading-[1.14] tracking-[0.196px] text-foreground">
+          �ϴ����ϲ����ɱʼ�
         </h3>
-        <p className="mt-2 max-w-[860px] font-text text-[14px] leading-[1.45] tracking-tightCaption text-black/75 dark:text-white/75">
-          按“标题 + 主题 + 标签”方式生成通用 MDX 笔记，适用于任意学科。
+        <p className="mt-2 max-w-[860px] font-text text-[14px] leading-[1.45] tracking-tightCaption text-muted-foreground">
+          �������� + ���� + ��ǩ����ʽ����ͨ�� MDX �ʼǣ�����������ѧ�ơ�
           <span className="ui-en ml-1">Generate structured MDX notes using title, topic, and tags.</span>
         </p>
         {IS_CLOUD_MODE ? (
-          <p className="mt-2 rounded-apple border border-[#0071e3]/30 bg-[#0071e3]/[0.06] px-3 py-2 font-text text-[12px] leading-[1.4] text-black/75 dark:border-[#2997ff]/45 dark:bg-[#2997ff]/[0.1] dark:text-white/80">
-            当前为云端模式：将请求远程笔记 API 并存储到 Neon 数据库，且只写入当前登录账号。
+          <p className="mt-2 rounded-apple border border-primary/35 bg-primary/10 px-3 py-2 font-text text-[12px] leading-[1.4] text-muted-foreground">
+            ��ǰΪ�ƶ�ģʽ��������Զ�̱ʼ� API ���洢�� Neon ���ݿ⣬��ֻд�뵱ǰ��¼�˺š�
           </p>
         ) : null}
       </div>
 
       <form onSubmit={onSubmit} className="grid gap-4 md:grid-cols-2">
         <label className="space-y-2 md:col-span-2">
-          <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/60 dark:text-white/60">
-            标题（可选，留空自动生成）
+          <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+            ���⣨��ѡ������Զ����ɣ�
           </span>
           <input
             type="text"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            placeholder="例如：极限与连续性核心概念"
-            className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[15px] text-black/85 outline-none transition placeholder:text-black/45 focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/86 dark:placeholder:text-white/45"
+            placeholder="���磺�����������Ժ��ĸ���"
+            className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[15px] text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
           />
-          <p className="font-text text-[12px] leading-[1.4] text-black/55 dark:text-white/58">
-            {slugPreview ? `预计 slug：${slugPreview}` : "留空时将自动生成标题、主题、标签和 slug。"}
+          <p className="font-text text-[12px] leading-[1.4] text-muted-foreground">
+            {slugPreview ? `Ԥ�� slug��${slugPreview}` : "���ʱ���Զ����ɱ��⡢���⡢��ǩ�� slug��"}
           </p>
         </label>
 
         <label className="space-y-2">
-          <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/60 dark:text-white/60">主题（可选）</span>
+          <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">���⣨��ѡ��</span>
           <input
             type="text"
             value={topic}
             onChange={(event) => setTopic(event.target.value)}
-            placeholder="例如：微积分基础"
-            className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[15px] text-black/85 outline-none transition placeholder:text-black/45 focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/86 dark:placeholder:text-white/45"
+            placeholder="���磺΢���ֻ���"
+            className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[15px] text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
           />
         </label>
 
         <label className="space-y-2">
-          <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/60 dark:text-white/60">标签（可选）</span>
+          <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">��ǩ����ѡ��</span>
           <input
             type="text"
             value={tags}
             onChange={(event) => setTags(event.target.value)}
-            placeholder="例如：定义, 定理, 证明"
-            className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[15px] text-black/85 outline-none transition placeholder:text-black/45 focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/86 dark:placeholder:text-white/45"
+            placeholder="���磺����, ����, ֤��"
+            className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[15px] text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
           />
         </label>
 
         <label className="space-y-2 md:col-span-2">
-          <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/60 dark:text-white/60">原始资料文件</span>
+          <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">ԭʼ�����ļ�</span>
           <input
             type="file"
             accept=".txt,.md,.markdown,.doc,.docx,.ppt,.pptx,.tex,.csv"
             onChange={(event) => setSourceFile(event.target.files?.[0] ?? null)}
-            className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[14px] text-black/80 outline-none file:mr-3 file:rounded-capsule file:border-0 file:bg-[#0071e3] file:px-3 file:py-1 file:text-[12px] file:text-white hover:file:bg-[#0066cc] focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/82"
+            className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] text-foreground outline-none file:mr-3 file:rounded-capsule file:border-0 file:bg-primary file:px-3 file:py-1 file:text-[12px] file:text-primary-foreground hover:file:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring"
           />
         </label>
 
         <label className="space-y-2 md:col-span-2">
-          <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/60 dark:text-white/60">额外说明（可选）</span>
+          <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">����˵������ѡ��</span>
           <textarea
             value={extraInstruction}
             onChange={(event) => setExtraInstruction(event.target.value)}
             rows={3}
-            placeholder="可填写特殊整理要求，如：强调考试易错点。"
-            className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[14px] leading-[1.45] text-black/85 outline-none transition placeholder:text-black/45 focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/86 dark:placeholder:text-white/45"
+            placeholder="����д��������Ҫ���磺ǿ�������״�㡣"
+            className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] leading-[1.45] text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
           />
         </label>
 
-        <label className="md:col-span-2 inline-flex items-center gap-2 font-text text-[13px] text-black/72 dark:text-white/76">
+        <label className="md:col-span-2 inline-flex items-center gap-2 font-text text-[13px] text-muted-foreground">
           <input
             type="checkbox"
             checked={overwrite}
             onChange={(event) => setOverwrite(event.target.checked)}
-            className="h-4 w-4 rounded border-black/25 text-[#0071e3] focus:ring-[#0071e3] dark:border-white/30"
+            className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
           />
-          若 slug 已存在，允许覆盖已有笔记
+          �� slug �Ѵ��ڣ�����������бʼ�
         </label>
 
         <div className="md:col-span-2 flex flex-wrap items-center gap-3">
           <button
             type="submit"
             disabled={submitting || (IS_CLOUD_MODE && !session?.token)}
-            className="inline-flex items-center rounded-apple bg-[#0071e3] px-5 py-2 font-text text-[15px] text-white transition hover:bg-[#0066cc] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+            className="inline-flex items-center rounded-apple bg-primary px-5 py-2 font-text text-[15px] text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
           >
-            {submitting ? "生成中..." : IS_CLOUD_MODE && !session?.token ? "请先登录" : "生成并保存笔记"}
+            {submitting ? "������..." : IS_CLOUD_MODE && !session?.token ? "���ȵ�¼" : "���ɲ�����ʼ�"}
           </button>
 
           <Link
             href="/notes"
-            className="inline-flex items-center rounded-capsule border border-[#0066cc] px-4 py-1.5 font-text text-[14px] tracking-tightCaption text-[#0066cc] transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-[#2997ff] dark:text-[#2997ff]"
+            className="inline-flex items-center rounded-capsule border border-primary/60 px-4 py-1.5 font-text text-[14px] tracking-tightCaption text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            查看笔记列表
+            �鿴�ʼ��б�
           </Link>
         </div>
       </form>
 
       {noteAlreadyExists ? (
-        <p className="mt-4 rounded-apple border border-black/15 bg-black/[0.03] px-3 py-2 font-text text-[13px] leading-[1.45] text-black/72 dark:border-white/16 dark:bg-white/[0.06] dark:text-white/74">
-          该标题对应的 slug 已存在，若要覆盖请勾选“允许覆盖”。
+        <p className="mt-4 rounded-apple border border-border bg-muted/50 px-3 py-2 font-text text-[13px] leading-[1.45] text-muted-foreground">
+          �ñ����Ӧ�� slug �Ѵ��ڣ���Ҫ�����빴ѡ��������ǡ���
         </p>
       ) : null}
 
@@ -548,57 +548,57 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
 
       {result ? (
         <div className="mt-5 space-y-4">
-          <div className="rounded-apple border border-[#0071e3]/30 bg-[#0071e3]/[0.06] p-3 dark:border-[#2997ff]/45 dark:bg-[#2997ff]/[0.08]">
-            <p className="font-text text-[13px] leading-[1.45] text-black/82 dark:text-white/84">
-              已保存 {result.fileName}
-              {result.replaced ? "（已覆盖原文件）。" : "。"}
+          <div className="rounded-apple border border-primary/35 bg-primary/10 p-3">
+            <p className="font-text text-[13px] leading-[1.45] text-foreground">
+              �ѱ��� {result.fileName}
+              {result.replaced ? "���Ѹ���ԭ�ļ�����" : "��"}
             </p>
             <Link
               href={buildNoteViewHref(result.slug)}
-              className="mt-2 inline-flex items-center rounded-capsule border border-[#0066cc] px-4 py-1.5 font-text text-[14px] tracking-tightCaption text-[#0066cc] transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-[#2997ff] dark:text-[#2997ff]"
+              className="mt-2 inline-flex items-center rounded-capsule border border-primary/60 px-4 py-1.5 font-text text-[14px] tracking-tightCaption text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              打开生成结果
+              �����ɽ��
               <span className="ml-1">&gt;</span>
             </Link>
           </div>
 
-          <section className="rounded-apple border border-black/12 bg-white p-4 dark:border-white/12 dark:bg-[#1f1f21]">
-            <p className="font-text text-[13px] font-semibold tracking-[0.06em] text-black/70 dark:text-white/74">
-              生成后可修改元信息
+          <section className="rounded-apple border border-border bg-card p-4">
+            <p className="font-text text-[13px] font-semibold tracking-[0.06em] text-muted-foreground">
+              ���ɺ���޸�Ԫ��Ϣ
               <span className="ui-en ml-1">Edit Metadata After Generation</span>
             </p>
 
             <div className="mt-3 grid gap-3 md:grid-cols-2">
               <label className="space-y-1 md:col-span-2">
-                <span className="font-text text-[12px] text-black/62 dark:text-white/66">标题</span>
+                <span className="font-text text-[12px] text-muted-foreground">����</span>
                 <input
                   type="text"
                   value={editTitle}
                   onChange={(event) => setEditTitle(event.target.value)}
-                  placeholder="留空将保留当前标题"
-                  className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[14px] text-black/85 outline-none transition placeholder:text-black/45 focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/86 dark:placeholder:text-white/45"
+                  placeholder="��ս������ǰ����"
+                  className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </label>
 
               <label className="space-y-1">
-                <span className="font-text text-[12px] text-black/62 dark:text-white/66">主题</span>
+                <span className="font-text text-[12px] text-muted-foreground">����</span>
                 <input
                   type="text"
                   value={editTopic}
                   onChange={(event) => setEditTopic(event.target.value)}
-                  placeholder="留空将自动兜底生成主题"
-                  className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[14px] text-black/85 outline-none transition placeholder:text-black/45 focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/86 dark:placeholder:text-white/45"
+                  placeholder="��ս��Զ�������������"
+                  className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </label>
 
               <label className="space-y-1">
-                <span className="font-text text-[12px] text-black/62 dark:text-white/66">标签</span>
+                <span className="font-text text-[12px] text-muted-foreground">��ǩ</span>
                 <input
                   type="text"
                   value={editTags}
                   onChange={(event) => setEditTags(event.target.value)}
-                  placeholder="用逗号分隔，如：定义, 推导, 例题"
-                  className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[14px] text-black/85 outline-none transition placeholder:text-black/45 focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/86 dark:placeholder:text-white/45"
+                  placeholder="�ö��ŷָ���磺����, �Ƶ�, ����"
+                  className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </label>
             </div>
@@ -608,9 +608,9 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
                 type="button"
                 disabled={savingMeta}
                 onClick={onSaveMetadata}
-                className="inline-flex items-center rounded-capsule border border-[#0066cc] px-4 py-1.5 font-text text-[14px] tracking-tightCaption text-[#0066cc] transition hover:underline disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-[#2997ff] dark:text-[#2997ff]"
+                className="inline-flex items-center rounded-capsule border border-primary/60 px-4 py-1.5 font-text text-[14px] tracking-tightCaption text-primary transition hover:underline disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                {savingMeta ? "保存中..." : "保存元信息修改"}
+                {savingMeta ? "������..." : "����Ԫ��Ϣ�޸�"}
               </button>
             </div>
           </section>
@@ -629,11 +629,11 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
             />
           ) : null}
 
-          <details className="rounded-apple border border-black/12 bg-white px-4 py-3 dark:border-white/12 dark:bg-[#1f1f21]">
-            <summary className="cursor-pointer font-text text-[13px] font-semibold uppercase tracking-[0.08em] text-black/62 dark:text-white/64">
-              预览前几行
+          <details className="rounded-apple border border-border bg-card px-4 py-3">
+            <summary className="cursor-pointer font-text text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              Ԥ��ǰ����
             </summary>
-            <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded-apple bg-black/[0.04] p-3 font-mono text-[12px] leading-[1.45] text-black/75 dark:bg-white/[0.08] dark:text-white/80">
+            <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded-apple bg-muted p-3 font-mono text-[12px] leading-[1.45] text-muted-foreground">
               {result.preview}
             </pre>
           </details>

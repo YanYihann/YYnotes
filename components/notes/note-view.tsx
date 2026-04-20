@@ -39,7 +39,7 @@ function NoteNavLink({ link }: { link: NoteViewNavLink }) {
   return (
     <Link
       href={link.href}
-      className="inline-flex rounded-capsule border border-[#0066cc] px-4 py-1.5 text-[14px] tracking-tightCaption text-[#0066cc] transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-[#2997ff] dark:text-[#2997ff]"
+      className="inline-flex rounded-capsule border border-primary/60 px-4 py-1.5 text-[14px] tracking-tightCaption text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       {link.leadingArrow ? <span className="mr-1">{"<"}</span> : null}
       {link.labelZh}
@@ -68,9 +68,9 @@ export function NoteView({ note, headings, nav }: NoteViewProps) {
         noteContent: note.noteContent,
       }}
     >
-      <article className="rounded-apple bg-white px-5 py-8 shadow-card dark:bg-[#272729] sm:px-8 md:px-10">
-        <header className="mb-8 border-b border-black/10 pb-6 dark:border-white/10">
-          <p className="font-text text-[12px] font-semibold uppercase tracking-[0.1em] text-black/55 dark:text-white/55">
+      <article className="rounded-apple bg-card px-5 py-8 text-card-foreground shadow-card sm:px-8 md:px-10">
+        <header className="mb-8 border-b border-border pb-6">
+          <p className="font-text text-[12px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
             {note.topicZh}
             <span className="ui-en ml-1">{note.topicEn} - Note</span>
           </p>
@@ -79,22 +79,22 @@ export function NoteView({ note, headings, nav }: NoteViewProps) {
               {note.tags.map((tag) => (
                 <span
                   key={tag}
-                  className="rounded-capsule border border-black/15 px-2 py-0.5 font-text text-[12px] tracking-tightCaption text-black/63 dark:border-white/20 dark:text-white/66"
+                  className="rounded-capsule border border-border px-2 py-0.5 font-text text-[12px] tracking-tightCaption text-muted-foreground"
                 >
                   #{tag}
                 </span>
               ))}
             </div>
           ) : null}
-          <h1 className="mt-3 font-display text-[clamp(2rem,5vw,3.5rem)] font-semibold leading-[1.07] tracking-tightDisplay text-[#1d1d1f] dark:text-white">
+          <h1 className="mt-3 font-display text-[clamp(2rem,5vw,3.5rem)] font-semibold leading-[1.07] tracking-tightDisplay text-foreground">
             {note.zhTitle}
-            <span className="ui-en mt-1 block font-text text-[0.36em] font-normal leading-[1.35] tracking-tightBody text-black/72 dark:text-white/74">
+            <span className="ui-en mt-1 block font-text text-[0.36em] font-normal leading-[1.35] tracking-tightBody text-muted-foreground">
               {note.enTitle}
             </span>
           </h1>
-          <p className="mt-3 font-text text-[17px] leading-[1.47] tracking-tightBody text-black/80 dark:text-white/80">
+          <p className="mt-3 font-text text-[17px] leading-[1.47] tracking-tightBody text-muted-foreground">
             {note.descriptionZh}
-            <span className="ui-en mt-1 block text-black/68 dark:text-white/72">{note.descriptionEn}</span>
+            <span className="ui-en mt-1 block text-muted-foreground">{note.descriptionEn}</span>
           </p>
         </header>
 
@@ -103,7 +103,7 @@ export function NoteView({ note, headings, nav }: NoteViewProps) {
         </div>
 
         {nav?.left || nav?.right ? (
-          <nav className="mt-14 grid gap-4 border-t border-black/10 pt-6 dark:border-white/10 sm:grid-cols-2">
+          <nav className="mt-14 grid gap-4 border-t border-border pt-6 sm:grid-cols-2">
             <div>{nav.left ? <NoteNavLink link={nav.left} /> : null}</div>
             <div className="sm:text-right">{nav.right ? <NoteNavLink link={nav.right} /> : null}</div>
           </nav>

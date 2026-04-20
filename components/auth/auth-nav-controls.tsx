@@ -20,7 +20,7 @@ export function AuthNavControls() {
     return (
       <Link
         href={`/auth?redirect=${encodeURIComponent(pathname || "/")}`}
-        className="rounded-capsule border border-white/35 px-3 py-1 font-text text-[12px] tracking-[0.02em] text-white/90 transition hover:border-white/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+        className="rounded-capsule border border-white/35 px-3 py-1 font-text text-[12px] tracking-[0.02em] text-white/90 transition hover:border-white/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-black"
       >
         登录
         <span className="ui-en ml-1">Sign In</span>
@@ -36,10 +36,9 @@ export function AuthNavControls() {
       <button
         type="button"
         onClick={logout}
-        className="rounded-capsule border border-white/35 px-3 py-1 font-text text-[12px] tracking-[0.02em] text-white/90 transition hover:border-white/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+        className="rounded-capsule border border-white/35 px-3 py-1 font-text text-[12px] tracking-[0.02em] text-white/90 transition hover:border-white/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-black"
       >
-        退出
-        <span className="ui-en ml-1">Sign Out</span>
+        退�?        <span className="ui-en ml-1">Sign Out</span>
       </button>
     </div>
   );

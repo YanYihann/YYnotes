@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
@@ -126,7 +126,7 @@ const TooltipContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={classMerge(
-        "relative z-50 max-w-[280px] rounded-md bg-white px-1.5 py-1 text-xs text-black/82 dark:bg-[#303030] dark:text-white",
+        "relative z-50 max-w-[280px] rounded-md bg-popover px-1.5 py-1 text-xs text-popover-foreground",
         "animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out",
         "data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
         "data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2",
@@ -155,12 +155,12 @@ const PopoverContent = React.forwardRef<
       align={align}
       sideOffset={sideOffset}
       className={classMerge(
-        "z-50 w-64 rounded-xl bg-white p-2 text-black/82 shadow-md outline-none dark:bg-[#303030] dark:text-white",
+        "z-50 w-64 rounded-xl bg-popover p-2 text-popover-foreground shadow-md outline-none",
         "animate-in data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0",
         "data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95",
         "data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2",
         "data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
-        "dark:bg-[#303030] dark:text-white",
+        "bg-popover text-popover-foreground",
         className,
       )}
       {...props}
@@ -206,10 +206,10 @@ const DialogContent = React.forwardRef<
       )}
       {...props}
     >
-      <div className="relative overflow-hidden rounded-[20px] bg-white p-2 shadow-2xl dark:bg-[#303030]">
+      <div className="relative overflow-hidden rounded-[20px] bg-popover p-2 shadow-2xl">
         {children}
-        <DialogPrimitive.Close className="absolute right-3 top-3 z-10 rounded-full bg-white/65 p-1 transition-all hover:bg-black/[0.08] dark:bg-[#303030] dark:hover:bg-[#515151]">
-          <XIcon className="h-4 w-4 text-black/55 hover:text-black/82 dark:text-gray-200 dark:hover:text-white" />
+        <DialogPrimitive.Close className="absolute right-3 top-3 z-10 rounded-full bg-card/80 p-1 transition-all hover:bg-accent">
+          <XIcon className="h-4 w-4 text-muted-foreground hover:text-foreground" />
           <span className="sr-only">Close</span>
         </DialogPrimitive.Close>
       </div>
@@ -509,8 +509,8 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
     return (
       <div
         className={cn(
-          "flex flex-col rounded-[22px] border border-black/15 bg-white p-2 shadow-sm transition-colors",
-          "dark:border-white/20 dark:bg-[#202022]",
+          "flex flex-col rounded-[22px] border border-input bg-card p-2 shadow-sm transition-colors",
+          "",
           className,
         )}
       >
@@ -533,7 +533,7 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
                 key={attachment.id}
                 className={cn(
                   "inline-flex max-w-full items-center gap-1 rounded-capsule border px-2 py-1 text-[11px]",
-                  "border-black/20 bg-black/[0.04] text-black/75 dark:border-white/20 dark:bg-white/[0.08] dark:text-white/78",
+                  "border-border bg-muted text-muted-foreground",
                 )}
               >
                 {attachment.previewUrl ? (
@@ -552,11 +552,11 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
                   <FileIcon className="h-3.5 w-3.5 shrink-0" />
                 )}
                 <span className="max-w-[170px] truncate">{attachment.name}</span>
-                <span className="text-black/48 dark:text-white/55">{formatBytes(attachment.size)}</span>
+                <span className="text-muted-foreground">{formatBytes(attachment.size)}</span>
                 <button
                   type="button"
                   onClick={() => removeAttachment(attachment.id)}
-                  className="rounded-full p-[1px] transition hover:bg-black/[0.08] dark:hover:bg-white/[0.12]"
+                  className="rounded-full p-[1px] transition hover:bg-accent"
                   aria-label={`Remove ${attachment.name}`}
                 >
                   <XIcon className="h-3.5 w-3.5" />
@@ -588,7 +588,7 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
           onChange={(event) => onValueChange(event.target.value)}
           onKeyDown={onKeyDown}
           placeholder={placeholder}
-          className="min-h-12 w-full resize-none border-0 bg-transparent p-3 text-black/85 placeholder:text-black/45 focus-visible:outline-none dark:text-white dark:placeholder:text-white/45"
+          className="min-h-12 w-full resize-none border-0 bg-transparent p-3 text-foreground placeholder:text-muted-foreground focus-visible:outline-none"
           style={textareaStyle}
           {...props}
         />
@@ -601,7 +601,7 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex h-8 w-8 items-center justify-center rounded-full text-black/85 transition-colors hover:bg-black/[0.06] focus-visible:outline-none dark:text-white dark:hover:bg-[#515151]"
+                    className="flex h-8 w-8 items-center justify-center rounded-full text-foreground transition-colors hover:bg-accent focus-visible:outline-none"
                     disabled={disabled}
                   >
                     <PlusIcon className="h-6 w-6" />
@@ -619,7 +619,7 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
                     <PopoverTrigger asChild>
                       <button
                         type="button"
-                        className="flex h-8 items-center gap-1 rounded-full p-2 text-sm text-black/85 transition-colors hover:bg-black/[0.06] focus-visible:outline-none dark:text-white dark:hover:bg-[#515151]"
+                        className="flex h-8 items-center gap-1 rounded-full p-2 text-sm text-foreground transition-colors hover:bg-accent focus-visible:outline-none"
                       >
                         <Settings2Icon className="h-4 w-4" />
                         {!selectedTool ? "Tools" : null}
@@ -639,7 +639,7 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
                           setSelectedTool(tool.id);
                           setIsPopoverOpen(false);
                         }}
-                        className="w-full rounded-md p-2 text-left text-sm transition hover:bg-black/[0.06] dark:hover:bg-[#515151]"
+                        className="w-full rounded-md p-2 text-left text-sm transition hover:bg-accent"
                       >
                         {tool.name}
                       </button>
@@ -653,7 +653,7 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
                   <div className="h-4 w-px bg-black/15 dark:bg-gray-600" />
                   <button
                     onClick={() => setSelectedTool(null)}
-                    className="flex h-8 items-center gap-1 rounded-full px-2 text-sm text-[#2294ff] transition-colors hover:bg-black/[0.06] dark:text-[#99ceff] dark:hover:bg-[#3b4045]"
+                    className="flex h-8 items-center gap-1 rounded-full px-2 text-sm text-primary transition-colors hover:bg-accent"
                     type="button"
                   >
                     {activeTool.shortName}
@@ -669,8 +669,8 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
                       type="button"
                       onClick={handleMicClick}
                       className={cn(
-                        "flex h-8 w-8 items-center justify-center rounded-full text-black/85 transition-colors hover:bg-black/[0.06] focus-visible:outline-none",
-                        "dark:text-white dark:hover:bg-[#515151]",
+                        "flex h-8 w-8 items-center justify-center rounded-full text-foreground transition-colors hover:bg-accent focus-visible:outline-none",
+                        "",
                         isListening ? "text-[#b4232f] dark:text-[#ff7f89]" : "",
                       )}
                       disabled={disabled}
@@ -690,7 +690,7 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
                       type="button"
                       disabled={disabled || !hasValue}
                       onClick={submitPrompt}
-                      className="flex h-8 w-8 items-center justify-center rounded-full bg-black text-sm font-medium text-white transition-colors hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] disabled:pointer-events-none disabled:bg-black/40 dark:bg-white dark:text-black dark:hover:bg-white/80 dark:disabled:bg-[#515151]"
+                      className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
                     >
                       <SendIcon className="h-5 w-5" />
                       <span className="sr-only">Send message</span>

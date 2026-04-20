@@ -20,22 +20,22 @@ export function LoginRequiredCard({
   const href = `/auth?redirect=${encodeURIComponent(redirectTo)}`;
 
   return (
-    <article className={`rounded-apple bg-white p-6 shadow-card dark:bg-[#272729] ${className}`.trim()}>
-      <p className="font-text text-[12px] font-semibold uppercase tracking-[0.1em] text-black/55 dark:text-white/55">
+    <article className={`rounded-apple bg-card p-6 text-card-foreground shadow-card ${className}`.trim()}>
+      <p className="font-text text-[12px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
         Account
       </p>
-      <h2 className="mt-3 font-display text-[28px] font-normal leading-[1.14] tracking-[0.196px] text-[#1d1d1f] dark:text-white">
+      <h2 className="mt-3 font-display text-[28px] font-normal leading-[1.14] tracking-[0.196px] text-foreground">
         {titleZh}
-        <span className="ui-en mt-1 block text-[0.6em] font-normal text-black/70 dark:text-white/75">{titleEn}</span>
+        <span className="ui-en mt-1 block text-[0.6em] font-normal text-muted-foreground">{titleEn}</span>
       </h2>
-      <p className="mt-4 font-text text-[15px] leading-[1.45] text-black/78 dark:text-white/80">
+      <p className="mt-4 font-text text-[15px] leading-[1.45] text-muted-foreground">
         {descriptionZh}
         <span className="ui-en ml-1">{descriptionEn}</span>
       </p>
       <div className="mt-5 flex flex-wrap gap-3">
         <Link
           href={href}
-          className="inline-flex items-center rounded-apple bg-[#0071e3] px-5 py-2 font-text text-[15px] text-white transition hover:bg-[#0066cc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+          className="inline-flex items-center rounded-apple bg-primary px-5 py-2 font-text text-[15px] text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
         >
           登录 / 注册
           <span className="ui-en ml-1">Sign In</span>

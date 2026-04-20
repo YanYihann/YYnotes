@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo } from "react";
 import { clamp } from "@/lib/numerical/format";
@@ -115,10 +115,10 @@ export function FunctionPlot({
   const basePath = toPath(basePoints, mapX, mapY);
 
   return (
-    <section className="rounded-apple bg-white px-4 py-4 shadow-card dark:bg-[#272729] sm:px-5">
-      <h3 className="mb-3 font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px] text-[#1d1d1f] dark:text-white">
+    <section className="rounded-apple bg-card px-4 py-4 text-card-foreground shadow-card sm:px-5">
+      <h3 className="mb-3 font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px] text-foreground">
         {titleZh}
-        <span className="ui-en ml-1 font-text text-[15px] font-normal tracking-tightCaption text-black/58 dark:text-white/66">{titleEn}</span>
+        <span className="ui-en ml-1 font-text text-[15px] font-normal tracking-tightCaption text-muted-foreground">{titleEn}</span>
       </h3>
 
       <svg viewBox={`0 0 ${width} ${height}`} className="w-full">

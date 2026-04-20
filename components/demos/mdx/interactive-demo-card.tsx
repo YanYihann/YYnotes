@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 type InteractiveDemoCardProps = {
@@ -19,24 +19,24 @@ export function InteractiveDemoCard({
   className,
 }: InteractiveDemoCardProps) {
   return (
-    <article className={cn("rounded-apple bg-white px-5 py-5 shadow-card dark:bg-[#272729]", className)}>
-      <p className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/55 dark:text-white/58">
-        交互演示
+    <article className={cn("rounded-apple bg-card px-5 py-5 text-card-foreground shadow-card", className)}>
+      <p className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        ������ʾ
         <span className="ui-en ml-1">Interactive Demo</span>
       </p>
-      <h3 className="mt-2 font-display text-[28px] font-normal leading-[1.14] tracking-[0.196px] text-[#1d1d1f] dark:text-white">
+      <h3 className="mt-2 font-display text-[28px] font-normal leading-[1.14] tracking-[0.196px] text-foreground">
         {titleZh}
-        <span className="ui-en mt-1 block font-text text-[14px] leading-[1.43] tracking-tightCaption text-black/65 dark:text-white/68">{titleEn}</span>
+        <span className="ui-en mt-1 block font-text text-[14px] leading-[1.43] tracking-tightCaption text-muted-foreground">{titleEn}</span>
       </h3>
-      <p className="mt-3 font-text text-[14px] leading-[1.45] tracking-tightCaption text-black/75 dark:text-white/78">
+      <p className="mt-3 font-text text-[14px] leading-[1.45] tracking-tightCaption text-muted-foreground">
         {descriptionZh}
         <span className="ui-en ml-1">{descriptionEn}</span>
       </p>
       <Link
         href={href}
-        className="mt-4 inline-flex items-center rounded-capsule border border-[#0066cc] px-4 py-1.5 font-text text-[14px] tracking-tightCaption text-[#0066cc] transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] focus-visible:ring-offset-2 dark:border-[#2997ff] dark:text-[#2997ff]"
+        className="mt-4 inline-flex items-center rounded-capsule border border-primary/60 px-4 py-1.5 font-text text-[14px] tracking-tightCaption text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
-        打开演示
+        ����ʾ
         <span className="ui-en ml-1">Open Demo</span>
         <span className="ml-1">&gt;</span>
       </Link>
