@@ -38,7 +38,7 @@ export function NoteMarkdown({ source }: NoteMarkdownProps) {
       remarkPlugins={[remarkGfm, remarkMath]}
       rehypePlugins={[
         rehypeRaw,
-        rehypeKatex,
+        [rehypeKatex, { throwOnError: false, strict: "ignore" }],
         rehypeSlug,
         [
           rehypeAutolinkHeadings,

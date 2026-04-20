@@ -43,6 +43,21 @@ function isDisplayMathFenceLine(line: string): boolean {
   return /^\s*\$\$\s*$/.test(line);
 }
 
+function hasInlineDisplayMath(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed.includes("$$")) {
+    return false;
+  }
+
+  // If the whole line is only a display fence or a single display expression,
+  // keep it unchanged.
+  if (isDisplayMathFenceLine(trimmed) || /^\s*\$\$[\s\S]*\$\$\s*$/.test(trimmed)) {
+    return false;
+  }
+
+  return true;
+}
+
 function isTableLine(line: string): boolean {
   const trimmed = line.trim();
   if (!trimmed) {
@@ -84,6 +99,95 @@ function normalizeMathDelimiters(source: string): string {
   });
 
   return output;
+}
+
+function splitInlineDisplayMathLines(source: string): string {
+  const lines = source.split("\n");
+  const output: string[] = [];
+  let inCodeFence = false;
+
+  for (const line of lines) {
+    if (isCodeFenceLine(line)) {
+      inCodeFence = !inCodeFence;
+      output.push(line);
+      continue;
+    }
+
+    if (inCodeFence || !hasInlineDisplayMath(line)) {
+      output.push(line);
+      continue;
+    }
+
+    let cursor = 0;
+    let pendingText = "";
+
+    while (cursor < line.length) {
+      const start = line.indexOf("$$", cursor);
+      if (start < 0) {
+        pendingText += line.slice(cursor);
+        break;
+      }
+
+      const end = line.indexOf("$$", start + 2);
+      if (end < 0) {
+        // Unmatched $$ in a mixed-content line: degrade it to inline math marker.
+        pendingText += line.slice(cursor, start) + "$" + line.slice(start + 2);
+        break;
+      }
+
+      pendingText += line.slice(cursor, start);
+      if (pendingText.trim()) {
+        output.push(pendingText.trimEnd());
+      }
+
+      const body = line.slice(start + 2, end).trim();
+      if (body) {
+        output.push("$$");
+        output.push(body);
+        output.push("$$");
+      }
+
+      pendingText = "";
+      cursor = end + 2;
+    }
+
+    if (pendingText.trim()) {
+      output.push(pendingText.trimEnd());
+    }
+  }
+
+  return output.join("\n");
+}
+
+function balanceStandaloneDisplayMathFences(source: string): string {
+  const lines = source.split("\n");
+  let inCodeFence = false;
+  const fenceLineIndexes: number[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (isCodeFenceLine(line)) {
+      inCodeFence = !inCodeFence;
+      continue;
+    }
+
+    if (inCodeFence) {
+      continue;
+    }
+
+    if (isDisplayMathFenceLine(line)) {
+      fenceLineIndexes.push(index);
+    }
+  }
+
+  // If unmatched, convert the last fence back to a plain "$" line to avoid
+  // keeping the document in math mode and breaking later inline formulas.
+  if (fenceLineIndexes.length % 2 === 1) {
+    const lastFenceIndex = fenceLineIndexes[fenceLineIndexes.length - 1];
+    lines[lastFenceIndex] = "$";
+  }
+
+  return lines.join("\n");
 }
 
 function isMathOnlyLine(line: string): boolean {
@@ -199,7 +303,9 @@ function composeRenderedSource(source: string, showEnglish: boolean): string {
 export function prepareNoteMarkdown(source: string, options: PrepareNoteMarkdownOptions = {}): string {
   const normalized = normalizeMathDelimiters(normalizeNewlines(source).trim());
   const rendered = composeRenderedSource(normalized, options.showEnglish !== false);
-  return dedupeAdjacentLines(rendered).trim();
+  const splitDisplay = splitInlineDisplayMathLines(rendered);
+  const balanced = balanceStandaloneDisplayMathFences(splitDisplay);
+  return dedupeAdjacentLines(balanced).trim();
 }
 
 export async function renderWeekContent(note: WeekNote) {
@@ -211,7 +317,7 @@ export async function renderWeekContent(note: WeekNote) {
       remarkPlugins={[remarkGfm, remarkMath]}
       rehypePlugins={[
         rehypeRaw,
-        rehypeKatex,
+        [rehypeKatex, { throwOnError: false, strict: "ignore" }],
         rehypeSlug,
         [
           rehypeAutolinkHeadings,
