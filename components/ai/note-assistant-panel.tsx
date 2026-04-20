@@ -593,8 +593,8 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
       </section>
 
       {desktopFullscreen ? (
-        <div className="fixed inset-0 z-[90] hidden bg-black/60 backdrop-blur-[2px] lg:block">
-          <div className="absolute inset-4 rounded-[12px] bg-[#f5f5f7] p-4 shadow-card dark:bg-[#111113]">
+        <div className="fixed inset-0 z-[90] hidden overflow-y-auto bg-black/60 backdrop-blur-[2px] lg:block">
+          <div className="mx-4 my-4 h-[calc(100dvh-2rem)] rounded-[12px] bg-[#f5f5f7] p-4 shadow-card dark:bg-[#111113]">
             <div className="flex h-full flex-col">
               <header className="mb-3 flex items-center justify-between gap-3">
                 <p className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px] text-[#1d1d1f] dark:text-white">

@@ -678,23 +678,19 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
       return;
     }
 
-    const titleInput = window.prompt("请输入新的笔记标题", note.zhTitle);
-    if (titleInput === null) {
+    const combinedInput = window.prompt("请输入“标题 | 主题”", `${note.zhTitle} | ${note.topicZh || note.weekLabelZh}`);
+    if (combinedInput === null) {
       return;
     }
 
-    const nextTitle = sanitizeEditableText(titleInput, 80);
+    const [titlePart, ...topicParts] = combinedInput.split("|");
+    const nextTitle = sanitizeEditableText(titlePart ?? "", 80);
     if (!nextTitle) {
       setError("标题不能为空。");
       return;
     }
 
-    const topicInput = window.prompt("请输入新的主题名称", note.topicZh || note.weekLabelZh);
-    if (topicInput === null) {
-      return;
-    }
-
-    const nextTopic = sanitizeEditableText(topicInput, 64);
+    const nextTopic = sanitizeEditableText(topicParts.join("|"), 64);
     if (!nextTopic) {
       setError("主题不能为空。");
       return;
