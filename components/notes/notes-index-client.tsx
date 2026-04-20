@@ -16,7 +16,6 @@ type NoteListItem = {
   enTitle: string;
   descriptionZh: string;
   descriptionEn: string;
-  tags: string[];
   topicZh: string;
   order: number;
 };
@@ -58,7 +57,7 @@ type FolderStorePayload = {
   noteFolderMap: Record<string, string>;
 };
 
-type FolderFilterValue = "all" | "uncategorized" | `folder:${string}`;
+type FolderFilterValue = "" | "uncategorized" | `folder:${string}`;
 
 const CLOUD_API_BASE = process.env.NEXT_PUBLIC_NOTES_API_BASE?.trim() ?? "";
 const IS_CLOUD_MODE = CLOUD_API_BASE.length > 0;
@@ -176,7 +175,6 @@ function toCloudNoteItem(row: CloudNoteRecord): NoteListItem | null {
     enTitle: normalized.enTitle,
     descriptionZh: normalized.descriptionZh,
     descriptionEn: normalized.descriptionEn,
-    tags: normalized.tags,
     topicZh: normalized.topicZh,
     order: normalized.order,
   };
@@ -218,13 +216,11 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
   const [loadingRemoteNotes, setLoadingRemoteNotes] = useState(false);
   const [search, setSearch] = useState("");
   const [topicFilter, setTopicFilter] = useState("");
-  const [tagFilter, setTagFilter] = useState("");
-  const [folderFilter, setFolderFilter] = useState<FolderFilterValue>("all");
+  const [folderFilter, setFolderFilter] = useState<FolderFilterValue>("");
   const [deletingSlug, setDeletingSlug] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [assigningSlug, setAssigningSlug] = useState("");
   const [deletingFolderId, setDeletingFolderId] = useState("");
-  const [folderInput, setFolderInput] = useState("");
   const [draggingSlug, setDraggingSlug] = useState("");
   const [dragOverTarget, setDragOverTarget] = useState<string>("");
   const [error, setError] = useState("");
@@ -397,20 +393,6 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     return Array.from(unique).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
   }, [notes]);
 
-  const tagOptions = useMemo(() => {
-    const unique = new Set<string>();
-    for (const note of notes) {
-      for (const tag of note.tags) {
-        const value = tag.trim();
-        if (value) {
-          unique.add(value);
-        }
-      }
-    }
-
-    return Array.from(unique).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
-  }, [notes]);
-
   const folderCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const note of notes) {
@@ -423,6 +405,10 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
   const filteredNotes = useMemo(() => {
     const keyword = search.trim().toLowerCase();
+
+    if (!folderFilter) {
+      return [];
+    }
 
     return notes.filter((note) => {
       const noteFolderId = noteFolderMap[note.slug] ?? "";
@@ -439,10 +425,6 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
         return false;
       }
 
-      if (tagFilter && !note.tags.includes(tagFilter)) {
-        return false;
-      }
-
       if (!keyword) {
         return true;
       }
@@ -456,14 +438,23 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
         note.weekLabelZh,
         note.weekLabelEn,
         folderName,
-        note.tags.join(" "),
       ]
         .join(" ")
         .toLowerCase();
 
       return haystack.includes(keyword);
     });
-  }, [notes, noteFolderMap, folderFilter, topicFilter, tagFilter, search, folderById]);
+  }, [notes, noteFolderMap, folderFilter, topicFilter, search, folderById]);
+
+  const activeFolderLabel = useMemo(() => {
+    if (folderFilter === "uncategorized") {
+      return "未归类";
+    }
+    if (folderFilter.startsWith("folder:")) {
+      return folderById.get(folderFilter.slice("folder:".length))?.name ?? "文件夹";
+    }
+    return "";
+  }, [folderFilter, folderById]);
 
   function updateLocalFolderMapping(noteSlug: string, folderId: string) {
     setNoteFolderMap((previous) => {
@@ -528,8 +519,8 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     }
   }
 
-  async function handleCreateFolder() {
-    const name = sanitizeFolderName(folderInput);
+  async function handleCreateFolder(rawName: string) {
+    const name = sanitizeFolderName(rawName);
     if (!name) {
       setError("请输入文件夹名称。");
       return;
@@ -557,7 +548,6 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
           },
         ]),
       );
-      setFolderInput("");
       return;
     }
 
@@ -591,7 +581,6 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
       }
 
       setFolders((previous) => sortFolders([...previous, folder]));
-      setFolderInput("");
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "创建云端文件夹失败。");
     } finally {
@@ -650,7 +639,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     });
 
     if (folderFilter === `folder:${folder.id}`) {
-      setFolderFilter("all");
+      setFolderFilter("");
     }
   }
 
@@ -723,8 +712,23 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
   function resetFilters() {
     setSearch("");
     setTopicFilter("");
-    setTagFilter("");
-    setFolderFilter("all");
+  }
+
+  function handleSelectFolder(next: FolderFilterValue) {
+    setFolderFilter((current) => (current === next ? "" : next));
+  }
+
+  function handleCreateFolderButtonClick() {
+    if (creatingFolder) {
+      return;
+    }
+
+    const input = window.prompt(`请输入文件夹名称（最多 ${FOLDER_NAME_MAX_LENGTH} 个字符）`, "");
+    if (input === null) {
+      return;
+    }
+
+    void handleCreateFolder(input);
   }
 
   if (IS_CLOUD_MODE && !isReady) {
@@ -742,78 +746,24 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
   return (
     <>
       <section className="mb-6 rounded-apple bg-white p-4 shadow-card dark:bg-[#272729]">
-        <div className="grid gap-3 md:grid-cols-5">
-          <label className="space-y-1 md:col-span-2">
-            <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/60 dark:text-white/60">关键词</span>
-            <input
-              type="text"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="搜索标题、主题、标签或文件夹"
-              className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[14px] text-black/85 outline-none transition placeholder:text-black/45 focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/86 dark:placeholder:text-white/45"
-            />
-          </label>
-
-          <label className="space-y-1">
-            <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/60 dark:text-white/60">主题</span>
-            <select
-              value={topicFilter}
-              onChange={(event) => setTopicFilter(event.target.value)}
-              className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[14px] text-black/85 outline-none transition focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/86"
-            >
-              <option value="">全部主题</option>
-              {topicOptions.map((topic) => (
-                <option key={topic} value={topic}>
-                  {topic}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="space-y-1">
-            <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/60 dark:text-white/60">标签</span>
-            <select
-              value={tagFilter}
-              onChange={(event) => setTagFilter(event.target.value)}
-              className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[14px] text-black/85 outline-none transition focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/86"
-            >
-              <option value="">全部标签</option>
-              {tagOptions.map((tag) => (
-                <option key={tag} value={tag}>
-                  #{tag}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="space-y-1">
-            <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/60 dark:text-white/60">文件夹</span>
-            <select
-              value={folderFilter}
-              onChange={(event) => setFolderFilter(event.target.value as FolderFilterValue)}
-              className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[14px] text-black/85 outline-none transition focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/86"
-            >
-              <option value="all">全部文件夹</option>
-              <option value="uncategorized">未归类</option>
-              {folders.map((folder) => (
-                <option key={folder.id} value={`folder:${folder.id}`}>
-                  {folder.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={creatingFolder}
+            onClick={handleCreateFolderButtonClick}
+            className="inline-flex h-[38px] items-center rounded-capsule border border-[#0066cc] px-4 font-text text-[14px] tracking-tightCaption text-[#0066cc] transition hover:bg-[#0066cc]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-[#2997ff] dark:text-[#2997ff] dark:hover:bg-[#2997ff]/[0.14]"
+          >
+            {creatingFolder ? "创建中..." : "新建文件夹"}
+          </button>
           <button
             type="button"
             onClick={resetFilters}
             className="inline-flex items-center rounded-capsule border border-black/20 px-3 py-1.5 font-text text-[13px] tracking-tightCaption text-black/75 transition hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/22 dark:text-white/78 dark:hover:bg-white/[0.06]"
           >
-            清空筛选
+            清空关键词/主题
           </button>
           <p className="font-text text-[13px] text-black/65 dark:text-white/68">
-            共 {filteredNotes.length} / {notes.length} 条
+            总笔记 {notes.length} 条
           </p>
           {loadingRemoteNotes ? <p className="font-text text-[13px] text-[#0066cc] dark:text-[#2997ff]">正在加载云端数据...</p> : null}
         </div>
@@ -823,38 +773,19 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
             {error}
           </p>
         ) : null}
-      </section>
-
-      <section className="mb-6 rounded-apple bg-white p-4 shadow-card dark:bg-[#272729]">
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="min-w-[220px] flex-1 space-y-1">
-            <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/60 dark:text-white/60">新建文件夹</span>
-            <input
-              type="text"
-              value={folderInput}
-              onChange={(event) => setFolderInput(event.target.value)}
-              maxLength={FOLDER_NAME_MAX_LENGTH}
-              placeholder="例如：数值微分 / 插值"
-              className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[14px] text-black/85 outline-none transition placeholder:text-black/45 focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/86 dark:placeholder:text-white/45"
-            />
-          </label>
-
-          <button
-            type="button"
-            disabled={creatingFolder}
-            onClick={handleCreateFolder}
-            className="inline-flex h-[38px] items-center rounded-capsule border border-[#0066cc] px-4 font-text text-[14px] tracking-tightCaption text-[#0066cc] transition hover:bg-[#0066cc]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-[#2997ff] dark:text-[#2997ff] dark:hover:bg-[#2997ff]/[0.14]"
-          >
-            {creatingFolder ? "创建中..." : "创建文件夹"}
-          </button>
-        </div>
-
-        <p className="mt-3 font-text text-[13px] text-black/65 dark:text-white/70">
-          拖动笔记卡片到下方文件夹区域即可归类，也可以在卡片内使用下拉框切换文件夹。
-        </p>
+        <p className="mt-3 font-text text-[13px] text-black/65 dark:text-white/70">点击文件夹即可在下方查看对应笔记，点击同一文件夹可收起。</p>
 
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <div
+            role="button"
+            tabIndex={0}
+            onClick={() => handleSelectFolder("uncategorized")}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                handleSelectFolder("uncategorized");
+              }
+            }}
             onDragOver={(event) => {
               event.preventDefault();
               setDragOverTarget("uncategorized");
@@ -862,7 +793,9 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
             onDragLeave={() => setDragOverTarget((previous) => (previous === "uncategorized" ? "" : previous))}
             onDrop={(event) => void handleFolderDrop(null, event)}
             className={`rounded-apple border px-3 py-3 transition ${
-              dragOverTarget === "uncategorized"
+              folderFilter === "uncategorized"
+                ? "border-[#0071e3] bg-[#0071e3]/[0.1] dark:border-[#2997ff] dark:bg-[#2997ff]/[0.18]"
+                : dragOverTarget === "uncategorized"
                 ? "border-[#0071e3] bg-[#0071e3]/[0.08] dark:border-[#2997ff] dark:bg-[#2997ff]/[0.16]"
                 : "border-black/12 bg-black/[0.02] dark:border-white/16 dark:bg-white/[0.04]"
             }`}
@@ -877,6 +810,15 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
           {folders.map((folder) => (
             <div
               key={folder.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => handleSelectFolder(`folder:${folder.id}`)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  handleSelectFolder(`folder:${folder.id}`);
+                }
+              }}
               onDragOver={(event) => {
                 event.preventDefault();
                 setDragOverTarget(folder.id);
@@ -884,7 +826,9 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
               onDragLeave={() => setDragOverTarget((previous) => (previous === folder.id ? "" : previous))}
               onDrop={(event) => void handleFolderDrop(folder.id, event)}
               className={`rounded-apple border px-3 py-3 transition ${
-                dragOverTarget === folder.id
+                folderFilter === `folder:${folder.id}`
+                  ? "border-[#0071e3] bg-[#0071e3]/[0.1] dark:border-[#2997ff] dark:bg-[#2997ff]/[0.18]"
+                  : dragOverTarget === folder.id
                   ? "border-[#0071e3] bg-[#0071e3]/[0.08] dark:border-[#2997ff] dark:bg-[#2997ff]/[0.16]"
                   : "border-black/12 bg-black/[0.02] dark:border-white/16 dark:bg-white/[0.04]"
               }`}
@@ -894,7 +838,10 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                 <button
                   type="button"
                   disabled={deletingFolderId === folder.id}
-                  onClick={() => void handleDeleteFolder(folder)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void handleDeleteFolder(folder);
+                  }}
                   className="inline-flex items-center rounded-capsule border border-[#b4232f]/35 px-2 py-0.5 font-text text-[11px] tracking-tightCaption text-[#8f1d27] transition hover:bg-[#b4232f]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b4232f] dark:border-[#ff6a77]/40 dark:text-[#ffc4cb] dark:hover:bg-[#ff6a77]/[0.12]"
                 >
                   {deletingFolderId === folder.id ? "删除中..." : "删除"}
@@ -906,78 +853,123 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
         </div>
       </section>
 
-      <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-        {filteredNotes.map((note) => {
-          const noteFolderId = noteFolderMap[note.slug] ?? "";
-          const noteFolderName = noteFolderId ? folderById.get(noteFolderId)?.name ?? "" : "";
-          const isDragging = draggingSlug === note.slug;
+      {folderFilter ? (
+        <>
+          <section className="mb-6 rounded-apple bg-white p-4 shadow-card dark:bg-[#272729]">
+            <div className="grid gap-3 md:grid-cols-3">
+              <label className="space-y-1 md:col-span-2">
+                <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/60 dark:text-white/60">关键词</span>
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="搜索标题、主题或文件夹"
+                  className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[14px] text-black/85 outline-none transition placeholder:text-black/45 focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/86 dark:placeholder:text-white/45"
+                />
+              </label>
 
-          return (
-            <div
-              key={note.slug}
-              draggable
-              onDragStart={(event) => {
-                setDraggingSlug(note.slug);
-                event.dataTransfer.effectAllowed = "move";
-                event.dataTransfer.setData("text/yynotes-note-slug", note.slug);
-                event.dataTransfer.setData("text/plain", note.slug);
-              }}
-              onDragEnd={() => {
-                setDraggingSlug("");
-                setDragOverTarget("");
-              }}
-              className={`transition ${isDragging ? "opacity-60" : ""}`}
-              title="拖拽到上方文件夹可归类"
-            >
-              <WeekCard
-                href={note.viewHref}
-                weekLabelZh={note.weekLabelZh}
-                weekLabelEn={note.weekLabelEn}
-                zhTitle={note.zhTitle}
-                enTitle={note.enTitle}
-                descriptionZh={note.descriptionZh}
-                descriptionEn={note.descriptionEn}
-                tags={note.tags}
-                footerAction={
-                  <div className="flex flex-wrap items-center gap-2">
-                    <select
-                      value={noteFolderId}
-                      disabled={assigningSlug === note.slug}
-                      onChange={(event) => void assignFolder(note.slug, event.target.value || null)}
-                      onClick={(event) => event.stopPropagation()}
-                      className="max-w-[180px] rounded-capsule border border-black/20 bg-white px-3 py-1.5 font-text text-[12px] text-black/78 outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/22 dark:bg-[#202022] dark:text-white/80"
-                    >
-                      <option value="">未归类</option>
-                      {folders.map((folder) => (
-                        <option key={folder.id} value={folder.id}>
-                          {folder.name}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      disabled={deletingSlug === note.slug}
-                      onClick={() => handleDeleteNote(note)}
-                      className="inline-flex items-center rounded-capsule border border-[#b4232f]/35 px-3 py-1.5 font-text text-[13px] tracking-tightCaption text-[#8f1d27] transition hover:bg-[#b4232f]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b4232f] dark:border-[#ff6a77]/40 dark:text-[#ffc4cb] dark:hover:bg-[#ff6a77]/[0.12]"
-                    >
-                      {deletingSlug === note.slug ? "删除中..." : "删除"}
-                    </button>
-                    <span className="font-text text-[12px] text-black/60 dark:text-white/66">
-                      {noteFolderName ? `文件夹：${noteFolderName}` : "文件夹：未归类"}
-                    </span>
-                  </div>
-                }
-              />
+              <label className="space-y-1">
+                <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/60 dark:text-white/60">主题</span>
+                <select
+                  value={topicFilter}
+                  onChange={(event) => setTopicFilter(event.target.value)}
+                  className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[14px] text-black/85 outline-none transition focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/86"
+                >
+                  <option value="">全部主题</option>
+                  {topicOptions.map((topic) => (
+                    <option key={topic} value={topic}>
+                      {topic}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
-          );
-        })}
-      </div>
 
-      {!filteredNotes.length ? (
-        <p className="mt-6 rounded-apple border border-black/12 bg-white px-4 py-3 font-text text-[14px] leading-[1.45] text-black/72 dark:border-white/15 dark:bg-[#272729] dark:text-white/74">
-          没有匹配当前筛选条件的笔记，请调整关键词、主题、标签或文件夹。
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <p className="font-text text-[13px] text-black/65 dark:text-white/68">
+                当前文件夹：{activeFolderLabel}，共 {filteredNotes.length} 条
+              </p>
+            </div>
+          </section>
+
+          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+            {filteredNotes.map((note) => {
+              const noteFolderId = noteFolderMap[note.slug] ?? "";
+              const noteFolderName = noteFolderId ? folderById.get(noteFolderId)?.name ?? "" : "";
+              const isDragging = draggingSlug === note.slug;
+
+              return (
+                <div
+                  key={note.slug}
+                  draggable
+                  onDragStart={(event) => {
+                    setDraggingSlug(note.slug);
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("text/yynotes-note-slug", note.slug);
+                    event.dataTransfer.setData("text/plain", note.slug);
+                  }}
+                  onDragEnd={() => {
+                    setDraggingSlug("");
+                    setDragOverTarget("");
+                  }}
+                  className={`transition ${isDragging ? "opacity-60" : ""}`}
+                  title="拖拽到上方文件夹可归类"
+                >
+                  <WeekCard
+                    href={note.viewHref}
+                    weekLabelZh={note.weekLabelZh}
+                    weekLabelEn={note.weekLabelEn}
+                    zhTitle={note.zhTitle}
+                    enTitle={note.enTitle}
+                    descriptionZh={note.descriptionZh}
+                    descriptionEn={note.descriptionEn}
+                    tags={[]}
+                    footerAction={
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select
+                          value={noteFolderId}
+                          disabled={assigningSlug === note.slug}
+                          onChange={(event) => void assignFolder(note.slug, event.target.value || null)}
+                          onClick={(event) => event.stopPropagation()}
+                          className="max-w-[180px] rounded-capsule border border-black/20 bg-white px-3 py-1.5 font-text text-[12px] text-black/78 outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/22 dark:bg-[#202022] dark:text-white/80"
+                        >
+                          <option value="">未归类</option>
+                          {folders.map((folder) => (
+                            <option key={folder.id} value={folder.id}>
+                              {folder.name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          disabled={deletingSlug === note.slug}
+                          onClick={() => handleDeleteNote(note)}
+                          className="inline-flex items-center rounded-capsule border border-[#b4232f]/35 px-3 py-1.5 font-text text-[13px] tracking-tightCaption text-[#8f1d27] transition hover:bg-[#b4232f]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b4232f] dark:border-[#ff6a77]/40 dark:text-[#ffc4cb] dark:hover:bg-[#ff6a77]/[0.12]"
+                        >
+                          {deletingSlug === note.slug ? "删除中..." : "删除"}
+                        </button>
+                        <span className="font-text text-[12px] text-black/60 dark:text-white/66">
+                          {noteFolderName ? `文件夹：${noteFolderName}` : "文件夹：未归类"}
+                        </span>
+                      </div>
+                    }
+                  />
+                </div>
+              );
+            })}
+          </div>
+
+          {!filteredNotes.length ? (
+            <p className="mt-6 rounded-apple border border-black/12 bg-white px-4 py-3 font-text text-[14px] leading-[1.45] text-black/72 dark:border-white/15 dark:bg-[#272729] dark:text-white/74">
+              当前文件夹下没有匹配条件的笔记，请调整关键词或主题。
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <p className="mt-2 rounded-apple border border-black/12 bg-white px-4 py-3 font-text text-[14px] leading-[1.45] text-black/72 dark:border-white/15 dark:bg-[#272729] dark:text-white/74">
+          请先点击上方文件夹（或未归类）查看对应笔记。
         </p>
-      ) : null}
+      )}
     </>
   );
 }

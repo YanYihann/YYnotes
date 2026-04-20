@@ -17,7 +17,6 @@ export default async function NotesIndexPage() {
     enTitle: note.enTitle,
     descriptionZh: note.descriptionZh,
     descriptionEn: note.descriptionEn,
-    tags: note.tags,
     topicZh: note.topicZh,
     order: note.order,
   }));
@@ -35,8 +34,8 @@ export default async function NotesIndexPage() {
             <span className="ui-en mt-1 block text-[0.52em] font-normal text-black/70 dark:text-white/75">My Notes</span>
           </h1>
           <p className="mt-4 font-text text-[17px] leading-[1.47] text-black/80 dark:text-white/80">
-            按主题与标签组织双语内容，保留公式细节与完整推导。
-            <span className="ui-en ml-1">Organized by topics and tags with bilingual pairing, formula details, and complete derivations.</span>
+            按文件夹与主题组织笔记内容，保留公式细节与完整推导。
+            <span className="ui-en ml-1">Organized by folders and topics with formula details and complete derivations.</span>
           </p>
         </header>
 
