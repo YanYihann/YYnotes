@@ -558,7 +558,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
 
   return (
     <>
-      <section className="sticky top-24 hidden self-start rounded-apple bg-white/90 p-5 shadow-card backdrop-blur-sm dark:bg-[#272729]/95 lg:block">
+      <section className="sticky top-20 hidden max-h-[calc(100dvh-5.75rem)] self-start rounded-apple bg-white/90 p-5 shadow-card backdrop-blur-sm dark:bg-[#272729]/95 lg:flex lg:flex-col">
         <header className="mb-4 flex items-center justify-between gap-3">
           <div>
             <p className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/55 dark:text-white/60">
@@ -599,7 +599,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
             </button>
           </div>
         </header>
-        {!collapsed ? <div className="flex h-[72vh] flex-col">{renderChatBody(desktopMessagesRef)}</div> : null}
+        {!collapsed ? <div className="flex min-h-0 flex-1 flex-col">{renderChatBody(desktopMessagesRef)}</div> : null}
       </section>
 
       {desktopFullscreen ? (
@@ -727,7 +727,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
 
         {mobileOpen ? (
           <div className="fixed inset-0 z-[70] bg-black/45 backdrop-blur-[1px]">
-            <div className="absolute inset-x-0 bottom-0 max-h-[88vh] rounded-t-[18px] bg-[#f5f5f7] p-4 dark:bg-[#151516]">
+            <div className="absolute inset-x-0 bottom-0 flex h-[min(88dvh,calc(100dvh-1rem))] flex-col rounded-t-[18px] bg-[#f5f5f7] p-4 dark:bg-[#151516]">
               <header className="mb-3 flex items-center justify-between">
                 <p className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px] text-[#1d1d1f] dark:text-white">
                   AI 学习助手
@@ -753,7 +753,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
                   </button>
                 </div>
               </header>
-              <div className="flex h-[72vh] flex-col">{renderChatBody(mobileMessagesRef)}</div>
+              <div className="flex min-h-0 flex-1 flex-col">{renderChatBody(mobileMessagesRef)}</div>
             </div>
           </div>
         ) : null}
