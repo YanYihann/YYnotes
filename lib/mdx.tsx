@@ -124,6 +124,10 @@ function extractMeaningfulEnglishWords(text: string): string[] {
   return words.filter((word) => !MATH_FUNCTION_WORDS.has(word));
 }
 
+function hasLikelyMathNotation(text: string): boolean {
+  return /[=+\-*/^<>_{}\[\]\\\d\u0394\u03b4\u2211\u222b\u221a\u2248\u2264\u2265\u00b1]/.test(text);
+}
+
 function detectLineLanguageForChineseMode(line: string): LineLanguage {
   const text = stripForLanguageDetect(line);
   const hasChinese = /[\u4e00-\u9fff]/.test(text);
@@ -137,10 +141,10 @@ function detectLineLanguageForChineseMode(line: string): LineLanguage {
     const normalizedText = text.replace(/\s+/g, " ").trim();
     const meaningfulWords = extractMeaningfulEnglishWords(normalizedText);
     const hasNaturalEnglishPhrase = /\b[A-Za-z]{2,}(?:[-'][A-Za-z]{2,})?[,:;)]?\s+[A-Za-z]{2,}\b/.test(normalizedText);
-    const hasMathSignal = /[=+\-*/^<>_{}()[\]\\]|∑|∫|√|≈|≤|≥|±|\d/.test(normalizedText);
-    const looksLikeFormula = hasMathSignal && !hasNaturalEnglishPhrase && meaningfulWords.length === 0;
+    const hasMathSignal = hasLikelyMathNotation(normalizedText);
 
-    if (looksLikeFormula) {
+    // Keep symbolic formula lines like FD[x], BD[x], etc.
+    if (hasMathSignal && !hasNaturalEnglishPhrase && meaningfulWords.length <= 1) {
       return "mixed";
     }
 
@@ -148,13 +152,21 @@ function detectLineLanguageForChineseMode(line: string): LineLanguage {
   }
 
   if (hasChinese && hasEnglish) {
-    const meaningfulWords = extractMeaningfulEnglishWords(text);
+    const normalizedText = text.replace(/\s+/g, " ").trim();
+    const meaningfulWords = extractMeaningfulEnglishWords(normalizedText);
+    const hasNaturalEnglishPhrase = /\b[A-Za-z]{2,}(?:[-'][A-Za-z]{2,})?[,:;)]?\s+[A-Za-z]{2,}\b/.test(normalizedText);
+    const hasMathSignal = hasLikelyMathNotation(normalizedText);
+
+    // Mixed line with only symbolic english tokens should stay as Chinese content.
+    if (hasMathSignal && !hasNaturalEnglishPhrase && meaningfulWords.length <= 1) {
+      return "zh";
+    }
+
     return meaningfulWords.length ? "mixed" : "zh";
   }
 
   return "none";
 }
-
 function splitMarkdownPrefix(line: string): { prefix: string; content: string } {
   const match = line.match(/^(\s*(?:#{1,6}\s+|>\s?|[-*+]\s+|\d+\.\s+)?)([\s\S]*)$/);
   if (!match) {
@@ -166,42 +178,29 @@ function splitMarkdownPrefix(line: string): { prefix: string; content: string } 
 function stripInlineEnglishTranslation(content: string): string {
   let output = content;
 
-  output = output.replace(/([\u4e00-\u9fff][^()（）\n]{0,90})\s*[（(]\s*([A-Za-z][^()（）\n]{2,120})\s*[)）]/g, (full, zhPart, enPart) => {
-    return extractMeaningfulEnglishWords(enPart).length >= 2 ? zhPart : full;
+  // Remove parenthesized english translation only, preserving markdown symbols around it.
+  output = output.replace(/\s*[（(]\s*([A-Za-z][^()（）\n]{2,120})\s*[)）]/g, (full, enPart) => {
+    return extractMeaningfulEnglishWords(enPart).length >= 2 ? "" : full;
   });
 
-  const punctuationBoundary = output.match(/^([\s\S]*[。！？；：])\s+([A-Za-z][\s\S]*)$/);
-  if (punctuationBoundary && extractMeaningfulEnglishWords(punctuationBoundary[2]).length >= 2) {
-    output = punctuationBoundary[1];
-  }
-
-  const slashBoundary = output.match(/^([\s\S]*[\u4e00-\u9fff][\s\S]*?)\s+\/\s+([A-Za-z][\s\S]*)$/);
-  if (slashBoundary && extractMeaningfulEnglishWords(slashBoundary[2]).length >= 2) {
-    output = slashBoundary[1];
-  }
-
-  const doubleSpaceBoundary = output.match(/^([\s\S]*[\u4e00-\u9fff][\s\S]*?)\s{2,}([A-Za-z][\s\S]*)$/);
-  if (doubleSpaceBoundary && extractMeaningfulEnglishWords(doubleSpaceBoundary[2]).length >= 2) {
-    output = doubleSpaceBoundary[1];
-  }
-
-  const firstEnglishIndex = output.search(/\b[A-Za-z]{2,}(?:[-'][A-Za-z]{2,})?\b/);
-  if (firstEnglishIndex > 0) {
-    const before = output.slice(0, firstEnglishIndex);
-    const after = output.slice(firstEnglishIndex);
-    const shouldTrimTail =
-      /[\u4e00-\u9fff]/.test(before) &&
-      extractMeaningfulEnglishWords(after).length >= 3 &&
-      /[\s，。！？；：、:;,\-–—(（]$/.test(before);
-
-    if (shouldTrimTail) {
-      output = before.trimEnd();
+  output = output.replace(/\s+\/\s+([A-Za-z][^\/\n]{2,160})$/g, (full, enPart, offset, whole) => {
+    const before = whole.slice(0, offset);
+    if (/[\u4e00-\u9fff]/.test(before) && extractMeaningfulEnglishWords(enPart).length >= 2) {
+      return "";
     }
-  }
+    return full;
+  });
+
+  output = output.replace(/\s{2,}([A-Za-z][^\n]{2,180})$/g, (full, enPart, offset, whole) => {
+    const before = whole.slice(0, offset);
+    if (/[\u4e00-\u9fff]/.test(before) && extractMeaningfulEnglishWords(enPart).length >= 3) {
+      return "";
+    }
+    return full;
+  });
 
   return output.trimEnd();
 }
-
 function removeStandaloneEnglishLines(source: string): string {
   const lines = source.split("\n");
   const output: string[] = [];
