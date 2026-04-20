@@ -1,11 +1,24 @@
 import Link from "next/link";
 import { HomeCloudNotesSections } from "@/components/home/home-cloud-notes-sections";
+import { Component as EtheralShadow } from "@/components/ui/etheral-shadow";
 
 export default async function HomePage() {
   return (
     <>
-      <section className="section-dark">
-        <div className="mx-auto flex min-h-[70vh] w-full max-w-[1100px] flex-col justify-center px-4 py-20 text-center sm:px-6">
+      <section className="section-dark relative isolate overflow-hidden">
+        <div className="absolute inset-0 -z-20">
+          <EtheralShadow
+            className="h-full w-full"
+            color="rgba(128, 128, 128, 1)"
+            animation={{ scale: 100, speed: 90 }}
+            noise={{ opacity: 1, scale: 1.2 }}
+            sizing="fill"
+            title={null}
+          />
+        </div>
+        <div className="absolute inset-0 -z-10 bg-black/45" />
+
+        <div className="mx-auto flex min-h-[calc(100dvh-3rem)] w-full max-w-[1100px] flex-col justify-center px-4 py-20 text-center sm:px-6">
           <p className="mx-auto mb-5 rounded-capsule border border-white/30 px-4 py-1 text-[12px] font-semibold uppercase tracking-[0.1em] text-white/75">
             YYNotes
             <span className="ui-en ml-1">Note Archive</span>
