@@ -1025,41 +1025,44 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                     descriptionZh={note.descriptionZh}
                     descriptionEn={note.descriptionEn}
                     tags={[]}
+                    compact
                     footerAction={
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="w-full space-y-2.5 pt-1">
                         <select
                           value={noteFolderId}
                           disabled={assigningSlug === note.slug || updatingSlug === note.slug}
                           onChange={(event) => void assignFolder(note.slug, event.target.value || null)}
                           onClick={(event) => event.stopPropagation()}
-                          className="max-w-[180px] rounded-capsule border border-black/20 bg-white px-3 py-1.5 font-text text-[12px] text-black/78 outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/22 dark:bg-[#202022] dark:text-white/80"
+                          className="w-full rounded-capsule border border-black/16 bg-white px-3 py-1.5 font-text text-[12px] text-black/75 outline-none transition focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/22 dark:bg-[#202022] dark:text-white/80"
                         >
                           <option value="">未归类</option>
                           {folders.map((folder) => (
                             <option key={folder.id} value={folder.id}>
-                            {folder.name}
-                          </option>
-                        ))}
-                      </select>
-                        <button
-                          type="button"
-                          disabled={updatingSlug === note.slug || deletingSlug === note.slug}
-                          onClick={() => void handleEditNote(note)}
-                          className="inline-flex items-center rounded-capsule border border-[#0066cc] px-3 py-1.5 font-text text-[13px] tracking-tightCaption text-[#0066cc] transition hover:bg-[#0066cc]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-[#2997ff] dark:text-[#2997ff] dark:hover:bg-[#2997ff]/[0.14]"
-                        >
-                          {updatingSlug === note.slug ? "保存中..." : "编辑标题/主题"}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={deletingSlug === note.slug || updatingSlug === note.slug}
-                          onClick={() => handleDeleteNote(note)}
-                          className="inline-flex items-center rounded-capsule border border-[#b4232f]/35 px-3 py-1.5 font-text text-[13px] tracking-tightCaption text-[#8f1d27] transition hover:bg-[#b4232f]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b4232f] dark:border-[#ff6a77]/40 dark:text-[#ffc4cb] dark:hover:bg-[#ff6a77]/[0.12]"
-                        >
-                          {deletingSlug === note.slug ? "删除中..." : "删除"}
-                        </button>
-                        <span className="font-text text-[12px] text-black/60 dark:text-white/66">
-                          {noteFolderName ? `文件夹：${noteFolderName}` : "文件夹：未归类"}
-                        </span>
+                              {folder.name}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={updatingSlug === note.slug || deletingSlug === note.slug}
+                            onClick={() => void handleEditNote(note)}
+                            className="inline-flex items-center rounded-capsule border border-[#0066cc] px-3 py-1.5 font-text text-[12px] tracking-tightCaption text-[#0066cc] transition hover:bg-[#0066cc]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-[#2997ff] dark:text-[#2997ff] dark:hover:bg-[#2997ff]/[0.14]"
+                          >
+                            {updatingSlug === note.slug ? "保存中..." : "编辑标题/主题"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={deletingSlug === note.slug || updatingSlug === note.slug}
+                            onClick={() => handleDeleteNote(note)}
+                            className="inline-flex items-center rounded-capsule border border-[#b4232f]/30 px-3 py-1.5 font-text text-[12px] tracking-tightCaption text-[#8f1d27] transition hover:bg-[#b4232f]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b4232f] dark:border-[#ff6a77]/35 dark:text-[#ffc4cb] dark:hover:bg-[#ff6a77]/[0.12]"
+                          >
+                            {deletingSlug === note.slug ? "删除中..." : "删除"}
+                          </button>
+                          <span className="ml-auto font-text text-[11px] text-black/55 dark:text-white/60">
+                            {noteFolderName ? noteFolderName : "未归类"}
+                          </span>
+                        </div>
                       </div>
                     }
                   />
