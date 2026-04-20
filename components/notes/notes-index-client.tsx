@@ -709,11 +709,6 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     }
   }
 
-  function resetFilters() {
-    setSearch("");
-    setTopicFilter("");
-  }
-
   function handleSelectFolder(next: FolderFilterValue) {
     setFolderFilter((current) => (current === next ? "" : next));
   }
@@ -754,13 +749,6 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
             className="inline-flex h-[38px] items-center rounded-capsule border border-[#0066cc] px-4 font-text text-[14px] tracking-tightCaption text-[#0066cc] transition hover:bg-[#0066cc]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-[#2997ff] dark:text-[#2997ff] dark:hover:bg-[#2997ff]/[0.14]"
           >
             {creatingFolder ? "创建中..." : "新建文件夹"}
-          </button>
-          <button
-            type="button"
-            onClick={resetFilters}
-            className="inline-flex items-center rounded-capsule border border-black/20 px-3 py-1.5 font-text text-[13px] tracking-tightCaption text-black/75 transition hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/22 dark:text-white/78 dark:hover:bg-white/[0.06]"
-          >
-            清空关键词/主题
           </button>
           <p className="font-text text-[13px] text-black/65 dark:text-white/68">
             总笔记 {notes.length} 条
@@ -863,7 +851,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                   type="text"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="搜索标题、主题或文件夹"
+                  placeholder="搜索标题或主题"
                   className="w-full rounded-apple border border-black/15 bg-white px-3 py-2 font-text text-[14px] text-black/85 outline-none transition placeholder:text-black/45 focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/20 dark:bg-[#202022] dark:text-white/86 dark:placeholder:text-white/45"
                 />
               </label>
