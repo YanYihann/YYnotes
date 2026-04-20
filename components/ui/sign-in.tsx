@@ -78,8 +78,6 @@ const GlassInputWrapper = ({ children }: { children: React.ReactNode }) => (
 export const SignInPage: React.FC<SignInPageProps> = ({
   title = <span className="font-light tracking-tighter text-[#1d1d1f] dark:text-white">Welcome</span>,
   description = "Access your account and continue your journey with us.",
-  heroImageSrc,
-  testimonials = [],
   mode = "login",
   showModeToggle = false,
   loading = false,
@@ -124,9 +122,17 @@ export const SignInPage: React.FC<SignInPageProps> = ({
   }, [mode]);
 
   return (
-    <div className="flex min-h-[calc(100vh-3rem)] w-full flex-col md:flex-row">
-      <section className="flex flex-1 items-center justify-center p-8">
-        <div className="w-full max-w-md">
+    <div className="relative min-h-[calc(100vh-3rem)] w-full overflow-hidden">
+      <ShadowOverlayBackground
+        className="absolute inset-0"
+        color="rgba(128, 128, 128, 1)"
+        animation={{ scale: 70, speed: 50 }}
+        noise={{ opacity: 0.18, scale: 1 }}
+      />
+      <div className="absolute inset-0 bg-black/20" />
+
+      <section className="relative z-10 flex min-h-[calc(100vh-3rem)] items-center justify-center px-4 py-8">
+        <div className="w-full max-w-md rounded-3xl border border-white/30 bg-white/88 p-6 shadow-card backdrop-blur-xl sm:p-8 dark:bg-[#161617]/84">
           <div className="flex flex-col gap-6">
             <h1 className="animate-element animate-delay-100 font-display text-4xl font-semibold leading-tight text-[#1d1d1f] dark:text-white md:text-5xl">
               {title}
@@ -311,17 +317,6 @@ export const SignInPage: React.FC<SignInPageProps> = ({
           </div>
         </div>
       </section>
-
-      {heroImageSrc || testimonials.length > 0 ? (
-        <section className="relative hidden flex-1 p-4 md:block">
-          <ShadowOverlayBackground
-            className="animate-slide-right animate-delay-300 absolute inset-4 rounded-3xl"
-            color="rgba(128, 128, 128, 1)"
-            animation={{ scale: 70, speed: 50 }}
-            noise={{ opacity: 0.18, scale: 1 }}
-          />
-        </section>
-      ) : null}
     </div>
   );
 };
