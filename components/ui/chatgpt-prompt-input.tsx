@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
@@ -34,6 +34,55 @@ type PromptBoxProps = Omit<
   className?: string;
   textareaStyle?: React.CSSProperties;
 };
+
+interface WebSpeechRecognitionAlternative {
+  transcript: string;
+  confidence: number;
+}
+
+interface WebSpeechRecognitionResult {
+  isFinal: boolean;
+  length: number;
+  [index: number]: WebSpeechRecognitionAlternative;
+}
+
+interface WebSpeechRecognitionResultList {
+  length: number;
+  [index: number]: WebSpeechRecognitionResult;
+}
+
+interface WebSpeechRecognitionEvent extends Event {
+  resultIndex: number;
+  results: WebSpeechRecognitionResultList;
+}
+
+interface WebSpeechRecognitionErrorEvent extends Event {
+  error: string;
+  message?: string;
+}
+
+interface WebSpeechRecognition {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onstart: ((this: WebSpeechRecognition, ev: Event) => unknown) | null;
+  onresult: ((this: WebSpeechRecognition, ev: WebSpeechRecognitionEvent) => unknown) | null;
+  onerror: ((this: WebSpeechRecognition, ev: WebSpeechRecognitionErrorEvent) => unknown) | null;
+  onend: ((this: WebSpeechRecognition, ev: Event) => unknown) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+}
+
+type WebSpeechRecognitionConstructor = new () => WebSpeechRecognition;
+
+declare global {
+  interface Window {
+    SpeechRecognition?: WebSpeechRecognitionConstructor;
+    webkitSpeechRecognition?: WebSpeechRecognitionConstructor;
+  }
+}
 
 type ClassValue = string | number | boolean | null | undefined;
 
@@ -215,9 +264,9 @@ const FileIcon = (props: React.SVGProps<SVGSVGElement>) => (
 );
 
 const toolsList = [
-  { id: "quick-summary", name: "总结本页重点", shortName: "总结" },
-  { id: "formula-check", name: "公式检查", shortName: "公式" },
-  { id: "step-derive", name: "推导拆解", shortName: "推导" },
+  { id: "quick-summary", name: "Summarize this note", shortName: "Summary" },
+  { id: "formula-check", name: "Check formulas", shortName: "Formula" },
+  { id: "step-derive", name: "Derive by steps", shortName: "Derive" },
 ];
 
 export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
@@ -236,18 +285,17 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
   ) => {
     const internalTextareaRef = React.useRef<HTMLTextAreaElement>(null);
     const fileInputRef = React.useRef<HTMLInputElement>(null);
-    const audioUploadRef = React.useRef<HTMLInputElement>(null);
-    const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
-    const mediaStreamRef = React.useRef<MediaStream | null>(null);
-    const recorderChunksRef = React.useRef<Blob[]>([]);
+    const speechRecognitionRef = React.useRef<WebSpeechRecognition | null>(null);
+    const speechBaseRef = React.useRef("");
+    const speechCommittedRef = React.useRef("");
     const attachmentsRef = React.useRef<PromptAttachment[]>([]);
     const [attachments, setAttachments] = React.useState<PromptAttachment[]>([]);
     const [selectedTool, setSelectedTool] = React.useState<string | null>(null);
     const [isPopoverOpen, setIsPopoverOpen] = React.useState(false);
     const [isPreviewOpen, setIsPreviewOpen] = React.useState(false);
     const [previewAttachmentId, setPreviewAttachmentId] = React.useState<string | null>(null);
-    const [isRecording, setIsRecording] = React.useState(false);
-    const [recordingError, setRecordingError] = React.useState<string>("");
+    const [isListening, setIsListening] = React.useState(false);
+    const [speechError, setSpeechError] = React.useState<string>("");
 
     React.useImperativeHandle(ref, () => internalTextareaRef.current!, []);
 
@@ -272,12 +320,13 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
             URL.revokeObjectURL(item.previewUrl);
           }
         });
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-          mediaRecorderRef.current.stop();
-        }
-        if (mediaStreamRef.current) {
-          mediaStreamRef.current.getTracks().forEach((track) => track.stop());
-          mediaStreamRef.current = null;
+        if (speechRecognitionRef.current) {
+          speechRecognitionRef.current.onstart = null;
+          speechRecognitionRef.current.onresult = null;
+          speechRecognitionRef.current.onerror = null;
+          speechRecognitionRef.current.onend = null;
+          speechRecognitionRef.current.abort();
+          speechRecognitionRef.current = null;
         }
       };
     }, []);
@@ -286,11 +335,14 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
     const hasValue = value.trim().length > 0 || attachments.length > 0;
     const previewAttachment = attachments.find((item) => item.id === previewAttachmentId) ?? null;
 
-    const setFiles = React.useCallback((files: FileList | null, source: PromptAttachmentSource) => {
+    const setFiles = React.useCallback((files: FileList | null, source: PromptAttachmentSource = "file") => {
       if (!files || files.length === 0) {
         return;
       }
-      const incoming = Array.from(files).map((file) => buildAttachment(file, source));
+      const incoming = Array.from(files).map((file) => {
+        const actualSource: PromptAttachmentSource = file.type.startsWith("audio/") ? "voice" : source;
+        return buildAttachment(file, actualSource);
+      });
       setAttachments((current) => [...current, ...incoming]);
     }, []);
 
@@ -308,76 +360,109 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
       }
     }, [previewAttachmentId]);
 
-    const stopRecorder = React.useCallback(() => {
-      const recorder = mediaRecorderRef.current;
-      if (recorder && recorder.state !== "inactive") {
-        recorder.stop();
+    const getSpeechRecognitionCtor = React.useCallback((): WebSpeechRecognitionConstructor | null => {
+      if (typeof window === "undefined") {
+        return null;
       }
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
-        mediaStreamRef.current = null;
-      }
-      setIsRecording(false);
+      return window.SpeechRecognition ?? window.webkitSpeechRecognition ?? null;
     }, []);
 
-    const startRecorder = React.useCallback(async () => {
-      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-        audioUploadRef.current?.click();
+    const stopListening = React.useCallback(() => {
+      const recognition = speechRecognitionRef.current;
+      if (!recognition) {
+        return;
+      }
+      recognition.stop();
+    }, []);
+
+    const startListening = React.useCallback(() => {
+      const SpeechRecognitionCtor = getSpeechRecognitionCtor();
+      if (!SpeechRecognitionCtor) {
+        setSpeechError("This browser does not support speech recognition. Please use the latest Chrome or Edge.");
         return;
       }
 
-      setRecordingError("");
+      setSpeechError("");
 
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaStreamRef.current = stream;
-        recorderChunksRef.current = [];
-
-        const recorder = new MediaRecorder(stream);
-        mediaRecorderRef.current = recorder;
-
-        recorder.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            recorderChunksRef.current.push(event.data);
-          }
-        };
-
-        recorder.onstop = () => {
-          const blob = new Blob(recorderChunksRef.current, { type: recorder.mimeType || "audio/webm" });
-          if (blob.size > 0) {
-            const extension = blob.type.includes("ogg") ? "ogg" : "webm";
-            const file = new File([blob], `voice-${new Date().toISOString().replace(/[:.]/g, "-")}.${extension}`, {
-              type: blob.type || "audio/webm",
-            });
-            setAttachments((current) => [...current, buildAttachment(file, "voice")]);
-          }
-          recorderChunksRef.current = [];
-          if (mediaStreamRef.current) {
-            mediaStreamRef.current.getTracks().forEach((track) => track.stop());
-            mediaStreamRef.current = null;
-          }
-          setIsRecording(false);
-        };
-
-        recorder.start();
-        setIsRecording(true);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Unable to access microphone";
-        setRecordingError(message);
-        audioUploadRef.current?.click();
+      if (speechRecognitionRef.current) {
+        speechRecognitionRef.current.onstart = null;
+        speechRecognitionRef.current.onresult = null;
+        speechRecognitionRef.current.onerror = null;
+        speechRecognitionRef.current.onend = null;
+        speechRecognitionRef.current.abort();
+        speechRecognitionRef.current = null;
       }
-    }, []);
 
-    const handleMicClick = React.useCallback(async () => {
+      const recognition = new SpeechRecognitionCtor();
+      speechRecognitionRef.current = recognition;
+      speechBaseRef.current = value;
+      speechCommittedRef.current = "";
+
+      recognition.lang = "zh-CN";
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognition.onresult = (event) => {
+        let interimText = "";
+        for (let i = event.resultIndex; i < event.results.length; i += 1) {
+          const result = event.results[i];
+          const transcript = result?.[0]?.transcript?.trim() ?? "";
+          if (!transcript) {
+            continue;
+          }
+          if (result.isFinal) {
+            speechCommittedRef.current = `${speechCommittedRef.current}${speechCommittedRef.current ? " " : ""}${transcript}`;
+          } else {
+            interimText = `${interimText}${interimText ? " " : ""}${transcript}`;
+          }
+        }
+
+        const baseText = speechBaseRef.current.trimEnd();
+        const spokenText = `${speechCommittedRef.current}${interimText ? ` ${interimText}` : ""}`.trim();
+        const separator = baseText && spokenText ? "\n" : "";
+        onValueChange(`${baseText}${separator}${spokenText}`);
+      };
+
+      recognition.onerror = (event) => {
+        const key = (event.error || "").toLowerCase();
+        if (key === "not-allowed" || key === "service-not-allowed") {
+          setSpeechError("Microphone access was denied. Please allow microphone permission in your browser.");
+          return;
+        }
+        if (key === "no-speech") {
+          setSpeechError("No speech detected. Please try again.");
+          return;
+        }
+        if (key === "audio-capture") {
+          setSpeechError("No available microphone was detected.");
+          return;
+        }
+        setSpeechError("Speech recognition failed. Please try again.");
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+        speechRecognitionRef.current = null;
+      };
+
+      recognition.start();
+    }, [getSpeechRecognitionCtor, onValueChange, value]);
+
+    const handleMicClick = React.useCallback(() => {
       if (disabled) {
         return;
       }
-      if (isRecording) {
-        stopRecorder();
+      if (isListening) {
+        stopListening();
         return;
       }
-      await startRecorder();
-    }, [disabled, isRecording, startRecorder, stopRecorder]);
+      startListening();
+    }, [disabled, isListening, startListening, stopListening]);
 
     const clearAllAttachments = React.useCallback(() => {
       setAttachments((current) => {
@@ -440,16 +525,6 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
           }}
           accept="image/*,.pdf,.txt,.md,.json,.csv,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip,.rar,.7z,audio/*"
         />
-        <input
-          ref={audioUploadRef}
-          type="file"
-          className="hidden"
-          accept="audio/*"
-          onChange={(event) => {
-            setFiles(event.target.files, "voice");
-            event.currentTarget.value = "";
-          }}
-        />
 
         {attachments.length > 0 ? (
           <div className="mb-2 flex flex-wrap items-center gap-1.5 px-1">
@@ -491,9 +566,9 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
           </div>
         ) : null}
 
-        {recordingError ? (
+        {speechError ? (
           <p className="mb-1 rounded-apple border border-[#b4232f]/30 bg-[#b4232f]/[0.08] px-2 py-1 text-[11px] text-[#7f1820] dark:border-[#ff6a77]/35 dark:bg-[#ff6a77]/[0.12] dark:text-[#ffd5da]">
-            麦克风不可用，已切换为语音文件上传。
+            {speechError}
           </p>
         ) : null}
 
@@ -596,16 +671,16 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
                       className={cn(
                         "flex h-8 w-8 items-center justify-center rounded-full text-black/85 transition-colors hover:bg-black/[0.06] focus-visible:outline-none",
                         "dark:text-white dark:hover:bg-[#515151]",
-                        isRecording ? "text-[#b4232f] dark:text-[#ff7f89]" : "",
+                        isListening ? "text-[#b4232f] dark:text-[#ff7f89]" : "",
                       )}
                       disabled={disabled}
                     >
                       <MicIcon className="h-5 w-5" />
-                      <span className="sr-only">Record voice</span>
+                      <span className="sr-only">Voice input</span>
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="top" showArrow>
-                    <p>{isRecording ? "Stop recording" : "Record or upload voice"}</p>
+                    <p>{isListening ? "Stop voice input" : "Start voice input"}</p>
                   </TooltipContent>
                 </Tooltip>
 
