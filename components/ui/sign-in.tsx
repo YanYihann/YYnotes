@@ -4,7 +4,7 @@ import type React from "react";
 import { useMemo, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ShadowOverlayBackground } from "@/components/ui/shadow-overlay-background";
+import { Component as EtheralShadow } from "@/components/ui/etheral-shadow";
 
 const GoogleIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 48 48">
@@ -122,17 +122,9 @@ export const SignInPage: React.FC<SignInPageProps> = ({
   }, [mode]);
 
   return (
-    <div className="relative min-h-[calc(100vh-3rem)] w-full overflow-hidden">
-      <ShadowOverlayBackground
-        className="absolute inset-0"
-        color="rgba(128, 128, 128, 1)"
-        animation={{ scale: 70, speed: 50 }}
-        noise={{ opacity: 0.18, scale: 1 }}
-      />
-      <div className="absolute inset-0 bg-black/20" />
-
-      <section className="relative z-10 flex min-h-[calc(100vh-3rem)] items-center justify-center px-4 py-8">
-        <div className="w-full max-w-md rounded-3xl border border-white/30 bg-white/88 p-6 shadow-card backdrop-blur-xl sm:p-8 dark:bg-[#161617]/84">
+    <div className="flex min-h-[calc(100vh-3rem)] w-full flex-col md:flex-row">
+      <section className="flex flex-1 items-center justify-center p-8">
+        <div className="w-full max-w-md">
           <div className="flex flex-col gap-6">
             <h1 className="animate-element animate-delay-100 font-display text-4xl font-semibold leading-tight text-[#1d1d1f] dark:text-white md:text-5xl">
               {title}
@@ -315,6 +307,17 @@ export const SignInPage: React.FC<SignInPageProps> = ({
               </p>
             ) : null}
           </div>
+        </div>
+      </section>
+      <section className="relative hidden flex-1 p-4 md:block">
+        <div className="absolute inset-4 overflow-hidden rounded-3xl">
+          <EtheralShadow
+            className="h-full w-full [&>div:nth-child(2)]:hidden"
+            color="rgba(128, 128, 128, 1)"
+            animation={{ scale: 100, speed: 90 }}
+            noise={{ opacity: 1, scale: 1.2 }}
+            sizing="fill"
+          />
         </div>
       </section>
     </div>
