@@ -37,12 +37,17 @@ CREATE TABLE IF NOT EXISTS folders (
 ALTER TABLE notes ADD COLUMN IF NOT EXISTS user_id BIGINT;
 ALTER TABLE notes ADD COLUMN IF NOT EXISTS folder_id BIGINT;
 ALTER TABLE notes DROP CONSTRAINT IF EXISTS notes_slug_key;
-ALTER TABLE notes DROP CONSTRAINT IF EXISTS notes_folder_fk;
-ALTER TABLE notes
-  ADD CONSTRAINT notes_folder_fk
-  FOREIGN KEY (folder_id)
-  REFERENCES folders (id)
-  ON DELETE SET NULL;
+DO $$
+BEGIN
+  ALTER TABLE notes
+    ADD CONSTRAINT notes_folder_fk
+    FOREIGN KEY (folder_id)
+    REFERENCES folders (id)
+    ON DELETE SET NULL;
+EXCEPTION
+  WHEN duplicate_object THEN
+    NULL;
+END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS notes_user_slug_unique_idx ON notes (user_id, slug);
 CREATE INDEX IF NOT EXISTS notes_user_updated_idx ON notes (user_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS notes_user_folder_idx ON notes (user_id, folder_id);

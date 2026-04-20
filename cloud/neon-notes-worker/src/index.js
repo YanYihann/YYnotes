@@ -1292,6 +1292,15 @@ function normalizeGeneratedMdx(raw) {
   return normalizeMathDelimiters(normalizeNewlines(stripCodeFence(raw))).trim();
 }
 
+function isDuplicateConstraintError(error, constraintName) {
+  const code = String(error?.code ?? "").trim();
+  const message = String(error?.message ?? "");
+  if (code === "42710") {
+    return true;
+  }
+  return new RegExp(`constraint\\s+\"?${constraintName}\"?.*already exists`, "i").test(message);
+}
+
 async function ensureSchema(sql) {
   await sql`
     CREATE TABLE IF NOT EXISTS users (
@@ -1338,14 +1347,19 @@ async function ensureSchema(sql) {
   await sql`ALTER TABLE notes ADD COLUMN IF NOT EXISTS user_id BIGINT`;
   await sql`ALTER TABLE notes ADD COLUMN IF NOT EXISTS folder_id BIGINT`;
   await sql`ALTER TABLE notes DROP CONSTRAINT IF EXISTS notes_slug_key`;
-  await sql`ALTER TABLE notes DROP CONSTRAINT IF EXISTS notes_folder_fk`;
-  await sql`
-    ALTER TABLE notes
-    ADD CONSTRAINT notes_folder_fk
-    FOREIGN KEY (folder_id)
-    REFERENCES folders (id)
-    ON DELETE SET NULL
-  `;
+  try {
+    await sql`
+      ALTER TABLE notes
+      ADD CONSTRAINT notes_folder_fk
+      FOREIGN KEY (folder_id)
+      REFERENCES folders (id)
+      ON DELETE SET NULL
+    `;
+  } catch (error) {
+    if (!isDuplicateConstraintError(error, "notes_folder_fk")) {
+      throw error;
+    }
+  }
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS notes_user_slug_unique_idx ON notes (user_id, slug)`;
   await sql`CREATE INDEX IF NOT EXISTS notes_user_updated_idx ON notes (user_id, updated_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS notes_user_folder_idx ON notes (user_id, folder_id)`;
