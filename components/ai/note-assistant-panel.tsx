@@ -217,7 +217,6 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
   const [selectedText, setSelectedText] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [desktopFullscreen, setDesktopFullscreen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -588,18 +587,9 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
               全屏
               <span className="ui-en ml-1">Fullscreen</span>
             </button>
-            <button
-              type="button"
-              onClick={() => setCollapsed((value) => !value)}
-              className="rounded-capsule border border-black/20 px-2.5 py-0.5 text-[11px] tracking-tightCaption text-black/72 transition hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/25 dark:text-white/78 dark:hover:bg-white/[0.07]"
-              aria-expanded={!collapsed}
-            >
-              {collapsed ? "展开" : "收起"}
-              <span className="ui-en ml-1">{collapsed ? "Expand" : "Collapse"}</span>
-            </button>
           </div>
         </header>
-        {!collapsed ? <div className="flex min-h-0 flex-1 flex-col">{renderChatBody(desktopMessagesRef)}</div> : null}
+        <div className="flex min-h-0 flex-1 flex-col">{renderChatBody(desktopMessagesRef)}</div>
       </section>
 
       {desktopFullscreen ? (
