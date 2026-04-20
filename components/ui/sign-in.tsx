@@ -2,9 +2,9 @@
 
 import type React from "react";
 import { useMemo, useState } from "react";
-import Image from "next/image";
 import { Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ShadowOverlayBackground } from "@/components/ui/shadow-overlay-background";
 
 const GoogleIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 48 48">
@@ -72,24 +72,6 @@ interface SignInPageProps {
 const GlassInputWrapper = ({ children }: { children: React.ReactNode }) => (
   <div className="rounded-2xl border border-black/15 bg-white/80 backdrop-blur-sm transition-colors focus-within:border-[#0071e3] dark:border-white/20 dark:bg-[#1b1b1d]">
     {children}
-  </div>
-);
-
-const TestimonialCard = ({ testimonial, delay }: { testimonial: Testimonial; delay: string }) => (
-  <div className={`animate-testimonial ${delay} flex w-64 items-start gap-3 rounded-3xl border border-white/10 bg-black/45 p-5 backdrop-blur-xl`}>
-    <Image
-      src={testimonial.avatarSrc}
-      width={40}
-      height={40}
-      className="h-10 w-10 rounded-2xl object-cover"
-      alt={testimonial.name}
-      unoptimized
-    />
-    <div className="text-sm leading-snug text-white/90">
-      <p className="flex items-center gap-1 font-medium text-white">{testimonial.name}</p>
-      <p className="text-white/65">{testimonial.handle}</p>
-      <p className="mt-1 text-white/78">{testimonial.text}</p>
-    </div>
   </div>
 );
 
@@ -330,27 +312,14 @@ export const SignInPage: React.FC<SignInPageProps> = ({
         </div>
       </section>
 
-      {heroImageSrc ? (
+      {heroImageSrc || testimonials.length > 0 ? (
         <section className="relative hidden flex-1 p-4 md:block">
-          <div
-            className="animate-slide-right animate-delay-300 absolute inset-4 rounded-3xl bg-cover bg-center"
-            style={{ backgroundImage: `url(${heroImageSrc})` }}
+          <ShadowOverlayBackground
+            className="animate-slide-right animate-delay-300 absolute inset-4 rounded-3xl"
+            color="rgba(128, 128, 128, 1)"
+            animation={{ scale: 70, speed: 50 }}
+            noise={{ opacity: 0.18, scale: 1 }}
           />
-          {testimonials.length > 0 ? (
-            <div className="absolute bottom-8 left-1/2 flex w-full -translate-x-1/2 justify-center gap-4 px-8">
-              <TestimonialCard testimonial={testimonials[0]} delay="animate-delay-1000" />
-              {testimonials[1] ? (
-                <div className="hidden xl:flex">
-                  <TestimonialCard testimonial={testimonials[1]} delay="animate-delay-1200" />
-                </div>
-              ) : null}
-              {testimonials[2] ? (
-                <div className="hidden 2xl:flex">
-                  <TestimonialCard testimonial={testimonials[2]} delay="animate-delay-1400" />
-                </div>
-              ) : null}
-            </div>
-          ) : null}
         </section>
       ) : null}
     </div>
