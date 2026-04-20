@@ -35,13 +35,13 @@ type SavedQuestionRecord = {
 const STARTER_MESSAGE: AssistantMessage = {
   role: "assistant",
   content:
-    "你好，我是当前笔记页的学习助手。你可以直接问：概念解释、公式整理、方法比较、推导简化、练习题生成。\n\nHi, I am your note-aware assistant for this page.",
+    "\u4f60\u597d\uff0c\u6211\u662f\u5f53\u524d\u7b14\u8bb0\u9875\u7684\u5b66\u4e60\u52a9\u624b\u3002\u4f60\u53ef\u4ee5\u76f4\u63a5\u95ee\u7b54\uff0c\u6216\u9009\u4e2d\u5de6\u4fa7\u7b14\u8bb0\u6587\u672c\u6765\u8fdb\u884c\u9488\u5bf9\u6027\u95ee\u7b54\u3002\n\nHi, I am your note-aware assistant for this page. You can ask directly or select text from the note on the left for targeted Q&A.",
 };
 
 const HISTORY_STORAGE_KEY = "na_ai_question_history_v1";
 const MAX_SAVED_RECORDS = 160;
 const FONT_SIZE_STORAGE_KEY = "na_ai_font_size_v1";
-const DEFAULT_FONT_SIZE = 15;
+const DEFAULT_FONT_SIZE = 14;
 const MIN_FONT_SIZE = 12;
 const MAX_FONT_SIZE = 20;
 
@@ -58,6 +58,24 @@ function trimSelectionText(value: string): string {
     return "";
   }
   return trimmed.length > 1000 ? `${trimmed.slice(0, 1000)}...` : trimmed;
+}
+
+function summarizeSelectionTextInline(value: string): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  const chars = Array.from(normalized);
+  const headSize = 14;
+  const tailSize = 10;
+  const minLengthForEllipsis = headSize + tailSize + 4;
+
+  if (chars.length <= minLengthForEllipsis) {
+    return normalized;
+  }
+
+  return `${chars.slice(0, headSize).join("")}...${chars.slice(chars.length - tailSize).join("")}`;
 }
 
 function serializeHistory(messages: AssistantMessage[]): AssistantMessage[] {
@@ -392,19 +410,19 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
 
   const selectedTextStyle = useMemo(
     () => ({
-      fontSize: `${Math.max(MIN_FONT_SIZE, fontSizePx - 1)}px`,
-      lineHeight: 1.5,
+      fontSize: "14px",
+      lineHeight: 1.4,
     }),
-    [fontSizePx],
+    [],
   );
 
   const renderFontSizeControls = (compact = false) => (
-    <div className="inline-flex items-center gap-1 rounded-capsule border border-black/20 bg-white/75 px-1.5 py-1 dark:border-white/25 dark:bg-white/[0.04]">
+    <div className="inline-flex items-center gap-1 rounded-capsule border border-black/20 bg-white/75 px-1 py-0.5 dark:border-white/25 dark:bg-white/[0.04]">
       <button
         type="button"
         onClick={decreaseFontSize}
         disabled={fontSizePx <= MIN_FONT_SIZE}
-        className="rounded-capsule px-2 py-0.5 text-[12px] font-semibold tracking-tightCaption text-black/74 transition hover:bg-black/[0.06] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:text-white/78 dark:hover:bg-white/[0.08]"
+        className="rounded-capsule px-1.5 py-0 text-[11px] font-semibold tracking-tightCaption text-black/74 transition hover:bg-black/[0.06] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:text-white/78 dark:hover:bg-white/[0.08]"
         aria-label="Decrease assistant font size"
         title="A-"
       >
@@ -413,7 +431,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
       <button
         type="button"
         onClick={resetFontSize}
-        className="rounded-capsule px-2 py-0.5 text-[11px] tracking-tightCaption text-black/62 transition hover:bg-black/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:text-white/68 dark:hover:bg-white/[0.08]"
+        className="rounded-capsule px-1.5 py-0 text-[10px] tracking-tightCaption text-black/62 transition hover:bg-black/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:text-white/68 dark:hover:bg-white/[0.08]"
         title="Reset font size"
       >
         {compact ? `${fontSizePx}px` : `A ${fontSizePx}px`}
@@ -422,7 +440,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
         type="button"
         onClick={increaseFontSize}
         disabled={fontSizePx >= MAX_FONT_SIZE}
-        className="rounded-capsule px-2 py-0.5 text-[12px] font-semibold tracking-tightCaption text-black/74 transition hover:bg-black/[0.06] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:text-white/78 dark:hover:bg-white/[0.08]"
+        className="rounded-capsule px-1.5 py-0 text-[11px] font-semibold tracking-tightCaption text-black/74 transition hover:bg-black/[0.06] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:text-white/78 dark:hover:bg-white/[0.08]"
         aria-label="Increase assistant font size"
         title="A+"
       >
@@ -447,8 +465,8 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
             已选文本
             <span className="ui-en ml-1">Selected Text</span>
           </p>
-          <p className="mt-2 line-clamp-4 font-text text-black/78 dark:text-white/80" style={selectedTextStyle}>
-            {selectedText}
+          <p className="mt-2 truncate whitespace-nowrap font-text text-black/78 dark:text-white/80" style={selectedTextStyle}>
+            {summarizeSelectionTextInline(selectedText)}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -556,7 +574,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
             <button
               type="button"
               onClick={() => setHistoryOpen(true)}
-              className="rounded-capsule border border-black/20 px-3 py-1 text-[12px] tracking-tightCaption text-black/72 transition hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/25 dark:text-white/78 dark:hover:bg-white/[0.07]"
+              className="rounded-capsule border border-black/20 px-2.5 py-0.5 text-[11px] tracking-tightCaption text-black/72 transition hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/25 dark:text-white/78 dark:hover:bg-white/[0.07]"
             >
               提问历史
               <span className="ui-en ml-1">History</span>
@@ -564,7 +582,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
             <button
               type="button"
               onClick={() => setDesktopFullscreen(true)}
-              className="rounded-capsule border border-black/20 px-3 py-1 text-[12px] tracking-tightCaption text-black/72 transition hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/25 dark:text-white/78 dark:hover:bg-white/[0.07]"
+              className="rounded-capsule border border-black/20 px-2.5 py-0.5 text-[11px] tracking-tightCaption text-black/72 transition hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/25 dark:text-white/78 dark:hover:bg-white/[0.07]"
             >
               全屏
               <span className="ui-en ml-1">Fullscreen</span>
@@ -572,7 +590,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
             <button
               type="button"
               onClick={() => setCollapsed((value) => !value)}
-              className="rounded-capsule border border-black/20 px-3 py-1 text-[12px] tracking-tightCaption text-black/72 transition hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/25 dark:text-white/78 dark:hover:bg-white/[0.07]"
+              className="rounded-capsule border border-black/20 px-2.5 py-0.5 text-[11px] tracking-tightCaption text-black/72 transition hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/25 dark:text-white/78 dark:hover:bg-white/[0.07]"
               aria-expanded={!collapsed}
             >
               {collapsed ? "展开" : "收起"}
