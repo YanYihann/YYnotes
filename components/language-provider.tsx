@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
@@ -12,10 +12,14 @@ const LanguageContext = createContext<LanguageContextValue | null>(null);
 const STORAGE_KEY = "na_show_english";
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [showEnglish, setShowEnglish] = useState(true);
+  const [showEnglish, setShowEnglish] = useState(false);
 
   useEffect(() => {
     const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (raw === "1") {
+      setShowEnglish(true);
+      return;
+    }
     if (raw === "0") {
       setShowEnglish(false);
     }

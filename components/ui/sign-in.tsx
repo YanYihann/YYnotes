@@ -129,7 +129,9 @@ export const SignInPage: React.FC<SignInPageProps> = ({
             <h1 className="animate-element animate-delay-100 font-display text-4xl font-semibold leading-tight text-[#1d1d1f] dark:text-white md:text-5xl">
               {title}
             </h1>
-            <p className="animate-element animate-delay-200 font-text text-black/70 dark:text-white/75">{description}</p>
+            {description ? (
+              <p className="animate-element animate-delay-200 font-text text-black/70 dark:text-white/75">{description}</p>
+            ) : null}
 
             {showModeToggle ? (
               <div className="animate-element animate-delay-300 inline-flex w-fit rounded-capsule border border-black/15 bg-black/[0.03] p-1 dark:border-white/20 dark:bg-white/[0.06]">
@@ -138,9 +140,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
                   onClick={() => onModeChange?.("login")}
                   className={cn(
                     "rounded-capsule px-4 py-1.5 font-text text-[13px] tracking-tightCaption transition",
-                    mode === "login"
-                      ? "bg-[#0071e3] text-white"
-                      : "text-black/70 hover:text-black dark:text-white/72 dark:hover:text-white",
+                    mode === "login" ? "bg-[#0071e3] text-white" : "text-white/74 hover:text-white",
                   )}
                 >
                   登录
@@ -151,9 +151,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
                   onClick={() => onModeChange?.("register")}
                   className={cn(
                     "rounded-capsule px-4 py-1.5 font-text text-[13px] tracking-tightCaption transition",
-                    mode === "register"
-                      ? "bg-[#0071e3] text-white"
-                      : "text-black/70 hover:text-black dark:text-white/72 dark:hover:text-white",
+                    mode === "register" ? "bg-[#0071e3] text-white" : "text-white/74 hover:text-white",
                   )}
                 >
                   注册
@@ -312,11 +310,13 @@ export const SignInPage: React.FC<SignInPageProps> = ({
       <section className="relative hidden flex-1 p-4 md:block">
         <div className="absolute inset-4 overflow-hidden rounded-3xl">
           <EtheralShadow
-            className="h-full w-full [&>div:nth-child(2)]:hidden"
+            className="h-full w-full"
             color="rgba(128, 128, 128, 1)"
             animation={{ scale: 100, speed: 90 }}
             noise={{ opacity: 1, scale: 1.2 }}
             sizing="fill"
+            title="YYNotes"
+            titleClassName="relative z-20 bg-gradient-to-r from-white via-[#e8efff] to-white bg-clip-text text-center font-display text-[clamp(3rem,7vw,6.4rem)] font-extrabold tracking-[0.08em] text-transparent drop-shadow-[0_14px_30px_rgba(0,0,0,0.55)]"
           />
         </div>
       </section>

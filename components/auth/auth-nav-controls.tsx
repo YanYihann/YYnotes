@@ -30,7 +30,7 @@ export function AuthNavControls() {
 
   return (
     <div className="flex items-center gap-2">
-      <span className="rounded-capsule border border-white/20 px-3 py-1 font-text text-[12px] tracking-[0.02em] text-white/88">
+      <span className="rounded-capsule border border-white/24 bg-white/[0.06] px-3 py-1 font-text text-[12px] font-medium tracking-[0.02em] text-white">
         {session.user.displayName || session.user.username}
       </span>
       <button

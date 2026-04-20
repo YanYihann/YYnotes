@@ -264,9 +264,9 @@ export function AuthPage() {
 
   if (session) {
     return (
-      <div className="section-light py-14">
+      <div className="bg-black py-14 dark">
         <div className="mx-auto w-full max-w-[980px] px-4 sm:px-6">
-          <article className="rounded-apple bg-white p-6 shadow-card dark:bg-[#272729] sm:p-8">
+          <article className="rounded-apple border border-white/10 bg-[#151516] p-6 shadow-card sm:p-8">
             <p className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/55 dark:text-white/58">
               YYNotes Account
             </p>
@@ -290,7 +290,7 @@ export function AuthPage() {
               <button
                 type="button"
                 onClick={logout}
-                className="inline-flex items-center rounded-capsule border border-black/20 px-4 py-1.5 font-text text-[14px] tracking-tightCaption text-black/75 transition hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/22 dark:text-white/78 dark:hover:bg-white/[0.06]"
+                className="inline-flex items-center rounded-capsule border border-white/22 px-4 py-1.5 font-text text-[14px] tracking-tightCaption text-white/82 transition hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3]"
               >
                 切换账号
                 <span className="ui-en ml-1">Switch Account</span>
@@ -303,7 +303,7 @@ export function AuthPage() {
   }
 
   return (
-    <div className="section-light">
+    <div className="bg-black dark">
       <SignInPage
         mode={mode}
         showModeToggle
@@ -367,19 +367,11 @@ export function AuthPage() {
         }}
         onSignIn={onSubmit}
         title={
-          <>
-            登录后查看你的专属笔记
-            <span className="ui-en mt-2 block text-[0.52em] font-normal text-black/70 dark:text-white/72">
-              Sign in to access notes bound to your account
-            </span>
-          </>
+          <span className="font-display text-[clamp(2.8rem,7vw,5.2rem)] font-extrabold leading-[1.02] tracking-[0.01em] text-white drop-shadow-[0_10px_32px_rgba(0,0,0,0.45)]">
+            Welcome Back
+          </span>
         }
-        description={
-          <>
-            登录状态用于云端 API 身份识别，系统只返回当前账号创建的笔记内容。
-            <span className="ui-en ml-1">Your token scopes cloud API results to your own notes.</span>
-          </>
-        }
+        description={null}
         heroImageSrc="https://images.unsplash.com/photo-1642615835477-d303d7dc9ee9?w=2160&q=80"
         testimonials={authTestimonials}
       />

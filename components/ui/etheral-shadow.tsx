@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useEffect, useId, useRef } from "react";
 import { animate, type AnimationPlaybackControls, useMotionValue } from "framer-motion";
 
@@ -31,6 +31,8 @@ interface ShadowOverlayProps {
   noise?: NoiseConfig;
   style?: CSSProperties;
   className?: string;
+  title?: ReactNode;
+  titleClassName?: string;
 }
 
 function mapRange(value: number, fromLow: number, fromHigh: number, toLow: number, toHigh: number): number {
@@ -54,6 +56,8 @@ export function Component({
   noise,
   style,
   className,
+  title = "Etheral Shadows",
+  titleClassName = "relative z-20 text-center text-6xl font-bold text-foreground md:text-7xl lg:text-8xl",
 }: ShadowOverlayProps) {
   const id = useInstanceId();
   const animationEnabled = Boolean(animation && animation.scale > 0);
@@ -154,20 +158,20 @@ export function Component({
         />
       </div>
 
-      <div
-        style={{
-          position: "absolute",
-          top: "50%",
-          left: "50%",
-          transform: "translate(-50%, -50%)",
-          textAlign: "center",
-          zIndex: 10,
-        }}
-      >
-        <h1 className="relative z-20 text-center text-6xl font-bold text-foreground md:text-7xl lg:text-8xl">
-          Etheral Shadows
-        </h1>
-      </div>
+      {title ? (
+        <div
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            textAlign: "center",
+            zIndex: 10,
+          }}
+        >
+          <h1 className={titleClassName}>{title}</h1>
+        </div>
+      ) : null}
 
       {noise && noise.opacity > 0 ? (
         <div
