@@ -1,7 +1,8 @@
-﻿import fs from "node:fs/promises";
+import fs from "node:fs/promises";
 import path from "node:path";
 import matter from "gray-matter";
 import GithubSlugger from "github-slugger";
+import { splitBilingualNoteSections } from "@/lib/bilingual-note";
 
 export type Heading = {
   id: string;
@@ -48,9 +49,9 @@ type Frontmatter = {
 
 const WEEK_FILE_PATTERN = /^week(\d+)\.mdx$/i;
 const NOTE_FILE_PATTERN = /\.mdx$/i;
-const CONTENT_DIRS = ["笔记"];
+const CONTENT_DIRS = ["\u7B14\u8BB0"];
 const DEFAULT_DESCRIPTION_EN = "Bilingual study notes.";
-const DEFAULT_DESCRIPTION_ZH = "双语学习笔记。";
+const DEFAULT_DESCRIPTION_ZH = "\u53CC\u8BED\u5B66\u4E60\u7B14\u8BB0\u3002";
 
 function stripLeadingTopHeadings(markdown: string): string {
   const lines = markdown.split(/\r?\n/);
@@ -150,7 +151,7 @@ function splitMixedDescriptionLine(
   zh: string;
   en: string;
 } | null {
-  const sentenceSplit = line.match(/^(.*[\u4e00-\u9fff].*?[。！？!?])\s+([A-Za-z][\s\S]*)$/u);
+  const sentenceSplit = line.match(/^(.*[\u4e00-\u9fff].*?[\u3002\uFF01\uFF1F!?])\s+([A-Za-z][\s\S]*)$/u);
   if (sentenceSplit) {
     return {
       zh: sentenceSplit[1].trim(),
@@ -346,7 +347,7 @@ function slugifyText(input: string): string {
 }
 
 function parseFrontmatterTags(value: Frontmatter["tags"]): string[] {
-  const rawList = Array.isArray(value) ? value : typeof value === "string" ? value.split(/[，,、|]/) : [];
+  const rawList = Array.isArray(value) ? value : typeof value === "string" ? value.split(/[\uFF0C,\u3001|]/) : [];
 
   const deduped = new Set<string>();
   for (const raw of rawList) {
@@ -396,7 +397,9 @@ async function readNoteFromFile(filePath: string): Promise<WeekNote | null> {
   const frontmatter = parsed.data as Frontmatter;
   const topTitles = extractTopLevelBilingualTitles(parsed.content);
   const source = stripLeadingTopHeadings(parsed.content);
-  const headings = extractHeadings(source);
+  const sections = splitBilingualNoteSections(source);
+  const headingsSource = sections.hasStructuredSections ? sections.zhBody : source;
+  const headings = extractHeadings(headingsSource);
   const stat = await fs.stat(filePath);
 
   const weekFromName = weekMatch ? Number(weekMatch[1]) : undefined;
@@ -414,6 +417,8 @@ async function readNoteFromFile(filePath: string): Promise<WeekNote | null> {
       : topTitles.zhTitle ?? `笔记：${path.parse(fileName).name}`;
 
   const parsedDescriptions = extractBilingualDescription(source);
+  const sectionZhDescription = sections.hasStructuredSections ? extractFirstParagraph(sections.zhBody) : undefined;
+  const sectionEnDescription = sections.hasStructuredSections ? extractFirstParagraph(sections.enBody) : undefined;
   const frontmatterDescription = normalizeFrontmatterText(frontmatter.description);
   const frontmatterDescriptionLang = frontmatterDescription ? detectLanguage(frontmatterDescription) : "none";
 
@@ -421,6 +426,7 @@ async function readNoteFromFile(filePath: string): Promise<WeekNote | null> {
     normalizeFrontmatterText(frontmatter.descriptionEn) ??
     (frontmatterDescriptionLang !== "zh" ? frontmatterDescription : undefined) ??
     parsedDescriptions.descriptionEn ??
+    (sectionEnDescription && detectLanguage(sectionEnDescription) !== "zh" ? sectionEnDescription : undefined) ??
     extractFirstParagraph(source);
   const descriptionEn =
     descriptionEnCandidate && detectLanguage(descriptionEnCandidate) !== "zh" ? descriptionEnCandidate : DEFAULT_DESCRIPTION_EN;
@@ -429,6 +435,7 @@ async function readNoteFromFile(filePath: string): Promise<WeekNote | null> {
     normalizeFrontmatterText(frontmatter.descriptionZh) ??
     (frontmatterDescriptionLang === "zh" ? frontmatterDescription : undefined) ??
     parsedDescriptions.descriptionZh ??
+    (sectionZhDescription && detectLanguage(sectionZhDescription) !== "en" ? sectionZhDescription : undefined) ??
     DEFAULT_DESCRIPTION_ZH;
 
   let topicZh = normalizeFrontmatterText(frontmatter.topicZh);

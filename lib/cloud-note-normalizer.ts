@@ -1,5 +1,6 @@
 import GithubSlugger from "github-slugger";
 import type { Heading } from "@/lib/content";
+import { splitBilingualNoteSections } from "@/lib/bilingual-note";
 
 const DEFAULT_DESCRIPTION_EN = "Bilingual study notes.";
 const DEFAULT_DESCRIPTION_ZH = "\u53cc\u8bed\u5b66\u4e60\u7b14\u8bb0\u3002";
@@ -458,7 +459,9 @@ export function normalizeCloudNote(note: CloudNoteRecord | null): NormalizedClou
 
   const { body, data } = parseFrontmatterAndBody(String(note.mdx_content ?? ""));
   const source = stripLeadingTopHeadings(body);
-  const headings = extractHeadings(source);
+  const sections = splitBilingualNoteSections(source);
+  const headingsSource = sections.hasStructuredSections ? sections.zhBody : source;
+  const headings = extractHeadings(headingsSource);
   const topTitles = extractTopLevelBilingualTitles(body);
 
   const slug = String(note.slug ?? "").trim();
@@ -493,6 +496,8 @@ export function normalizeCloudNote(note: CloudNoteRecord | null): NormalizedClou
     `\u7b14\u8bb0\uff1a${slugName}`;
 
   const parsedDescriptions = extractBilingualDescription(source);
+  const sectionZhDescription = sections.hasStructuredSections ? extractFirstParagraph(sections.zhBody) : undefined;
+  const sectionEnDescription = sections.hasStructuredSections ? extractFirstParagraph(sections.enBody) : undefined;
   const frontmatterDescription = normalizeFrontmatterText(data.description);
   const frontmatterDescriptionLang = frontmatterDescription ? detectLanguage(frontmatterDescription) : "none";
 
@@ -500,6 +505,7 @@ export function normalizeCloudNote(note: CloudNoteRecord | null): NormalizedClou
     normalizeFrontmatterText(data.descriptionEn) ??
     (frontmatterDescriptionLang !== "zh" ? frontmatterDescription : undefined) ??
     parsedDescriptions.descriptionEn ??
+    (sectionEnDescription && detectLanguage(sectionEnDescription) !== "zh" ? sectionEnDescription : undefined) ??
     extractFirstParagraph(source);
   const descriptionEn =
     descriptionEnCandidate && detectLanguage(descriptionEnCandidate) !== "zh" ? descriptionEnCandidate : DEFAULT_DESCRIPTION_EN;
@@ -508,6 +514,7 @@ export function normalizeCloudNote(note: CloudNoteRecord | null): NormalizedClou
     normalizeFrontmatterText(data.descriptionZh) ??
     (frontmatterDescriptionLang === "zh" ? frontmatterDescription : undefined) ??
     parsedDescriptions.descriptionZh ??
+    (sectionZhDescription && detectLanguage(sectionZhDescription) !== "en" ? sectionZhDescription : undefined) ??
     DEFAULT_DESCRIPTION_ZH;
 
   let topicZh = normalizeFrontmatterText(note.topic_zh) ?? normalizeFrontmatterText(data.topicZh);

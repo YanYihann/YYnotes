@@ -6,6 +6,7 @@ import rehypeSlug from "rehype-slug";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import type { WeekNote } from "@/lib/content";
+import { splitBilingualNoteSections } from "@/lib/bilingual-note";
 import allComponents from "@/components/mdx/mdx-components";
 
 const markdownComponents = {
@@ -26,26 +27,9 @@ const markdownComponents = {
   td: allComponents.td,
 };
 
-type LineLanguage = "zh" | "en" | "mixed" | "none";
-type LineKind = "heading" | "list" | "quote" | "plain" | "other";
 type PrepareNoteMarkdownOptions = {
   showEnglish?: boolean;
 };
-
-const MATH_FUNCTION_WORDS = new Set([
-  "sin",
-  "cos",
-  "tan",
-  "cot",
-  "sec",
-  "csc",
-  "log",
-  "ln",
-  "exp",
-  "lim",
-  "max",
-  "min",
-]);
 
 function normalizeNewlines(source: string): string {
   return source.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
@@ -59,210 +43,17 @@ function isDisplayMathFenceLine(line: string): boolean {
   return /^\s*\$\$\s*$/.test(line);
 }
 
-function lineKind(line: string): LineKind {
+function isTableLine(line: string): boolean {
   const trimmed = line.trim();
   if (!trimmed) {
-    return "other";
-  }
-
-  if (/^#{1,6}\s+/.test(trimmed)) {
-    return "heading";
-  }
-
-  if (/^>\s?/.test(trimmed)) {
-    return "quote";
-  }
-
-  if (/^[-*+]\s+/.test(trimmed) || /^\d+\.\s+/.test(trimmed)) {
-    return "list";
+    return false;
   }
 
   if (trimmed.startsWith("|")) {
-    return "other";
+    return true;
   }
 
-  return "plain";
-}
-
-function stripForLanguageDetect(line: string): string {
-  return line
-    .trim()
-    .replace(/^#{1,6}\s+/, "")
-    .replace(/^>\s?/, "")
-    .replace(/^[-*+]\s+/, "")
-    .replace(/^\d+\.\s+/, "")
-    .replace(/`[^`]*`/g, " ")
-    .replace(/\$[^$]*\$/g, " ")
-    .replace(/!\[[^\]]*]\([^)]+\)/g, " ")
-    .replace(/\[[^\]]+]\([^)]+\)/g, " ")
-    .replace(/<[^>]+>/g, " ")
-    .trim();
-}
-
-function detectLineLanguage(line: string): LineLanguage {
-  const text = stripForLanguageDetect(line);
-  const hasChinese = /[\u4e00-\u9fff]/.test(text);
-  const hasEnglish = /[A-Za-z]/.test(text);
-
-  if (hasChinese && !hasEnglish) {
-    return "zh";
-  }
-
-  if (hasEnglish && !hasChinese) {
-    return "en";
-  }
-
-  if (hasChinese && hasEnglish) {
-    return "mixed";
-  }
-
-  return "none";
-}
-
-function extractMeaningfulEnglishWords(text: string): string[] {
-  const words = (text.match(/\b[A-Za-z]{2,}(?:[-'][A-Za-z]{2,})?\b/g) ?? []).map((word) => word.toLowerCase());
-  return words.filter((word) => !MATH_FUNCTION_WORDS.has(word));
-}
-
-function hasLikelyMathNotation(text: string): boolean {
-  return /[=+\-*/^<>_{}\[\]\\\d\u0394\u03b4\u2211\u222b\u221a\u2248\u2264\u2265\u00b1]/.test(text);
-}
-
-function detectLineLanguageForChineseMode(line: string): LineLanguage {
-  const text = stripForLanguageDetect(line);
-  const hasChinese = /[\u4e00-\u9fff]/.test(text);
-  const hasEnglish = /[A-Za-z]/.test(text);
-
-  if (hasChinese && !hasEnglish) {
-    return "zh";
-  }
-
-  if (hasEnglish && !hasChinese) {
-    const normalizedText = text.replace(/\s+/g, " ").trim();
-    const meaningfulWords = extractMeaningfulEnglishWords(normalizedText);
-    const hasNaturalEnglishPhrase = /\b[A-Za-z]{2,}(?:[-'][A-Za-z]{2,})?[,:;)]?\s+[A-Za-z]{2,}\b/.test(normalizedText);
-    const hasMathSignal = hasLikelyMathNotation(normalizedText);
-
-    // Keep symbolic formula lines like FD[x], BD[x], etc.
-    if (hasMathSignal && !hasNaturalEnglishPhrase && meaningfulWords.length <= 1) {
-      return "mixed";
-    }
-
-    return meaningfulWords.length ? "en" : "mixed";
-  }
-
-  if (hasChinese && hasEnglish) {
-    const normalizedText = text.replace(/\s+/g, " ").trim();
-    const meaningfulWords = extractMeaningfulEnglishWords(normalizedText);
-    const hasNaturalEnglishPhrase = /\b[A-Za-z]{2,}(?:[-'][A-Za-z]{2,})?[,:;)]?\s+[A-Za-z]{2,}\b/.test(normalizedText);
-    const hasMathSignal = hasLikelyMathNotation(normalizedText);
-
-    // Mixed line with only symbolic english tokens should stay as Chinese content.
-    if (hasMathSignal && !hasNaturalEnglishPhrase && meaningfulWords.length <= 1) {
-      return "zh";
-    }
-
-    return meaningfulWords.length ? "mixed" : "zh";
-  }
-
-  return "none";
-}
-function splitMarkdownPrefix(line: string): { prefix: string; content: string } {
-  const match = line.match(/^(\s*(?:#{1,6}\s+|>\s?|[-*+]\s+|\d+\.\s+)?)([\s\S]*)$/);
-  if (!match) {
-    return { prefix: "", content: line };
-  }
-  return { prefix: match[1], content: match[2] };
-}
-
-function stripInlineEnglishTranslation(content: string): string {
-  let output = content;
-
-  // Remove parenthesized english translation only, preserving markdown symbols around it.
-  output = output.replace(/\s*[（(]\s*([A-Za-z][^()（）\n]{2,120})\s*[)）]/g, (full, enPart) => {
-    return extractMeaningfulEnglishWords(enPart).length >= 2 ? "" : full;
-  });
-
-  output = output.replace(/\s+\/\s+([A-Za-z][^\/\n]{2,160})$/g, (full, enPart, offset, whole) => {
-    const before = whole.slice(0, offset);
-    if (/[\u4e00-\u9fff]/.test(before) && extractMeaningfulEnglishWords(enPart).length >= 2) {
-      return "";
-    }
-    return full;
-  });
-
-  output = output.replace(/\s{2,}([A-Za-z][^\n]{2,180})$/g, (full, enPart, offset, whole) => {
-    const before = whole.slice(0, offset);
-    if (/[\u4e00-\u9fff]/.test(before) && extractMeaningfulEnglishWords(enPart).length >= 3) {
-      return "";
-    }
-    return full;
-  });
-
-  return output.trimEnd();
-}
-function removeStandaloneEnglishLines(source: string): string {
-  const lines = source.split("\n");
-  const output: string[] = [];
-  let inCodeFence = false;
-  let inMathBlock = false;
-
-  for (const line of lines) {
-    if (isCodeFenceLine(line)) {
-      inCodeFence = !inCodeFence;
-      output.push(line);
-      continue;
-    }
-
-    if (!inCodeFence && isDisplayMathFenceLine(line)) {
-      inMathBlock = !inMathBlock;
-      output.push(line);
-      continue;
-    }
-
-    if (inCodeFence || inMathBlock || isTableLine(line)) {
-      output.push(line);
-      continue;
-    }
-
-    const language = detectLineLanguageForChineseMode(line);
-    if (language === "en") {
-      continue;
-    }
-
-    if (language === "mixed") {
-      const { prefix, content } = splitMarkdownPrefix(line);
-      const strippedContent = stripInlineEnglishTranslation(content);
-      const rebuiltLine = `${prefix}${strippedContent}`.trimEnd();
-      const rebuiltLanguage = detectLineLanguageForChineseMode(rebuiltLine);
-
-      if (!rebuiltLine.trim() || rebuiltLanguage === "en") {
-        continue;
-      }
-
-      output.push(rebuiltLine);
-      continue;
-    }
-
-    output.push(line);
-  }
-
-  return output.join("\n").replace(/\n{3,}/g, "\n\n");
-}
-
-function shouldSwapBilingualPair(first: string, second: string): boolean {
-  if (!first.trim() || !second.trim()) {
-    return false;
-  }
-
-  const firstKind = lineKind(first);
-  const secondKind = lineKind(second);
-
-  if (firstKind !== secondKind || firstKind === "other") {
-    return false;
-  }
-
-  return detectLineLanguage(first) === "en" && detectLineLanguage(second) === "zh";
+  return trimmed.includes("|") && /^[:\-\s|]+$/.test(trimmed);
 }
 
 function normalizeMathDelimiters(source: string): string {
@@ -293,57 +84,6 @@ function normalizeMathDelimiters(source: string): string {
   });
 
   return output;
-}
-
-function reorderBilingualLines(source: string): string {
-  const lines = source.split("\n");
-  const output: string[] = [];
-  let inCodeFence = false;
-  let inMathBlock = false;
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const current = lines[index];
-
-    if (isCodeFenceLine(current)) {
-      inCodeFence = !inCodeFence;
-      output.push(current);
-      continue;
-    }
-
-    if (!inCodeFence && isDisplayMathFenceLine(current)) {
-      inMathBlock = !inMathBlock;
-      output.push(current);
-      continue;
-    }
-
-    if (inCodeFence || inMathBlock) {
-      output.push(current);
-      continue;
-    }
-
-    const next = lines[index + 1];
-    if (typeof next === "string" && shouldSwapBilingualPair(current, next)) {
-      output.push(next);
-      output.push(current);
-      index += 1;
-      continue;
-    }
-
-    output.push(current);
-  }
-
-  return output.join("\n");
-}
-
-function isTableLine(line: string): boolean {
-  const trimmed = line.trim();
-  if (!trimmed) {
-    return false;
-  }
-  if (trimmed.startsWith("|")) {
-    return true;
-  }
-  return trimmed.includes("|") && /^[:\-\s|]+$/.test(trimmed);
 }
 
 function isMathOnlyLine(line: string): boolean {
@@ -422,12 +162,7 @@ function dedupeAdjacentLines(source: string): string {
     const previousTrimmed = previous.trim();
 
     if (trimmed && previousTrimmed) {
-      const exactDuplicate =
-        trimmed === previousTrimmed &&
-        lineKind(line) !== "other" &&
-        lineKind(previous) !== "other" &&
-        !isTableLine(line);
-
+      const exactDuplicate = trimmed === previousTrimmed && !isTableLine(line) && !isTableLine(previous);
       const mathDuplicate =
         isMathOnlyLine(line) && isMathOnlyLine(previous) && mathSignature(line) && mathSignature(line) === mathSignature(previous);
 
@@ -448,16 +183,23 @@ function dedupeAdjacentLines(source: string): string {
   return output.join("\n");
 }
 
-export function prepareNoteMarkdown(source: string, options: PrepareNoteMarkdownOptions = {}): string {
-  const withNormalizedMath = normalizeMathDelimiters(source);
-  const reordered = reorderBilingualLines(withNormalizedMath);
-  const deduped = dedupeAdjacentLines(reordered);
-
-  if (options.showEnglish === false) {
-    return removeStandaloneEnglishLines(deduped);
+function composeRenderedSource(source: string, showEnglish: boolean): string {
+  const sections = splitBilingualNoteSections(source);
+  if (!sections.hasStructuredSections) {
+    return source;
   }
 
-  return deduped;
+  if (!showEnglish) {
+    return sections.zhBody;
+  }
+
+  return [sections.zhBody, "---", "## English Version", sections.enBody].join("\n\n");
+}
+
+export function prepareNoteMarkdown(source: string, options: PrepareNoteMarkdownOptions = {}): string {
+  const normalized = normalizeMathDelimiters(normalizeNewlines(source).trim());
+  const rendered = composeRenderedSource(normalized, options.showEnglish !== false);
+  return dedupeAdjacentLines(rendered).trim();
 }
 
 export async function renderWeekContent(note: WeekNote) {

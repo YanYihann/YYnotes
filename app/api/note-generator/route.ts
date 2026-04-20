@@ -5,6 +5,7 @@ import JSZip from "jszip";
 import mammoth from "mammoth";
 import { NextResponse } from "next/server";
 import { getWeekNotes } from "@/lib/content";
+import { splitBilingualNoteSections } from "@/lib/bilingual-note";
 import { extractResponseText } from "@/lib/ai/note-assistant";
 
 export const runtime = "nodejs";
@@ -849,12 +850,32 @@ function normalizeGeneratedMdx(raw: string, args: {
     throw new Error("AI 返回内容为空，无法生成 MDX。");
   }
 
+  const sections = splitBilingualNoteSections(content);
+  if (!sections.hasStructuredSections) {
+    throw new Error('AI 输出不符合新模板：必须包含“## 中文版笔记”与“## English Version”两个完整分段。');
+  }
+
+  const canonicalContent = [
+    "## 中文版笔记",
+    "",
+    sections.zhBody.trim(),
+    "",
+    "---",
+    "",
+    "## English Version",
+    "",
+    sections.enBody.trim(),
+  ]
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
   const frontmatter = buildFrontmatter({
     ...args,
     data: parsed.data as Record<string, unknown>,
   });
 
-  return `${matter.stringify(`${content}\n`, frontmatter).trimEnd()}\n`;
+  return `${matter.stringify(`${canonicalContent}\n`, frontmatter).trimEnd()}\n`;
 }
 
 function asBoolean(value: FormDataEntryValue | null): boolean {
