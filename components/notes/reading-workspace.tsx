@@ -19,7 +19,7 @@ type ReadingWorkspaceProps = {
 };
 
 const MIN_AI_WIDTH = 380;
-const DEFAULT_AI_WIDTH = MIN_AI_WIDTH;
+const DEFAULT_AI_WIDTH = 420;
 const MAX_AI_WIDTH = 860;
 
 export function ReadingWorkspace({ headings, noteContext, children }: ReadingWorkspaceProps) {

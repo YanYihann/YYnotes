@@ -5,6 +5,7 @@ import rehypeKatex from "rehype-katex";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+import { useLanguage } from "@/components/language-provider";
 import { askNoteAssistant } from "@/lib/ai/client";
 import type { AssistantMessage, NoteAssistantRequest } from "@/lib/ai/note-assistant";
 
@@ -32,11 +33,15 @@ type SavedQuestionRecord = {
   enTitle: string;
 };
 
-const STARTER_MESSAGE: AssistantMessage = {
-  role: "assistant",
-  content:
-    "\u4f60\u597d\uff0c\u6211\u662f\u5f53\u524d\u7b14\u8bb0\u9875\u7684\u5b66\u4e60\u52a9\u624b\u3002\u4f60\u53ef\u4ee5\u76f4\u63a5\u95ee\u7b54\uff0c\u6216\u9009\u4e2d\u5de6\u4fa7\u7b14\u8bb0\u6587\u672c\u6765\u8fdb\u884c\u9488\u5bf9\u6027\u95ee\u7b54\u3002\n\nHi, I am your note-aware assistant for this page. You can ask directly or select text from the note on the left for targeted Q&A.",
-};
+const STARTER_MESSAGE_ZH = "你好，我是当前笔记页的学习助手。你可以直接问答，或选中左侧笔记文本来进行针对性问答。";
+const STARTER_MESSAGE_EN = "Hi, I am your note-aware assistant for this page. You can ask directly or select text from the note on the left for targeted Q&A.";
+
+function buildStarterMessage(showEnglish: boolean): AssistantMessage {
+  return {
+    role: "assistant",
+    content: showEnglish ? `${STARTER_MESSAGE_ZH}\n\n${STARTER_MESSAGE_EN}` : STARTER_MESSAGE_ZH,
+  };
+}
 
 const HISTORY_STORAGE_KEY = "na_ai_question_history_v1";
 const MAX_SAVED_RECORDS = 160;
@@ -206,7 +211,8 @@ function parseSavedRecords(raw: string | null): SavedQuestionRecord[] {
 }
 
 export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
-  const [messages, setMessages] = useState<AssistantMessage[]>([STARTER_MESSAGE]);
+  const { showEnglish } = useLanguage();
+  const [messages, setMessages] = useState<AssistantMessage[]>(() => [buildStarterMessage(showEnglish)]);
   const [input, setInput] = useState("");
   const [selectedText, setSelectedText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -234,6 +240,19 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
     }
     return savedRecords.find((record) => record.id === selectedRecordId) ?? null;
   }, [savedRecords, noteRecords, selectedRecordId]);
+
+  useEffect(() => {
+    setMessages((current) => {
+      const nextStarter = buildStarterMessage(showEnglish);
+      if (current.length !== 1 || current[0]?.role !== "assistant") {
+        return current;
+      }
+      if (current[0].content === nextStarter.content) {
+        return current;
+      }
+      return [nextStarter];
+    });
+  }, [showEnglish]);
 
   useEffect(() => {
     const collectSelection = () => {
