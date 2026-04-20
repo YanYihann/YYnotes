@@ -427,14 +427,6 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
     [fontSizePx],
   );
 
-  const selectedTextStyle = useMemo(
-    () => ({
-      fontSize: "14px",
-      lineHeight: 1.4,
-    }),
-    [],
-  );
-
   const renderFontSizeControls = (compact = false) => (
     <div className="inline-flex items-center gap-1 rounded-capsule border border-black/20 bg-white/75 px-1 py-0.5 dark:border-white/25 dark:bg-white/[0.04]">
       <button
@@ -478,36 +470,6 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
 
   const renderChatBody = (messagesRef: RefObject<HTMLDivElement | null>) => (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
-      {selectedText ? (
-        <div className="rounded-apple border border-[#0071e3]/30 bg-[#0071e3]/[0.06] p-3 dark:border-[#2997ff]/45 dark:bg-[#2997ff]/[0.08]">
-          <p className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/65 dark:text-white/70">
-            已选文本
-            <span className="ui-en ml-1">Selected Text</span>
-          </p>
-          <p className="mt-2 truncate whitespace-nowrap font-text text-black/78 dark:text-white/80" style={selectedTextStyle}>
-            {summarizeSelectionTextInline(selectedText)}
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => requestAssistant("请围绕我选中的这段内容详细讲解，先中文后英文。", "Explain Selection")}
-              className="rounded-capsule border border-[#0066cc] px-3 py-1 text-[12px] tracking-tightCaption text-[#0066cc] transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-[#2997ff] dark:text-[#2997ff]"
-            >
-              解释选中段落
-              <span className="ui-en ml-1">Ask AI About This</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedText("")}
-              className="rounded-capsule border border-black/20 px-3 py-1 text-[12px] tracking-tightCaption text-black/70 transition hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/25 dark:text-white/74 dark:hover:bg-white/[0.07]"
-            >
-              清除
-              <span className="ui-en ml-1">Clear</span>
-            </button>
-          </div>
-        </div>
-      ) : null}
-
       <div ref={messagesRef} className="min-h-0 flex-1 overflow-y-auto rounded-apple border border-black/10 bg-white p-3 dark:border-white/10 dark:bg-[#1d1d1f]">
         <div className="space-y-3">
           {messages.map((message, index) => (
@@ -547,10 +509,30 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
       ) : null}
 
       <div className="space-y-2">
-        <label htmlFor="note-assistant-input" className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/55 dark:text-white/60">
-          提问
-          <span className="ui-en ml-1">Ask a Question</span>
-        </label>
+        <div className="flex items-center justify-between gap-2">
+          <label htmlFor="note-assistant-input" className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/55 dark:text-white/60">
+            {"\u63d0\u95ee"}
+            <span className="ui-en ml-1">Ask a Question</span>
+          </label>
+          {selectedText ? (
+            <div className="inline-flex max-w-[70%] items-center gap-1 rounded-capsule border border-[#0071e3]/35 bg-[#0071e3]/[0.06] px-2 py-0.5 dark:border-[#2997ff]/45 dark:bg-[#2997ff]/[0.1]">
+              <span className="shrink-0 font-text text-[10px] font-semibold uppercase tracking-[0.06em] text-black/66 dark:text-white/72">
+                {"\u5df2\u9009\u6587\u672c"}
+              </span>
+              <span className="min-w-0 truncate font-text text-[10px] leading-[1.2] text-black/75 dark:text-white/78">
+                {summarizeSelectionTextInline(selectedText)}
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedText("")}
+                className="shrink-0 rounded-capsule border border-black/20 px-1.5 py-[1px] text-[10px] tracking-tightCaption text-black/70 transition hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:border-white/25 dark:text-white/74 dark:hover:bg-white/[0.07]"
+              >
+                {"\u6e05\u9664"}
+                <span className="ui-en ml-1">Clear</span>
+              </button>
+            </div>
+          ) : null}
+        </div>
         <textarea
           id="note-assistant-input"
           value={input}
