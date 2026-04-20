@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
+import { useLanguage } from "@/components/language-provider";
 import { ReadingWorkspace } from "@/components/notes/reading-workspace";
 import { NoteMarkdown } from "@/components/notes/note-markdown";
 import type { Heading } from "@/lib/content";
@@ -49,7 +50,11 @@ function NoteNavLink({ link }: { link: NoteViewNavLink }) {
 }
 
 export function NoteView({ note, headings, nav }: NoteViewProps) {
-  const renderedSource = useMemo(() => prepareNoteMarkdown(note.noteContent), [note.noteContent]);
+  const { showEnglish } = useLanguage();
+  const renderedSource = useMemo(
+    () => prepareNoteMarkdown(note.noteContent, { showEnglish }),
+    [note.noteContent, showEnglish],
+  );
 
   return (
     <ReadingWorkspace

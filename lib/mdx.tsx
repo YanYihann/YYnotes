@@ -28,6 +28,24 @@ const markdownComponents = {
 
 type LineLanguage = "zh" | "en" | "mixed" | "none";
 type LineKind = "heading" | "list" | "quote" | "plain" | "other";
+type PrepareNoteMarkdownOptions = {
+  showEnglish?: boolean;
+};
+
+const MATH_FUNCTION_WORDS = new Set([
+  "sin",
+  "cos",
+  "tan",
+  "cot",
+  "sec",
+  "csc",
+  "log",
+  "ln",
+  "exp",
+  "lim",
+  "max",
+  "min",
+]);
 
 function normalizeNewlines(source: string): string {
   return source.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
@@ -99,6 +117,138 @@ function detectLineLanguage(line: string): LineLanguage {
   }
 
   return "none";
+}
+
+function extractMeaningfulEnglishWords(text: string): string[] {
+  const words = (text.match(/\b[A-Za-z]{2,}(?:[-'][A-Za-z]{2,})?\b/g) ?? []).map((word) => word.toLowerCase());
+  return words.filter((word) => !MATH_FUNCTION_WORDS.has(word));
+}
+
+function detectLineLanguageForChineseMode(line: string): LineLanguage {
+  const text = stripForLanguageDetect(line);
+  const hasChinese = /[\u4e00-\u9fff]/.test(text);
+  const hasEnglish = /[A-Za-z]/.test(text);
+
+  if (hasChinese && !hasEnglish) {
+    return "zh";
+  }
+
+  if (hasEnglish && !hasChinese) {
+    const normalizedText = text.replace(/\s+/g, " ").trim();
+    const meaningfulWords = extractMeaningfulEnglishWords(normalizedText);
+    const hasNaturalEnglishPhrase = /\b[A-Za-z]{2,}(?:[-'][A-Za-z]{2,})?[,:;)]?\s+[A-Za-z]{2,}\b/.test(normalizedText);
+    const hasMathSignal = /[=+\-*/^<>_{}()[\]\\]|∑|∫|√|≈|≤|≥|±|\d/.test(normalizedText);
+    const looksLikeFormula = hasMathSignal && !hasNaturalEnglishPhrase && meaningfulWords.length === 0;
+
+    if (looksLikeFormula) {
+      return "mixed";
+    }
+
+    return meaningfulWords.length ? "en" : "mixed";
+  }
+
+  if (hasChinese && hasEnglish) {
+    const meaningfulWords = extractMeaningfulEnglishWords(text);
+    return meaningfulWords.length ? "mixed" : "zh";
+  }
+
+  return "none";
+}
+
+function splitMarkdownPrefix(line: string): { prefix: string; content: string } {
+  const match = line.match(/^(\s*(?:#{1,6}\s+|>\s?|[-*+]\s+|\d+\.\s+)?)([\s\S]*)$/);
+  if (!match) {
+    return { prefix: "", content: line };
+  }
+  return { prefix: match[1], content: match[2] };
+}
+
+function stripInlineEnglishTranslation(content: string): string {
+  let output = content;
+
+  output = output.replace(/([\u4e00-\u9fff][^()（）\n]{0,90})\s*[（(]\s*([A-Za-z][^()（）\n]{2,120})\s*[)）]/g, (full, zhPart, enPart) => {
+    return extractMeaningfulEnglishWords(enPart).length >= 2 ? zhPart : full;
+  });
+
+  const punctuationBoundary = output.match(/^([\s\S]*[。！？；：])\s+([A-Za-z][\s\S]*)$/);
+  if (punctuationBoundary && extractMeaningfulEnglishWords(punctuationBoundary[2]).length >= 2) {
+    output = punctuationBoundary[1];
+  }
+
+  const slashBoundary = output.match(/^([\s\S]*[\u4e00-\u9fff][\s\S]*?)\s+\/\s+([A-Za-z][\s\S]*)$/);
+  if (slashBoundary && extractMeaningfulEnglishWords(slashBoundary[2]).length >= 2) {
+    output = slashBoundary[1];
+  }
+
+  const doubleSpaceBoundary = output.match(/^([\s\S]*[\u4e00-\u9fff][\s\S]*?)\s{2,}([A-Za-z][\s\S]*)$/);
+  if (doubleSpaceBoundary && extractMeaningfulEnglishWords(doubleSpaceBoundary[2]).length >= 2) {
+    output = doubleSpaceBoundary[1];
+  }
+
+  const firstEnglishIndex = output.search(/\b[A-Za-z]{2,}(?:[-'][A-Za-z]{2,})?\b/);
+  if (firstEnglishIndex > 0) {
+    const before = output.slice(0, firstEnglishIndex);
+    const after = output.slice(firstEnglishIndex);
+    const shouldTrimTail =
+      /[\u4e00-\u9fff]/.test(before) &&
+      extractMeaningfulEnglishWords(after).length >= 3 &&
+      /[\s，。！？；：、:;,\-–—(（]$/.test(before);
+
+    if (shouldTrimTail) {
+      output = before.trimEnd();
+    }
+  }
+
+  return output.trimEnd();
+}
+
+function removeStandaloneEnglishLines(source: string): string {
+  const lines = source.split("\n");
+  const output: string[] = [];
+  let inCodeFence = false;
+  let inMathBlock = false;
+
+  for (const line of lines) {
+    if (isCodeFenceLine(line)) {
+      inCodeFence = !inCodeFence;
+      output.push(line);
+      continue;
+    }
+
+    if (!inCodeFence && isDisplayMathFenceLine(line)) {
+      inMathBlock = !inMathBlock;
+      output.push(line);
+      continue;
+    }
+
+    if (inCodeFence || inMathBlock || isTableLine(line)) {
+      output.push(line);
+      continue;
+    }
+
+    const language = detectLineLanguageForChineseMode(line);
+    if (language === "en") {
+      continue;
+    }
+
+    if (language === "mixed") {
+      const { prefix, content } = splitMarkdownPrefix(line);
+      const strippedContent = stripInlineEnglishTranslation(content);
+      const rebuiltLine = `${prefix}${strippedContent}`.trimEnd();
+      const rebuiltLanguage = detectLineLanguageForChineseMode(rebuiltLine);
+
+      if (!rebuiltLine.trim() || rebuiltLanguage === "en") {
+        continue;
+      }
+
+      output.push(rebuiltLine);
+      continue;
+    }
+
+    output.push(line);
+  }
+
+  return output.join("\n").replace(/\n{3,}/g, "\n\n");
 }
 
 function shouldSwapBilingualPair(first: string, second: string): boolean {
@@ -299,10 +449,16 @@ function dedupeAdjacentLines(source: string): string {
   return output.join("\n");
 }
 
-export function prepareNoteMarkdown(source: string): string {
+export function prepareNoteMarkdown(source: string, options: PrepareNoteMarkdownOptions = {}): string {
   const withNormalizedMath = normalizeMathDelimiters(source);
   const reordered = reorderBilingualLines(withNormalizedMath);
-  return dedupeAdjacentLines(reordered);
+  const deduped = dedupeAdjacentLines(reordered);
+
+  if (options.showEnglish === false) {
+    return removeStandaloneEnglishLines(deduped);
+  }
+
+  return deduped;
 }
 
 export async function renderWeekContent(note: WeekNote) {
