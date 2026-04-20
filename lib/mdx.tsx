@@ -101,6 +101,32 @@ function normalizeMathDelimiters(source: string): string {
   return output;
 }
 
+function explodeDisplayMathFences(source: string): string {
+  const lines = source.split("\n");
+  const output: string[] = [];
+  let inCodeFence = false;
+
+  for (const line of lines) {
+    if (isCodeFenceLine(line)) {
+      inCodeFence = !inCodeFence;
+      output.push(line);
+      continue;
+    }
+
+    if (inCodeFence || !line.includes("$$")) {
+      output.push(line);
+      continue;
+    }
+
+    // Force every display-math fence marker to become a standalone line so
+    // markdown headings/list text cannot leak into math mode.
+    const rewritten = line.replace(/\$\$/g, "\n$$\n");
+    output.push(...rewritten.split("\n"));
+  }
+
+  return output.join("\n");
+}
+
 function splitInlineDisplayMathLines(source: string): string {
   const lines = source.split("\n");
   const output: string[] = [];
@@ -188,6 +214,64 @@ function balanceStandaloneDisplayMathFences(source: string): string {
   }
 
   return lines.join("\n");
+}
+
+function findInlineDollarIndexes(line: string): number[] {
+  const indexes: number[] = [];
+
+  for (let i = 0; i < line.length; i += 1) {
+    if (line[i] !== "$") {
+      continue;
+    }
+
+    const prev = i > 0 ? line[i - 1] : "";
+    const next = i + 1 < line.length ? line[i + 1] : "";
+
+    if (prev === "\\" || next === "$") {
+      continue;
+    }
+
+    indexes.push(i);
+  }
+
+  return indexes;
+}
+
+function escapeUnbalancedInlineDollar(source: string): string {
+  const lines = source.split("\n");
+  const output: string[] = [];
+  let inCodeFence = false;
+  let inDisplayMathBlock = false;
+
+  for (const line of lines) {
+    if (isCodeFenceLine(line)) {
+      inCodeFence = !inCodeFence;
+      output.push(line);
+      continue;
+    }
+
+    if (!inCodeFence && isDisplayMathFenceLine(line)) {
+      inDisplayMathBlock = !inDisplayMathBlock;
+      output.push(line);
+      continue;
+    }
+
+    if (inCodeFence || inDisplayMathBlock) {
+      output.push(line);
+      continue;
+    }
+
+    const indexes = findInlineDollarIndexes(line);
+    if (indexes.length % 2 === 0) {
+      output.push(line);
+      continue;
+    }
+
+    const lastIndex = indexes[indexes.length - 1];
+    output.push(`${line.slice(0, lastIndex)}\\${line.slice(lastIndex)}`);
+  }
+
+  return output.join("\n");
 }
 
 function isMathOnlyLine(line: string): boolean {
@@ -303,9 +387,11 @@ function composeRenderedSource(source: string, showEnglish: boolean): string {
 export function prepareNoteMarkdown(source: string, options: PrepareNoteMarkdownOptions = {}): string {
   const normalized = normalizeMathDelimiters(normalizeNewlines(source).trim());
   const rendered = composeRenderedSource(normalized, options.showEnglish !== false);
-  const splitDisplay = splitInlineDisplayMathLines(rendered);
+  const exploded = explodeDisplayMathFences(rendered);
+  const splitDisplay = splitInlineDisplayMathLines(exploded);
   const balanced = balanceStandaloneDisplayMathFences(splitDisplay);
-  return dedupeAdjacentLines(balanced).trim();
+  const escapedInline = escapeUnbalancedInlineDollar(balanced);
+  return dedupeAdjacentLines(escapedInline).trim();
 }
 
 export async function renderWeekContent(note: WeekNote) {
