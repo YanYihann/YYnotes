@@ -46,7 +46,7 @@ function buildStarterMessage(showEnglish: boolean): AssistantMessage {
 const HISTORY_STORAGE_KEY = "na_ai_question_history_v1";
 const MAX_SAVED_RECORDS = 160;
 const FONT_SIZE_STORAGE_KEY = "na_ai_font_size_v1";
-const DEFAULT_FONT_SIZE = 14;
+const DEFAULT_FONT_SIZE = 12;
 const MIN_FONT_SIZE = 12;
 const MAX_FONT_SIZE = 20;
 
@@ -557,7 +557,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
 
   return (
     <>
-      <section className="sticky top-20 hidden max-h-[calc(100dvh-5.75rem)] self-start rounded-apple bg-white/90 p-5 shadow-card backdrop-blur-sm dark:bg-[#272729]/95 lg:flex lg:flex-col">
+      <section className="sticky top-20 hidden h-[calc(100dvh-5.75rem)] self-start rounded-apple bg-white/90 p-5 shadow-card backdrop-blur-sm dark:bg-[#272729]/95 lg:flex lg:flex-col">
         <header className="mb-4 flex items-center justify-between gap-3">
           <div>
             <p className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/55 dark:text-white/60">
