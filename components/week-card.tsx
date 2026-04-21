@@ -13,6 +13,7 @@ type WeekCardProps = {
   tags?: string[];
   className?: string;
   footerAction?: ReactNode;
+  headerRight?: ReactNode;
   showOpenLink?: boolean;
   compact?: boolean;
 };
@@ -28,6 +29,7 @@ export function WeekCard({
   tags = [],
   className,
   footerAction,
+  headerRight,
   showOpenLink = true,
   compact = false,
 }: WeekCardProps) {
@@ -49,10 +51,13 @@ export function WeekCard({
       )}
     >
       <div className={compact ? "space-y-2.5" : "space-y-3"}>
-        <p className="font-text text-[12px] font-semibold tracking-[0.08em] text-muted-foreground">
-          {weekLabelZh}
-          <span className="ui-en ml-1 uppercase">{weekLabelEn}</span>
-        </p>
+        <div className="flex items-start justify-between gap-2">
+          <p className="font-text text-[12px] font-semibold tracking-[0.08em] text-muted-foreground">
+            {weekLabelZh}
+            <span className="ui-en ml-1 uppercase">{weekLabelEn}</span>
+          </p>
+          {headerRight ? <div className="shrink-0">{headerRight}</div> : null}
+        </div>
         {tags.length ? (
           <div className="flex flex-wrap gap-1.5">
             {tags.slice(0, 4).map((tag) => (

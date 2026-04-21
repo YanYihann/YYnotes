@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { LoginRequiredCard } from "@/components/auth/login-required-card";
 import { useAuth } from "@/components/auth/auth-provider";
@@ -1022,22 +1023,14 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                     descriptionEn={note.descriptionEn}
                     tags={[]}
                     compact
+                    showOpenLink={false}
+                    headerRight={
+                      <span className="font-text text-[11px] text-muted-foreground">
+                        {noteFolderName ? noteFolderName : "未归类"}
+                      </span>
+                    }
                     footerAction={
                       <div className="w-full space-y-2.5 pt-1">
-                        <select
-                          value={noteFolderId}
-                          disabled={assigningSlug === note.slug || updatingSlug === note.slug}
-                          onChange={(event) => void assignFolder(note.slug, event.target.value || null)}
-                          onClick={(event) => event.stopPropagation()}
-                          className="w-full rounded-capsule border border-input bg-background px-3 py-1.5 font-text text-[12px] text-muted-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          <option value="">未归类</option>
-                          {folders.map((folder) => (
-                            <option key={folder.id} value={folder.id}>
-                              {folder.name}
-                            </option>
-                          ))}
-                        </select>
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
@@ -1055,9 +1048,13 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                           >
                             {deletingSlug === note.slug ? "删除中..." : "删除"}
                           </button>
-                          <span className="ml-auto font-text text-[11px] text-muted-foreground">
-                            {noteFolderName ? noteFolderName : "未归类"}
-                          </span>
+                          <Link
+                            href={note.viewHref}
+                            className="ml-auto inline-flex items-center rounded-capsule border border-primary/60 px-3 py-1.5 font-text text-[13px] tracking-tightCaption text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+                          >
+                            打开笔记
+                            <span className="ml-1">&gt;</span>
+                          </Link>
                         </div>
                       </div>
                     }
