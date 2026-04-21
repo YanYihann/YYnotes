@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { LoginRequiredCard } from "@/components/auth/login-required-card";
 import { useAuth } from "@/components/auth/auth-provider";
-import { DeleteActionButton } from "@/components/ui/delete-action-button";
 import { WeekCard } from "@/components/week-card";
 import { normalizeCloudNote, type CloudNoteRecord } from "@/lib/cloud-note-normalizer";
 
@@ -934,14 +933,17 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
             >
               <div className="flex items-start justify-between gap-2">
                 <p className="font-text text-[13px] font-semibold text-foreground">{folder.name}</p>
-                <DeleteActionButton
+                <button
+                  type="button"
                   disabled={deletingFolderId === folder.id}
-                  label={deletingFolderId === folder.id ? "删除中..." : "删除"}
                   onClick={(event) => {
                     event.stopPropagation();
                     void handleDeleteFolder(folder);
                   }}
-                />
+                  className="inline-flex items-center rounded-capsule border border-[#b4232f]/35 px-2 py-0.5 font-text text-[11px] tracking-tightCaption text-[#8f1d27] transition hover:bg-[#b4232f]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b4232f] dark:border-[#ff6a77]/40 dark:text-[#ffc4cb] dark:hover:bg-[#ff6a77]/[0.12]"
+                >
+                  {deletingFolderId === folder.id ? "删除中..." : "删除"}
+                </button>
               </div>
               <p className="mt-1 font-text text-[12px] text-muted-foreground">{folderCounts[folder.id] ?? 0} 条笔记</p>
             </div>
@@ -1038,11 +1040,14 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                           >
                             {updatingSlug === note.slug ? "保存中..." : "编辑标题/主题"}
                           </button>
-                          <DeleteActionButton
+                          <button
+                            type="button"
                             disabled={deletingSlug === note.slug || updatingSlug === note.slug}
-                            label={deletingSlug === note.slug ? "删除中..." : "删除"}
                             onClick={() => handleDeleteNote(note)}
-                          />
+                            className="inline-flex items-center rounded-capsule border border-[#b4232f]/30 px-3 py-1.5 font-text text-[12px] tracking-tightCaption text-[#8f1d27] transition hover:bg-[#b4232f]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b4232f] dark:border-[#ff6a77]/35 dark:text-[#ffc4cb] dark:hover:bg-[#ff6a77]/[0.12]"
+                          >
+                            {deletingSlug === note.slug ? "删除中..." : "删除"}
+                          </button>
                           <Link
                             href={note.viewHref}
                             className="ml-auto inline-flex items-center rounded-capsule border border-primary/60 px-3 py-1.5 font-text text-[13px] tracking-tightCaption text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
