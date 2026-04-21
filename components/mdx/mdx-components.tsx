@@ -322,13 +322,31 @@ function Pre(props: ComponentPropsWithoutRef<"pre">) {
   );
 }
 
-function Code(props: ComponentPropsWithoutRef<"code">) {
+type CodeProps = ComponentPropsWithoutRef<"code"> & {
+  inline?: boolean;
+};
+
+function Code({ inline, className, ...props }: CodeProps) {
+  const isBlockCode = inline === false || /\b(language-|hljs)\b/.test(className ?? "");
+
+  if (isBlockCode) {
+    return (
+      <code
+        {...props}
+        className={cn(
+          "block bg-transparent p-0 font-mono text-[14px] leading-[1.55]",
+          className,
+        )}
+      />
+    );
+  }
+
   return (
     <code
       {...props}
       className={cn(
         "rounded bg-muted px-1.5 py-0.5 font-mono text-[14px] text-foreground",
-        props.className,
+        className,
       )}
     />
   );

@@ -254,3 +254,63 @@
 .note-prose.drake-theme .anchor-link {
   color: var(--drake-highlight) !important;
 }
+
+/* Syntax highlight tokens (rehype-highlight / highlight.js) */
+.note-prose.drake-theme .hljs-comment,
+.note-prose.drake-theme .hljs-quote {
+  color: #6a9955 !important;
+}
+
+.note-prose.drake-theme .hljs-keyword,
+.note-prose.drake-theme .hljs-selector-tag,
+.note-prose.drake-theme .hljs-doctag {
+  color: #c586c0 !important;
+}
+
+.note-prose.drake-theme .hljs-string,
+.note-prose.drake-theme .hljs-meta .hljs-string,
+.note-prose.drake-theme .hljs-regexp {
+  color: #ce9178 !important;
+}
+
+.note-prose.drake-theme .hljs-number,
+.note-prose.drake-theme .hljs-literal,
+.note-prose.drake-theme .hljs-symbol,
+.note-prose.drake-theme .hljs-bullet {
+  color: #b5cea8 !important;
+}
+
+.note-prose.drake-theme .hljs-title,
+.note-prose.drake-theme .hljs-section,
+.note-prose.drake-theme .hljs-function .hljs-title {
+  color: #dcdcaa !important;
+}
+
+.note-prose.drake-theme .hljs-variable,
+.note-prose.drake-theme .hljs-template-variable,
+.note-prose.drake-theme .hljs-attribute,
+.note-prose.drake-theme .hljs-attr {
+  color: #9cdcfe !important;
+}
+
+.note-prose.drake-theme .hljs-type,
+.note-prose.drake-theme .hljs-class .hljs-title,
+.note-prose.drake-theme .hljs-built_in,
+.note-prose.drake-theme .hljs-builtin-name {
+  color: #4ec9b0 !important;
+}
+
+.note-prose.drake-theme .hljs-link,
+.note-prose.drake-theme .hljs-name,
+.note-prose.drake-theme .hljs-selector-id,
+.note-prose.drake-theme .hljs-selector-class {
+  color: #569cd6 !important;
+}
+
+.note-prose.drake-theme .hljs-emphasis {
+  font-style: italic;
+}
+
+.note-prose.drake-theme .hljs-strong {
+  font-weight: 700;
+}
