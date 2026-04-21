@@ -14,24 +14,24 @@ import {
 import { cn } from "@/lib/utils";
 
 const KEY_TERMS: Array<{ zh: string; en: string }> = [
-  { zh: "��������", en: "Riemann Approximation" },
-  { zh: "���ַ�", en: "Bisection Method" },
-  { zh: "ţ�ٷ�", en: "Newton's Method" },
-  { zh: "���߷�", en: "Secant Method" },
-  { zh: "���շ�", en: "Muller Method" },
-  { zh: "����", en: "Divided Difference" },
-  { zh: "�������ղ�ֵ", en: "Lagrange Interpolation" },
-  { zh: "�������ز�ֵ", en: "Hermite Interpolation" },
-  { zh: "��ֵ����", en: "Numerical Integration" },
-  { zh: "���ι�ʽ", en: "Trapezoidal Rule" },
-  { zh: "����ɭ��ʽ", en: "Simpson's Rule" },
-  { zh: "��������", en: "Runge Phenomenon" },
-  { zh: "���", en: "Error" },
-  { zh: "����", en: "Convergence" },
-  { zh: "����", en: "Iteration" },
-  { zh: "�ſɱȵ���", en: "Jacobi Iteration" },
-  { zh: "��˹-���¶�", en: "Gauss-Seidel" },
-  { zh: "���Է�����", en: "Linear System" },
+  { zh: "黎曼近似", en: "Riemann Approximation" },
+  { zh: "二分法", en: "Bisection Method" },
+  { zh: "牛顿法", en: "Newton's Method" },
+  { zh: "割线法", en: "Secant Method" },
+  { zh: "穆勒法", en: "Muller Method" },
+  { zh: "差商", en: "Divided Difference" },
+  { zh: "拉格朗日插值", en: "Lagrange Interpolation" },
+  { zh: "埃尔米特插值", en: "Hermite Interpolation" },
+  { zh: "数值积分", en: "Numerical Integration" },
+  { zh: "梯形公式", en: "Trapezoidal Rule" },
+  { zh: "辛普森公式", en: "Simpson's Rule" },
+  { zh: "龙格现象", en: "Runge Phenomenon" },
+  { zh: "误差", en: "Error" },
+  { zh: "收敛", en: "Convergence" },
+  { zh: "迭代", en: "Iteration" },
+  { zh: "雅可比迭代", en: "Jacobi Iteration" },
+  { zh: "高斯-赛德尔", en: "Gauss-Seidel" },
+  { zh: "线性方程组", en: "Linear System" },
 ];
 
 function escapeRegExp(value: string): string {
@@ -41,7 +41,7 @@ function escapeRegExp(value: string): string {
 const TERM_PATTERNS = Array.from(
   new Set(
     KEY_TERMS.flatMap((term) => [
-      `${term.zh}��${term.en}��`,
+      `${term.zh}（${term.en}）`,
       `${term.zh}(${term.en})`,
       term.zh,
     ]),
@@ -87,7 +87,7 @@ function detectLineLanguage(children: ReactNode): "zh" | "en" | "mixed" {
       (word) => !["sin", "cos", "tan", "cot", "sec", "csc", "log", "ln", "exp", "lim", "max", "min"].includes(word),
     );
     const hasNaturalEnglishPhrase = /\b[A-Za-z]{2,}(?:[-'][A-Za-z]{2,})?[,:;)]?\s+[A-Za-z]{2,}\b/.test(normalizedText);
-    const hasMathSignal = /[=+\-*/^<>_{}()[\]\\]|��|��|��|��|��|��|��|\d/.test(normalizedText);
+    const hasMathSignal = /[=+\-*/^<>_{}()[\]\\]|∑|∫|√|≈|≤|≥|±|\d/.test(normalizedText);
     const looksLikeFormula = hasMathSignal && !hasNaturalEnglishPhrase && nonMathWords.length === 0;
 
     if (looksLikeFormula) {

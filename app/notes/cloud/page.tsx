@@ -14,7 +14,7 @@ export default function CloudNotePage() {
         fallback={
           <div className="mx-auto w-full max-w-[1720px] px-4 sm:px-6">
             <article className="rounded-apple bg-card px-5 py-8 text-card-foreground shadow-card sm:px-8 md:px-10">
-              <p className="font-text text-[15px] text-muted-foreground">���ڼ����ƶ˱ʼ�...</p>
+              <p className="font-text text-[15px] text-black/72 dark:text-white/75">正在加载云端笔记...</p>
             </article>
           </div>
         }

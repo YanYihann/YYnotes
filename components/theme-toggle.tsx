@@ -24,7 +24,7 @@ export function ThemeToggle() {
       className="inline-flex h-9 items-center rounded-capsule border border-white/30 bg-transparent px-4 text-[14px] tracking-tightCaption text-white transition hover:border-white/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-[#000000]"
       aria-label="Toggle theme"
     >
-      {isDark ? "ǳɫ" : "��ɫ"}
+      {isDark ? "浅色" : "深色"}
       <span className="ui-en ml-1 text-white/80">{isDark ? "Light" : "Dark"}</span>
     </button>
   );

@@ -265,7 +265,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
                 disabled={loading}
                 className="animate-element animate-delay-900 w-full rounded-2xl bg-primary py-4 font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {loading ? "处理�?.." : mode === "register" ? submitTextRegister : submitTextLogin}
+                {loading ? "处理中..." : mode === "register" ? submitTextRegister : submitTextLogin}
               </button>
             </form>
 

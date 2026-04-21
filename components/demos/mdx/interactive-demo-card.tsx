@@ -21,7 +21,7 @@ export function InteractiveDemoCard({
   return (
     <article className={cn("rounded-apple bg-card px-5 py-5 text-card-foreground shadow-card", className)}>
       <p className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-        ������ʾ
+        交互演示
         <span className="ui-en ml-1">Interactive Demo</span>
       </p>
       <h3 className="mt-2 font-display text-[28px] font-normal leading-[1.14] tracking-[0.196px] text-foreground">
@@ -36,7 +36,7 @@ export function InteractiveDemoCard({
         href={href}
         className="mt-4 inline-flex items-center rounded-capsule border border-primary/60 px-4 py-1.5 font-text text-[14px] tracking-tightCaption text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
-        ����ʾ
+        打开演示
         <span className="ui-en ml-1">Open Demo</span>
         <span className="ml-1">&gt;</span>
       </Link>

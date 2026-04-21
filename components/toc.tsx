@@ -78,7 +78,7 @@ export function TableOfContents({ items, sticky = true }: TocProps) {
       className={`${sticky ? "sticky top-24" : ""} rounded-apple bg-card/90 p-4 shadow-card`}
     >
       <p className="mb-3 font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-        ��ҳĿ¼
+        本页目录
         <span className="ui-en ml-1">On this page</span>
       </p>
       <ul className="space-y-2">

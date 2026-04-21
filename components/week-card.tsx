@@ -103,7 +103,7 @@ export function WeekCard({
                 : "inline-flex items-center rounded-capsule border border-primary/60 px-4 py-1.5 font-text text-[14px] tracking-tightCaption text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
             }
           >
-            �򿪱ʼ�
+            打开笔记
             <span className="ui-en ml-1">Open Note</span>
             <span className="ml-1">&gt;</span>
           </Link>

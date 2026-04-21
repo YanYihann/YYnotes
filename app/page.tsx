@@ -28,7 +28,8 @@ export default async function HomePage() {
             <span className="ui-en mt-2 block text-[0.54em] font-normal text-white/85">Bilingual Notes Across Subjects</span>
           </h1>
           <p className="mx-auto mt-6 max-w-[760px] font-text text-[17px] leading-[1.47] tracking-tightBody text-white/85">
-            面向长期积累的双语笔记空间，支持中文主线与英文对照阅读�?            <span className="ui-en ml-1">
+            面向长期积累的双语笔记空间，支持中文主线与英文对照阅读。
+            <span className="ui-en ml-1">
               A long-term bilingual note space with Chinese-first flow and optional English line-by-line support.
             </span>
           </p>
@@ -54,13 +55,15 @@ export default async function HomePage() {
             <span className="ui-en mt-1 block text-[0.52em] font-normal text-muted-foreground">Bilingual Format Principle</span>
           </h2>
           <p className="mt-4 font-text text-[17px] leading-[1.47] text-muted-foreground">
-            笔记默认按“中文在上、英文在下”展示，并支持英文一键隐藏，便于快速记忆�?            <span className="ui-en ml-1">
+            笔记默认按“中文在上、英文在下”展示，并支持英文一键隐藏，便于快速记忆。
+            <span className="ui-en ml-1">
               Notes are displayed Chinese-first with optional English below, and English can be hidden in one click.
             </span>
           </p>
           <div className="mt-6 rounded-apple bg-card p-6 text-card-foreground shadow-card">
             <p className="font-text text-[14px] leading-[1.43] tracking-tightCaption text-muted-foreground">
-              建议学习路径：先看目标与定义，再跟推导，最后完成练习题�?              <span className="ui-en ml-1">
+              建议学习路径：先看目标与定义，再跟推导，最后完成练习题。
+              <span className="ui-en ml-1">
                 Recommended workflow: skim objectives, review definitions, follow derivations, then complete practice prompts.
               </span>
             </p>

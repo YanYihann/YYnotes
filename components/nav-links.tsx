@@ -5,8 +5,8 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { href: "/", zh: "��ҳ", en: "Home" },
-  { href: "/notes", zh: "�ʼ�", en: "Notes" },
+  { href: "/", zh: "首页", en: "Home" },
+  { href: "/notes", zh: "笔记", en: "Notes" },
 ];
 
 export function NavLinks() {

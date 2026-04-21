@@ -15,7 +15,7 @@ export function RombergTable({ table }: RombergTableProps) {
     <section className="overflow-hidden rounded-apple bg-card text-card-foreground shadow-card">
       <header className="border-b border-border px-4 py-3">
         <h3 className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px] text-foreground">
-          Romberg ��
+          Romberg 表
           <span className="ui-en ml-1 font-text text-[15px] font-normal tracking-tightCaption text-muted-foreground">Romberg Table</span>
         </h3>
       </header>

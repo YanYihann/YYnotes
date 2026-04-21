@@ -13,11 +13,11 @@ export function RelatedDemosSection({ demos }: RelatedDemosSectionProps) {
   return (
     <section className="mt-12 border-t border-border pt-8">
       <h2 className="font-display text-[28px] font-semibold leading-[1.14] tracking-[0.196px] text-foreground">
-        ��Ӧ����ʵ��
+        对应交互实验
         <span className="ui-en ml-1 font-text text-[16px] font-normal tracking-tightCaption text-muted-foreground">Related Interactive Labs</span>
       </h2>
       <p className="mt-2 font-text text-[14px] leading-[1.45] tracking-tightCaption text-muted-foreground">
-        ����֪ʶ���ֱ�����������ʾ�е��ι۲죬������⹫ʽ�����������ṹ��
+        本周知识点可直接在下面的演示中调参观察，帮助理解公式、收敛与误差结构。
         <span className="ui-en ml-1">
           These demos are mapped to this week so you can tune parameters and inspect formulas, convergence, and errors.
         </span>

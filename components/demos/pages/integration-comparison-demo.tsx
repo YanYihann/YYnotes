@@ -58,7 +58,7 @@ function ErrorTrendChart({ rows }: { rows: TrendPoint[] }) {
   return (
     <section className="rounded-apple bg-card px-4 py-4 text-card-foreground shadow-card sm:px-5">
       <h3 className="mb-3 font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px] text-foreground">
-        ����� n �ı仯����
+        误差随 n 的变化趋势
         <span className="ui-en ml-1 font-text text-[15px] font-normal tracking-tightCaption text-muted-foreground">Error Trend vs n (log scale)</span>
       </h3>
 
@@ -77,9 +77,9 @@ function ErrorTrendChart({ rows }: { rows: TrendPoint[] }) {
       </svg>
 
       <div className="mt-2 flex flex-wrap gap-3 text-[12px] text-muted-foreground">
-        <span>�� Right Endpoint</span>
-        <span>�� Trapezoidal</span>
-        <span>�� Simpson (dashed)</span>
+        <span>● Right Endpoint</span>
+        <span>● Trapezoidal</span>
+        <span>● Simpson (dashed)</span>
       </div>
     </section>
   );
@@ -126,7 +126,7 @@ export function IntegrationComparisonDemo() {
 
   return (
     <div className="grid gap-5 lg:grid-cols-[330px_minmax(0,1fr)]">
-      <DemoControlPanel titleZh="�ԱȲ���" titleEn="Comparison Controls">
+      <DemoControlPanel titleZh="对比参数" titleEn="Comparison Controls">
         <FunctionSelector
           presetId={presetId}
           setPresetId={setPresetId}
@@ -136,7 +136,7 @@ export function IntegrationComparisonDemo() {
 
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="space-y-1.5">
-            <span className="font-text text-[14px] font-semibold tracking-tightCaption text-muted-foreground">���� [a,b]</span>
+            <span className="font-text text-[14px] font-semibold tracking-tightCaption text-black/75 dark:text-white/78">区间 [a,b]</span>
             <div className="grid grid-cols-2 gap-2">
               <input
                 value={aValue}
@@ -152,7 +152,7 @@ export function IntegrationComparisonDemo() {
           </label>
 
           <label className="space-y-1.5">
-            <span className="font-text text-[14px] font-semibold tracking-tightCaption text-muted-foreground">��ǰ n</span>
+            <span className="font-text text-[14px] font-semibold tracking-tightCaption text-black/75 dark:text-white/78">当前 n</span>
             <input
               value={nValue}
               onChange={(event) => setNValue(event.target.value)}
@@ -163,7 +163,7 @@ export function IntegrationComparisonDemo() {
 
         <label className="space-y-1.5">
           <span className="font-text text-[14px] font-semibold tracking-tightCaption text-muted-foreground">
-            ������ȣ�2^k��
+            趋势深度（2^k）
             <span className="ui-en ml-1 font-normal text-muted-foreground">Trend Depth</span>
           </span>
           <input
@@ -175,14 +175,14 @@ export function IntegrationComparisonDemo() {
 
         {errorMessage ? (
           <p className="rounded-apple bg-[#f5d9dc] px-3 py-2 font-text text-[14px] tracking-tightCaption text-[#8c1d26] dark:bg-[#4a2126] dark:text-[#ff9aa5]">
-            �������{errorMessage}
+            输入错误：{errorMessage}
             <span className="ui-en ml-1">Input error: {errorMessage}</span>
           </p>
         ) : null}
 
-        <StepExplanationCard titleZh="ѧϰ��ʾ" titleEn="Study Hint">
+        <StepExplanationCard titleZh="学习提示" titleEn="Study Hint">
           <p>
-            ����ο�ֵ���ڣ����ȹ۲�����к�����ͼ��ͨ�� Simpson �������졣
+            如果参考值存在，优先观察误差列和趋势图；通常 Simpson 收敛更快。
             <span className="ui-en ml-1">When a reference value exists, inspect the error columns and trend plot; Simpson usually converges faster.</span>
           </p>
         </StepExplanationCard>
@@ -193,13 +193,13 @@ export function IntegrationComparisonDemo() {
 
         {reference !== undefined ? (
           <DemoResultTable
-            captionZh="�ο�����ֵ"
+            captionZh="参考积分值"
             captionEn="Reference Integral"
             rows={[{ reference }]}
             columns={[
               {
                 key: "reference",
-                title: "I = ��f(x)dx",
+                title: "I = ∫f(x)dx",
                 render: (row) => formatNumber(row.reference, 12),
               },
             ]}
@@ -210,7 +210,7 @@ export function IntegrationComparisonDemo() {
 
         {trendRows.length ? (
           <DemoResultTable
-            captionZh="�������ݱ�"
+            captionZh="收敛数据表"
             captionEn="Convergence Data"
             rows={trendRows}
             columns={[
