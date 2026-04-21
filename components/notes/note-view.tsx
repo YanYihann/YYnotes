@@ -55,6 +55,12 @@ type HighlightSelection = {
   selectedText: string;
 };
 
+type FloatingHighlightPosition = {
+  visible: boolean;
+  top: number;
+  left: number;
+};
+
 type HighlightApiResponse = {
   success?: boolean;
   highlights?: unknown;
@@ -169,21 +175,20 @@ function applySingleHighlight(root: HTMLElement, highlight: NoteHighlight): bool
     return false;
   }
 
-  const startPos = findTextPosition(entries, startOffset);
-  const endPos = findTextPosition(entries, endOffset);
-  if (!startPos || !endPos) {
-    return false;
-  }
-
   try {
     let resolvedStart = startOffset;
     let resolvedEnd = endOffset;
-    let range = document.createRange();
-    range.setStart(startPos.node, startPos.offset);
-    range.setEnd(endPos.node, endPos.offset);
+    const startPos = findTextPosition(entries, startOffset);
+    const endPos = findTextPosition(entries, endOffset);
+    if (!startPos || !endPos) {
+      return false;
+    }
+    const checkRange = document.createRange();
+    checkRange.setStart(startPos.node, startPos.offset);
+    checkRange.setEnd(endPos.node, endPos.offset);
 
     const expectedText = highlight.selectedText.trim();
-    if (expectedText && range.toString().trim() !== expectedText) {
+    if (expectedText && checkRange.toString().trim() !== expectedText) {
       const fullText = root.textContent ?? "";
       let candidateStart = -1;
       let cursor = 0;
@@ -204,30 +209,58 @@ function applySingleHighlight(root: HTMLElement, highlight: NoteHighlight): bool
       if (candidateStart >= 0) {
         resolvedStart = candidateStart;
         resolvedEnd = candidateStart + expectedText.length;
-        const nextStartPos = findTextPosition(entries, resolvedStart);
-        const nextEndPos = findTextPosition(entries, resolvedEnd);
-        if (nextStartPos && nextEndPos) {
-          range = document.createRange();
-          range.setStart(nextStartPos.node, nextStartPos.offset);
-          range.setEnd(nextEndPos.node, nextEndPos.offset);
-        }
       }
     }
 
-    if (range.collapsed || resolvedEnd <= resolvedStart) {
+    if (resolvedEnd <= resolvedStart) {
       return false;
     }
 
-    const wrapper = document.createElement("span");
-    wrapper.className = "note-highlight";
-    wrapper.dataset.noteHighlightId = String(highlight.id);
-    wrapper.dataset.noteHighlightColor = highlight.color || "yellow";
-    wrapper.title = "Highlight";
+    const overlappingEntries = entries.filter(
+      (entry) => entry.end > resolvedStart && entry.start < resolvedEnd,
+    );
 
-    const fragment = range.extractContents();
-    wrapper.appendChild(fragment);
-    range.insertNode(wrapper);
-    return true;
+    let applied = false;
+    for (let index = overlappingEntries.length - 1; index >= 0; index -= 1) {
+      const entry = overlappingEntries[index];
+      const textLength = entry.end - entry.start;
+      const localStart = Math.max(0, resolvedStart - entry.start);
+      const localEnd = Math.min(textLength, resolvedEnd - entry.start);
+      if (localEnd <= localStart) {
+        continue;
+      }
+
+      const originalNode = entry.node;
+      if (!originalNode.parentNode || !originalNode.nodeValue) {
+        continue;
+      }
+
+      let middleNode = originalNode;
+      if (localStart > 0) {
+        middleNode = middleNode.splitText(localStart);
+      }
+
+      const middleLength = localEnd - localStart;
+      if (middleLength < (middleNode.nodeValue?.length ?? 0)) {
+        middleNode.splitText(middleLength);
+      }
+
+      const wrapper = document.createElement("span");
+      wrapper.className = "note-highlight";
+      wrapper.dataset.noteHighlightId = String(highlight.id);
+      wrapper.dataset.noteHighlightColor = highlight.color || "yellow";
+      wrapper.title = "Highlight";
+
+      const parent = middleNode.parentNode;
+      if (!parent) {
+        continue;
+      }
+      parent.insertBefore(wrapper, middleNode);
+      wrapper.appendChild(middleNode);
+      applied = true;
+    }
+
+    return applied;
   } catch {
     return false;
   }
@@ -299,6 +332,11 @@ export function NoteView({ note, headings, nav }: NoteViewProps) {
   const noteContentRef = useRef<HTMLDivElement | null>(null);
   const [highlights, setHighlights] = useState<NoteHighlight[]>([]);
   const [selection, setSelection] = useState<HighlightSelection | null>(null);
+  const [floatingHighlightPosition, setFloatingHighlightPosition] = useState<FloatingHighlightPosition>({
+    visible: false,
+    top: 0,
+    left: 0,
+  });
   const [loadingHighlights, setLoadingHighlights] = useState(false);
   const [savingHighlight, setSavingHighlight] = useState(false);
   const [highlightError, setHighlightError] = useState("");
@@ -338,6 +376,7 @@ export function NoteView({ note, headings, nav }: NoteViewProps) {
 
   const clearSelection = useCallback(() => {
     setSelection(null);
+    setFloatingHighlightPosition({ visible: false, top: 0, left: 0 });
     window.getSelection()?.removeAllRanges();
   }, []);
 
@@ -426,6 +465,7 @@ export function NoteView({ note, headings, nav }: NoteViewProps) {
     const root = noteContentRef.current;
     if (!root || !canSyncHighlights) {
       setSelection(null);
+      setFloatingHighlightPosition({ visible: false, top: 0, left: 0 });
       return;
     }
 
@@ -433,6 +473,7 @@ export function NoteView({ note, headings, nav }: NoteViewProps) {
       const selected = window.getSelection();
       if (!selected || selected.rangeCount === 0 || selected.isCollapsed) {
         setSelection(null);
+        setFloatingHighlightPosition({ visible: false, top: 0, left: 0 });
         return;
       }
 
@@ -440,25 +481,51 @@ export function NoteView({ note, headings, nav }: NoteViewProps) {
       const commonNode = range.commonAncestorContainer;
       if (!root.contains(commonNode)) {
         setSelection(null);
+        setFloatingHighlightPosition({ visible: false, top: 0, left: 0 });
         return;
       }
       if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) {
         setSelection(null);
+        setFloatingHighlightPosition({ visible: false, top: 0, left: 0 });
         return;
       }
 
       const offsets = getSelectionOffsets(root, range);
       if (!offsets) {
         setSelection(null);
+        setFloatingHighlightPosition({ visible: false, top: 0, left: 0 });
         return;
       }
 
       setSelection(offsets);
+
+      const rect = range.getBoundingClientRect();
+      const fallbackRect = range.getClientRects().item(0);
+      const anchorRect = rect.width > 0 || rect.height > 0 ? rect : fallbackRect;
+      if (!anchorRect) {
+        setFloatingHighlightPosition({ visible: false, top: 0, left: 0 });
+        return;
+      }
+
+      const top = Math.max(10, anchorRect.top - 40);
+      const left = Math.min(
+        Math.max(10, anchorRect.left + anchorRect.width / 2),
+        Math.max(10, window.innerWidth - 10),
+      );
+      setFloatingHighlightPosition({ visible: true, top, left });
+    };
+
+    const onViewportChange = () => {
+      setFloatingHighlightPosition((current) => (current.visible ? { visible: false, top: 0, left: 0 } : current));
     };
 
     document.addEventListener("selectionchange", onSelectionChange);
+    window.addEventListener("scroll", onViewportChange, true);
+    window.addEventListener("resize", onViewportChange);
     return () => {
       document.removeEventListener("selectionchange", onSelectionChange);
+      window.removeEventListener("scroll", onViewportChange, true);
+      window.removeEventListener("resize", onViewportChange);
     };
   }, [canSyncHighlights]);
 
@@ -508,16 +575,6 @@ export function NoteView({ note, headings, nav }: NoteViewProps) {
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => void createHighlight()}
-              disabled={!canSyncHighlights || !selection || savingHighlight}
-              className="btn-apple-primary inline-flex items-center rounded-capsule px-3 py-1 text-[12px] font-semibold tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              荧光笔高亮选中
-              <span className="ui-en ml-1">Highlight Selection</span>
-            </button>
-            <button
-              type="button"
               onClick={() => void clearHighlights()}
               disabled={!canSyncHighlights || savingHighlight || highlights.length === 0}
               className="inline-flex items-center rounded-capsule border border-border px-3 py-1 text-[12px] tracking-tightCaption text-muted-foreground transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
@@ -544,7 +601,8 @@ export function NoteView({ note, headings, nav }: NoteViewProps) {
           </div>
           {selection ? (
             <p className="mt-2 line-clamp-2 font-text text-[12px] leading-[1.4] text-muted-foreground">
-              当前选中：{selection.selectedText}
+              已选中文本，点击浮动“荧光笔”即可高亮。
+              <span className="ui-en ml-1">Text selected. Use the floating highlighter button.</span>
             </p>
           ) : null}
           {highlightError ? (
@@ -557,6 +615,27 @@ export function NoteView({ note, headings, nav }: NoteViewProps) {
         <div ref={noteContentRef} className="note-prose drake-theme" data-note-content>
           <NoteMarkdown source={renderedSource} />
         </div>
+
+        {canSyncHighlights && selection && floatingHighlightPosition.visible ? (
+          <div
+            className="fixed z-[85] -translate-x-1/2"
+            style={{
+              top: `${floatingHighlightPosition.top}px`,
+              left: `${floatingHighlightPosition.left}px`,
+            }}
+          >
+            <button
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => void createHighlight()}
+              disabled={savingHighlight}
+              className="btn-apple-primary inline-flex items-center rounded-capsule px-3 py-1 text-[12px] font-semibold tracking-tightCaption shadow-card transition disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              荧光笔
+              <span className="ui-en ml-1">Highlight</span>
+            </button>
+          </div>
+        ) : null}
 
         {nav?.left || nav?.right ? (
           <nav className="mt-14 grid gap-4 border-t border-border pt-6 sm:grid-cols-2">
