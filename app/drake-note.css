@@ -255,6 +255,17 @@
   color: var(--drake-highlight) !important;
 }
 
+.note-prose.drake-theme .note-highlight {
+  background: rgba(255, 235, 59, 0.5);
+  border-radius: 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.dark .note-prose.drake-theme .note-highlight {
+  background: rgba(255, 213, 79, 0.38);
+}
+
 /* Syntax highlight tokens (rehype-highlight / highlight.js) */
 .note-prose.drake-theme .hljs-comment,
 .note-prose.drake-theme .hljs-quote {

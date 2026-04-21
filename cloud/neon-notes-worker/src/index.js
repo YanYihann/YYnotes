@@ -10,8 +10,12 @@ const MAX_SELECTION_CHARS = 2_200;
 const MAX_QUESTION_CHARS = 2_000;
 const MAX_FOLDER_NAME_CHARS = 48;
 const MAX_HISTORY_ITEMS = 8;
+const MAX_HIGHLIGHT_TEXT_CHARS = 1_200;
+const MAX_HIGHLIGHTS_PER_NOTE = 1_500;
 const SUPPORTED_TEXT_EXTENSIONS = new Set(["txt", "md", "markdown", "tex", "csv", "rst"]);
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
+const SUPPORTED_HIGHLIGHT_COLORS = new Set(["yellow"]);
+let highlightSchemaEnsured = false;
 
 function jsonResponse(data, status = 200, origin = "*") {
   return new Response(JSON.stringify(data), {
@@ -633,6 +637,67 @@ function parseFolderId(value) {
   }
 
   return parsed;
+}
+
+function normalizeHighlightColor(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized) {
+    return "yellow";
+  }
+
+  return SUPPORTED_HIGHLIGHT_COLORS.has(normalized) ? normalized : "yellow";
+}
+
+function parseHighlightOffset(value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)) {
+    return Number.NaN;
+  }
+
+  return parsed;
+}
+
+function normalizeHighlightSelectedText(value) {
+  return clampText(String(value ?? ""), MAX_HIGHLIGHT_TEXT_CHARS);
+}
+
+function mapHighlightRow(row) {
+  return {
+    id: Number(row.id),
+    noteSlug: String(row.note_slug),
+    startOffset: Number(row.start_offset),
+    endOffset: Number(row.end_offset),
+    selectedText: String(row.selected_text ?? ""),
+    color: normalizeHighlightColor(row.color),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+async function ensureHighlightSchema(sql) {
+  if (highlightSchemaEnsured) {
+    return;
+  }
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS note_highlights (
+      id BIGSERIAL PRIMARY KEY,
+      user_id BIGINT NOT NULL,
+      note_slug TEXT NOT NULL,
+      start_offset INTEGER NOT NULL,
+      end_offset INTEGER NOT NULL,
+      selected_text TEXT NOT NULL DEFAULT '',
+      color TEXT NOT NULL DEFAULT 'yellow',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT note_highlights_range_chk CHECK (start_offset >= 0 AND end_offset > start_offset)
+    )
+  `;
+
+  await sql`CREATE INDEX IF NOT EXISTS note_highlights_user_note_idx ON note_highlights (user_id, note_slug, start_offset ASC, id ASC)`;
+  await sql`CREATE INDEX IF NOT EXISTS note_highlights_user_note_created_idx ON note_highlights (user_id, note_slug, created_at DESC)`;
+
+  highlightSchemaEnsured = true;
 }
 
 function hasChinese(value) {
@@ -1814,6 +1879,132 @@ export default {
         }
 
         return jsonResponse({ success: true, folderId }, 200, corsOrigin);
+      }
+
+      const noteHighlightsMatch = url.pathname.match(/^\/notes\/([^/]+)\/highlights(?:\/(\d+))?$/);
+      if (noteHighlightsMatch) {
+        const userId = Number(authenticatedUser?.id);
+        const slug = decodeURIComponent(noteHighlightsMatch[1] ?? "").trim();
+        const highlightId = noteHighlightsMatch[2] ? Number(noteHighlightsMatch[2]) : null;
+
+        if (!slug) {
+          return jsonResponse({ error: "Slug is required." }, 400, corsOrigin);
+        }
+
+        await ensureHighlightSchema(sql);
+
+        const noteRows = await sql`
+          SELECT slug
+          FROM notes
+          WHERE user_id = ${userId} AND slug = ${slug}
+          LIMIT 1
+        `;
+        if (!noteRows.length) {
+          return jsonResponse({ error: "Note not found." }, 404, corsOrigin);
+        }
+
+        if (request.method === "GET" && highlightId === null) {
+          const rows = await sql`
+            SELECT id, note_slug, start_offset, end_offset, selected_text, color, created_at, updated_at
+            FROM note_highlights
+            WHERE user_id = ${userId} AND note_slug = ${slug}
+            ORDER BY start_offset ASC, id ASC
+          `;
+
+          return jsonResponse({ success: true, highlights: rows.map((row) => mapHighlightRow(row)) }, 200, corsOrigin);
+        }
+
+        if (request.method === "POST" && highlightId === null) {
+          const body = await request.json().catch(() => null);
+          if (!body || typeof body !== "object") {
+            return jsonResponse({ error: "Invalid JSON body." }, 400, corsOrigin);
+          }
+
+          const startOffset = parseHighlightOffset(body.startOffset);
+          const endOffset = parseHighlightOffset(body.endOffset);
+          if (!Number.isInteger(startOffset) || !Number.isInteger(endOffset)) {
+            return jsonResponse({ error: "startOffset and endOffset must be integers." }, 400, corsOrigin);
+          }
+          if (startOffset < 0 || endOffset <= startOffset) {
+            return jsonResponse({ error: "Invalid highlight range." }, 400, corsOrigin);
+          }
+          if (endOffset - startOffset > 4_000) {
+            return jsonResponse({ error: "Highlight range is too large." }, 400, corsOrigin);
+          }
+
+          const selectedText = normalizeHighlightSelectedText(body.selectedText);
+          const color = normalizeHighlightColor(body.color);
+
+          const countRows = await sql`
+            SELECT COUNT(*)::int AS total
+            FROM note_highlights
+            WHERE user_id = ${userId} AND note_slug = ${slug}
+          `;
+          const currentTotal = Number(countRows?.[0]?.total ?? 0);
+          if (currentTotal >= MAX_HIGHLIGHTS_PER_NOTE) {
+            return jsonResponse({ error: "Too many highlights in this note." }, 409, corsOrigin);
+          }
+
+          const duplicateRows = await sql`
+            SELECT id, note_slug, start_offset, end_offset, selected_text, color, created_at, updated_at
+            FROM note_highlights
+            WHERE
+              user_id = ${userId}
+              AND note_slug = ${slug}
+              AND start_offset = ${startOffset}
+              AND end_offset = ${endOffset}
+            LIMIT 1
+          `;
+          if (duplicateRows.length) {
+            return jsonResponse(
+              { success: true, duplicate: true, highlight: mapHighlightRow(duplicateRows[0]) },
+              200,
+              corsOrigin,
+            );
+          }
+
+          const overlapRows = await sql`
+            SELECT id
+            FROM note_highlights
+            WHERE
+              user_id = ${userId}
+              AND note_slug = ${slug}
+              AND NOT (end_offset <= ${startOffset} OR start_offset >= ${endOffset})
+            LIMIT 1
+          `;
+          if (overlapRows.length) {
+            return jsonResponse({ error: "Highlight overlaps with an existing range." }, 409, corsOrigin);
+          }
+
+          const insertedRows = await sql`
+            INSERT INTO note_highlights (user_id, note_slug, start_offset, end_offset, selected_text, color, updated_at)
+            VALUES (${userId}, ${slug}, ${startOffset}, ${endOffset}, ${selectedText}, ${color}, NOW())
+            RETURNING id, note_slug, start_offset, end_offset, selected_text, color, created_at, updated_at
+          `;
+
+          return jsonResponse({ success: true, highlight: mapHighlightRow(insertedRows[0]) }, 201, corsOrigin);
+        }
+
+        if (request.method === "DELETE") {
+          if (highlightId === null) {
+            await sql`
+              DELETE FROM note_highlights
+              WHERE user_id = ${userId} AND note_slug = ${slug}
+            `;
+            return jsonResponse({ success: true, cleared: true }, 200, corsOrigin);
+          }
+
+          const deletedRows = await sql`
+            DELETE FROM note_highlights
+            WHERE user_id = ${userId} AND note_slug = ${slug} AND id = ${highlightId}
+            RETURNING id
+          `;
+          if (!deletedRows.length) {
+            return jsonResponse({ error: "Highlight not found." }, 404, corsOrigin);
+          }
+
+          return jsonResponse({ success: true, id: highlightId }, 200, corsOrigin);
+        }
       }
 
       if (request.method === "GET" && url.pathname === "/notes") {

@@ -34,6 +34,19 @@ CREATE TABLE IF NOT EXISTS folders (
   UNIQUE (user_id, name)
 );
 
+CREATE TABLE IF NOT EXISTS note_highlights (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  note_slug TEXT NOT NULL,
+  start_offset INTEGER NOT NULL,
+  end_offset INTEGER NOT NULL,
+  selected_text TEXT NOT NULL DEFAULT '',
+  color TEXT NOT NULL DEFAULT 'yellow',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT note_highlights_range_chk CHECK (start_offset >= 0 AND end_offset > start_offset)
+);
+
 ALTER TABLE notes ADD COLUMN IF NOT EXISTS user_id BIGINT;
 ALTER TABLE notes ADD COLUMN IF NOT EXISTS folder_id BIGINT;
 ALTER TABLE notes DROP CONSTRAINT IF EXISTS notes_slug_key;
@@ -52,3 +65,5 @@ CREATE UNIQUE INDEX IF NOT EXISTS notes_user_slug_unique_idx ON notes (user_id, 
 CREATE INDEX IF NOT EXISTS notes_user_updated_idx ON notes (user_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS notes_user_folder_idx ON notes (user_id, folder_id);
 CREATE INDEX IF NOT EXISTS folders_user_order_idx ON folders (user_id, sort_order ASC, updated_at DESC);
+CREATE INDEX IF NOT EXISTS note_highlights_user_note_idx ON note_highlights (user_id, note_slug, start_offset ASC, id ASC);
+CREATE INDEX IF NOT EXISTS note_highlights_user_note_created_idx ON note_highlights (user_id, note_slug, created_at DESC);
