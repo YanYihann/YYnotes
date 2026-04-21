@@ -101,6 +101,14 @@ function normalizeAssistantMarkdown(text: string): string {
 
   const transformed = lines.map((line) => {
     const trimmed = line.trim();
+    const parenthesizedMatch = trimmed.match(/^\(([\s\S]+)\)$/);
+    if (parenthesizedMatch) {
+      const inner = parenthesizedMatch[1].trim();
+      // Many model outputs wrap a full equation line with "(" and ")" instead of "$$...$$".
+      if (/(\\frac|\\sqrt|\\sum|\\int|\\lim|\\cdot|\\times|\\approx|\\le|\\ge|\^|_)/.test(inner)) {
+        return `$$\n${inner}\n$$`;
+      }
+    }
     if (/^\$[^$\n]+\$$/.test(trimmed)) {
       return `$$\n${trimmed.slice(1, -1).trim()}\n$$`;
     }
