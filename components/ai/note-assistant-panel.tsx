@@ -701,7 +701,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
-          className="fixed bottom-5 right-4 z-[60] inline-flex items-center rounded-capsule bg-primary px-4 py-2 font-text text-[14px] text-primary-foreground shadow-card transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+          className="btn-apple-primary fixed bottom-5 right-4 z-[60] inline-flex items-center rounded-capsule px-4 py-2 font-text text-[14px] shadow-card transition focus-visible:outline-none"
         >
           AI 学习助手
           <span className="ui-en ml-1">Ask AI</span>

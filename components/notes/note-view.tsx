@@ -39,7 +39,7 @@ function NoteNavLink({ link }: { link: NoteViewNavLink }) {
   return (
     <Link
       href={link.href}
-      className="inline-flex rounded-capsule border border-primary/60 px-4 py-1.5 text-[14px] tracking-tightCaption text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="btn-apple-link inline-flex px-4 py-1.5 text-[14px] tracking-tightCaption transition focus-visible:outline-none"
     >
       {link.leadingArrow ? <span className="mr-1">{"<"}</span> : null}
       {link.labelZh}

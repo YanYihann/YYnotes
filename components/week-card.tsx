@@ -104,8 +104,8 @@ export function WeekCard({
             href={href}
             className={
               compact
-                ? "inline-flex items-center rounded-capsule border border-primary/60 px-3 py-1.5 font-text text-[13px] tracking-tightCaption text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
-                : "inline-flex items-center rounded-capsule border border-primary/60 px-4 py-1.5 font-text text-[14px] tracking-tightCaption text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+                ? "btn-apple-link inline-flex items-center px-3 py-1.5 font-text text-[13px] tracking-tightCaption transition focus-visible:outline-none"
+                : "btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition focus-visible:outline-none"
             }
           >
             打开笔记

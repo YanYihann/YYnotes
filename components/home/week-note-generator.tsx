@@ -520,14 +520,14 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
           <button
             type="submit"
             disabled={submitting || (IS_CLOUD_MODE && !session?.token)}
-            className="inline-flex items-center rounded-apple bg-primary px-5 py-2 font-text text-[15px] text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+            className="btn-apple-primary inline-flex items-center rounded-apple px-5 py-2 font-text text-[15px] transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
           >
             {submitting ? "生成中..." : IS_CLOUD_MODE && !session?.token ? "请先登录" : "生成并保存笔记"}
           </button>
 
           <Link
             href="/notes"
-            className="inline-flex items-center rounded-capsule border border-primary/60 px-4 py-1.5 font-text text-[14px] tracking-tightCaption text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition focus-visible:outline-none"
           >
             查看笔记列表
           </Link>
@@ -555,7 +555,7 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
             </p>
             <Link
               href={buildNoteViewHref(result.slug)}
-              className="mt-2 inline-flex items-center rounded-capsule border border-primary/60 px-4 py-1.5 font-text text-[14px] tracking-tightCaption text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="btn-apple-link mt-2 inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition focus-visible:outline-none"
             >
               打开生成结果
               <span className="ml-1">&gt;</span>
@@ -608,7 +608,7 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
                 type="button"
                 disabled={savingMeta}
                 onClick={onSaveMetadata}
-                className="inline-flex items-center rounded-capsule border border-primary/60 px-4 py-1.5 font-text text-[14px] tracking-tightCaption text-primary transition hover:underline disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
               >
                 {savingMeta ? "保存中..." : "保存元信息修改"}
               </button>

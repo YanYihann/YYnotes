@@ -856,7 +856,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
             type="button"
             disabled={creatingFolder}
             onClick={handleCreateFolderButtonClick}
-            className="inline-flex h-[38px] items-center rounded-capsule border border-primary/60 px-4 font-text text-[14px] tracking-tightCaption text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="btn-apple-link inline-flex h-[38px] items-center px-4 font-text text-[14px] tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
           >
             {creatingFolder ? "创建中..." : "新建文件夹"}
           </button>
@@ -1036,7 +1036,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                             type="button"
                             disabled={updatingSlug === note.slug || deletingSlug === note.slug}
                             onClick={() => void handleEditNote(note)}
-                            className="inline-flex items-center rounded-capsule border border-primary/60 px-3 py-1.5 font-text text-[12px] tracking-tightCaption text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            className="btn-apple-link inline-flex items-center px-3 py-1.5 font-text text-[12px] tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
                           >
                             {updatingSlug === note.slug ? "保存中..." : "编辑标题/主题"}
                           </button>
@@ -1050,7 +1050,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                           </button>
                           <Link
                             href={note.viewHref}
-                            className="ml-auto inline-flex items-center rounded-capsule border border-primary/60 px-3 py-1.5 font-text text-[13px] tracking-tightCaption text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+                            className="btn-apple-link ml-auto inline-flex items-center px-3 py-1.5 font-text text-[13px] tracking-tightCaption transition focus-visible:outline-none"
                           >
                             打开笔记
                             <span className="ml-1">&gt;</span>

@@ -9,7 +9,7 @@
   --card-foreground: 240 5% 12%;
   --popover: 0 0% 100%;
   --popover-foreground: 240 5% 12%;
-  --primary: 210 100% 44%;
+  --primary: 211 100% 45%;
   --primary-foreground: 0 0% 100%;
   --secondary: 240 8% 92%;
   --secondary-foreground: 240 5% 22%;
@@ -21,16 +21,22 @@
   --destructive-foreground: 0 0% 98%;
   --border: 240 7% 84%;
   --input: 240 7% 84%;
-  --ring: 210 100% 44%;
+  --ring: 211 100% 45%;
 
   --bg-light: hsl(var(--background));
   --bg-dark: hsl(240 9% 7%);
   --text-primary: hsl(var(--foreground));
   --text-secondary: hsl(var(--muted-foreground));
   --text-inverse: hsl(var(--primary-foreground));
-  --interactive: hsl(var(--primary));
-  --interactive-hover: hsl(210 100% 40%);
-  --interactive-soft: hsl(205 100% 58%);
+  --interactive: #0071e3;
+  --interactive-hover: #0077ed;
+  --interactive-soft: #2997ff;
+  --link-light: #0066cc;
+  --link-dark: #2997ff;
+  --button-dark: #1d1d1f;
+  --button-filter-bg: #fafafc;
+  --button-filter-border: rgba(0, 0, 0, 0.04);
+  --button-filter-text: rgba(0, 0, 0, 0.8);
 }
 
 .dark {
@@ -40,8 +46,8 @@
   --card-foreground: 0 0% 96%;
   --popover: 240 4% 15%;
   --popover-foreground: 0 0% 96%;
-  --primary: 205 100% 58%;
-  --primary-foreground: 240 10% 12%;
+  --primary: 211 100% 45%;
+  --primary-foreground: 0 0% 100%;
   --secondary: 240 4% 20%;
   --secondary-foreground: 0 0% 90%;
   --muted: 240 4% 19%;
@@ -52,7 +58,7 @@
   --destructive-foreground: 0 0% 12%;
   --border: 240 4% 26%;
   --input: 240 4% 26%;
-  --ring: 205 100% 58%;
+  --ring: 211 100% 45%;
 
   --bg-light: hsl(var(--background));
   --text-primary: hsl(var(--foreground));
@@ -71,6 +77,79 @@ html.dark {
 @layer base {
   * {
     @apply border-border;
+  }
+}
+
+@layer components {
+  .btn-apple-primary {
+    background-color: var(--interactive);
+    color: #ffffff;
+    border: 1px solid transparent;
+  }
+
+  .btn-apple-primary:hover {
+    background-color: var(--interactive-hover);
+  }
+
+  .btn-apple-primary:focus-visible {
+    outline: 2px solid #0071e3;
+    outline-offset: 2px;
+  }
+
+  .btn-apple-dark {
+    background-color: var(--button-dark);
+    color: #ffffff;
+    border: 1px solid transparent;
+  }
+
+  .btn-apple-link {
+    background: transparent;
+    color: var(--link-light);
+    border: 1px solid var(--link-light);
+    border-radius: 980px;
+  }
+
+  .btn-apple-link:hover {
+    text-decoration: underline;
+  }
+
+  .btn-apple-link:focus-visible {
+    outline: 2px solid #0071e3;
+    outline-offset: 2px;
+  }
+
+  .dark .btn-apple-link {
+    color: var(--link-dark);
+    border-color: var(--link-dark);
+  }
+
+  .btn-apple-filter {
+    background: var(--button-filter-bg);
+    color: var(--button-filter-text);
+    border: 3px solid var(--button-filter-border);
+    border-radius: 11px;
+  }
+
+  .btn-apple-filter:focus-visible {
+    outline: 2px solid #0071e3;
+    outline-offset: 2px;
+  }
+
+  .btn-apple-media {
+    background: rgba(210, 210, 215, 0.64);
+    color: rgba(0, 0, 0, 0.48);
+    border-radius: 9999px;
+  }
+
+  .btn-apple-media:active {
+    transform: scale(0.9);
+  }
+
+  .btn-apple-media:focus-visible {
+    outline: 2px solid #0071e3;
+    outline-offset: 2px;
+    background: #ffffff;
+    color: #000000;
   }
 }
 

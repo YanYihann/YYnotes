@@ -234,7 +234,7 @@ export function HomeCloudNotesSections() {
           </div>
           <ul className="space-y-2 rounded-apple bg-card/20 p-5">
             {topics.map((topic) => (
-              <li key={topic} className="font-text text-[17px] leading-[1.47] text-white/88">
+              <li key={topic} className="font-text text-[17px] leading-[1.47] text-white/90">
                 {topic}
               </li>
             ))}

@@ -16,7 +16,7 @@ export default function NotFound() {
         <div className="mt-8">
           <Link
             href="/notes"
-            className="inline-flex rounded-apple bg-primary px-5 py-2 text-[17px] text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+            className="btn-apple-primary inline-flex rounded-apple px-5 py-2 text-[17px] transition focus-visible:outline-none"
           >
             返回笔记
             <span className="ui-en ml-1">Back to Notes</span>

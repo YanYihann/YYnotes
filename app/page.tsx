@@ -37,7 +37,7 @@ export default async function HomePage() {
           <div className="mt-9 flex flex-wrap items-center justify-center">
             <Link
               href="/notes"
-              className="inline-flex items-center rounded-apple bg-primary px-5 py-2 text-[17px] text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+              className="btn-apple-primary inline-flex items-center rounded-apple px-5 py-2 text-[17px] transition focus-visible:outline-none"
             >
               浏览笔记
               <span className="ui-en ml-1">Browse Notes</span>

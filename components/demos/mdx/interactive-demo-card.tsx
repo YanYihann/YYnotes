@@ -34,8 +34,8 @@ export function InteractiveDemoCard({
       </p>
       <Link
         href={href}
-        className="mt-4 inline-flex items-center rounded-capsule border border-primary/60 px-4 py-1.5 font-text text-[14px] tracking-tightCaption text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-      >
+            className="btn-apple-link mt-4 inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition focus-visible:outline-none"
+          >
         打开演示
         <span className="ui-en ml-1">Open Demo</span>
         <span className="ml-1">&gt;</span>

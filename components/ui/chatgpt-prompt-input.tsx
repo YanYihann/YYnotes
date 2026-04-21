@@ -690,8 +690,8 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
                       type="button"
                       disabled={disabled || !hasValue}
                       onClick={submitPrompt}
-                      className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
-                    >
+                    className="btn-apple-primary flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40"
+                  >
                       <SendIcon className="h-5 w-5" />
                       <span className="sr-only">Send message</span>
                     </button>
