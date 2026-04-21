@@ -61,6 +61,13 @@ type FloatingHighlightPosition = {
   left: number;
 };
 
+type FloatingDeletePosition = {
+  visible: boolean;
+  top: number;
+  left: number;
+  highlightId: number | null;
+};
+
 type HighlightApiResponse = {
   success?: boolean;
   highlights?: unknown;
@@ -337,6 +344,12 @@ export function NoteView({ note, headings, nav }: NoteViewProps) {
     top: 0,
     left: 0,
   });
+  const [floatingDeletePosition, setFloatingDeletePosition] = useState<FloatingDeletePosition>({
+    visible: false,
+    top: 0,
+    left: 0,
+    highlightId: null,
+  });
   const [loadingHighlights, setLoadingHighlights] = useState(false);
   const [savingHighlight, setSavingHighlight] = useState(false);
   const [highlightError, setHighlightError] = useState("");
@@ -377,6 +390,7 @@ export function NoteView({ note, headings, nav }: NoteViewProps) {
   const clearSelection = useCallback(() => {
     setSelection(null);
     setFloatingHighlightPosition({ visible: false, top: 0, left: 0 });
+    setFloatingDeletePosition({ visible: false, top: 0, left: 0, highlightId: null });
     window.getSelection()?.removeAllRanges();
   }, []);
 
@@ -449,9 +463,54 @@ export function NoteView({ note, headings, nav }: NoteViewProps) {
     }
   }, [authToken, canSyncHighlights, clearSelection, note.slug, savingHighlight]);
 
+  const deleteSingleHighlight = useCallback(
+    async (highlightId: number) => {
+      if (!canSyncHighlights || savingHighlight || !Number.isInteger(highlightId) || highlightId <= 0) {
+        return;
+      }
+
+      setSavingHighlight(true);
+      setHighlightError("");
+      try {
+        const response = await fetch(
+          buildCloudApiUrl(`/notes/${encodeURIComponent(note.slug)}/highlights/${highlightId}`),
+          {
+            method: "DELETE",
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+            },
+          },
+        );
+        const json = (await response.json().catch(() => null)) as HighlightApiResponse | null;
+        if (!response.ok || !json?.success) {
+          throw new Error(json?.error || "删除高亮失败。");
+        }
+
+        setHighlights((current) => current.filter((item) => item.id !== highlightId));
+        setFloatingDeletePosition({ visible: false, top: 0, left: 0, highlightId: null });
+      } catch (error) {
+        setHighlightError(error instanceof Error ? error.message : "删除高亮失败。");
+      } finally {
+        setSavingHighlight(false);
+      }
+    },
+    [authToken, canSyncHighlights, note.slug, savingHighlight],
+  );
+
   useEffect(() => {
     void fetchHighlights();
   }, [fetchHighlights]);
+
+  useEffect(() => {
+    setFloatingDeletePosition((current) => {
+      if (!current.visible || current.highlightId === null) {
+        return current;
+      }
+
+      const exists = highlights.some((item) => item.id === current.highlightId);
+      return exists ? current : { visible: false, top: 0, left: 0, highlightId: null };
+    });
+  }, [highlights]);
 
   useEffect(() => {
     const root = noteContentRef.current;
@@ -466,6 +525,7 @@ export function NoteView({ note, headings, nav }: NoteViewProps) {
     if (!root || !canSyncHighlights) {
       setSelection(null);
       setFloatingHighlightPosition({ visible: false, top: 0, left: 0 });
+      setFloatingDeletePosition({ visible: false, top: 0, left: 0, highlightId: null });
       return;
     }
 
@@ -498,6 +558,7 @@ export function NoteView({ note, headings, nav }: NoteViewProps) {
       }
 
       setSelection(offsets);
+      setFloatingDeletePosition({ visible: false, top: 0, left: 0, highlightId: null });
 
       const rect = range.getBoundingClientRect();
       const fallbackRect = range.getClientRects().item(0);
@@ -515,8 +576,11 @@ export function NoteView({ note, headings, nav }: NoteViewProps) {
       setFloatingHighlightPosition({ visible: true, top, left });
     };
 
-    const onViewportChange = () => {
+      const onViewportChange = () => {
       setFloatingHighlightPosition((current) => (current.visible ? { visible: false, top: 0, left: 0 } : current));
+      setFloatingDeletePosition((current) =>
+        current.visible ? { visible: false, top: 0, left: 0, highlightId: null } : current,
+      );
     };
 
     document.addEventListener("selectionchange", onSelectionChange);
@@ -526,6 +590,60 @@ export function NoteView({ note, headings, nav }: NoteViewProps) {
       document.removeEventListener("selectionchange", onSelectionChange);
       window.removeEventListener("scroll", onViewportChange, true);
       window.removeEventListener("resize", onViewportChange);
+    };
+  }, [canSyncHighlights]);
+
+  useEffect(() => {
+    const root = noteContentRef.current;
+    if (!root || !canSyncHighlights) {
+      return;
+    }
+
+    const onRootClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      const highlightNode = target?.closest("span.note-highlight[data-note-highlight-id]") as HTMLElement | null;
+      if (!highlightNode || !root.contains(highlightNode)) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      const highlightId = Number(highlightNode.dataset.noteHighlightId ?? "");
+      if (!Number.isInteger(highlightId) || highlightId <= 0) {
+        return;
+      }
+
+      const rect = highlightNode.getBoundingClientRect();
+      const top = Math.max(10, rect.top - 40);
+      const left = Math.min(Math.max(10, rect.left + rect.width / 2), Math.max(10, window.innerWidth - 10));
+
+      setSelection(null);
+      setFloatingHighlightPosition({ visible: false, top: 0, left: 0 });
+      window.getSelection()?.removeAllRanges();
+      setFloatingDeletePosition({
+        visible: true,
+        top,
+        left,
+        highlightId,
+      });
+    };
+
+    const onDocumentMouseDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-highlight-action='delete']") || target?.closest("span.note-highlight[data-note-highlight-id]")) {
+        return;
+      }
+
+      setFloatingDeletePosition((current) =>
+        current.visible ? { visible: false, top: 0, left: 0, highlightId: null } : current,
+      );
+    };
+
+    root.addEventListener("click", onRootClick);
+    document.addEventListener("mousedown", onDocumentMouseDown);
+    return () => {
+      root.removeEventListener("click", onRootClick);
+      document.removeEventListener("mousedown", onDocumentMouseDown);
     };
   }, [canSyncHighlights]);
 
@@ -604,6 +722,11 @@ export function NoteView({ note, headings, nav }: NoteViewProps) {
               已选中文本，点击浮动“荧光笔”即可高亮。
               <span className="ui-en ml-1">Text selected. Use the floating highlighter button.</span>
             </p>
+          ) : highlights.length > 0 ? (
+            <p className="mt-2 line-clamp-2 font-text text-[12px] leading-[1.4] text-muted-foreground">
+              点击高亮文本可删除单条高亮。
+              <span className="ui-en ml-1">Click a highlight to remove it.</span>
+            </p>
           ) : null}
           {highlightError ? (
             <p className="mt-2 rounded-apple border border-[#b4232f]/30 bg-[#b4232f]/[0.08] px-2 py-1 font-text text-[12px] leading-[1.4] text-[#7f1820] dark:border-[#ff6a77]/35 dark:bg-[#ff6a77]/[0.12] dark:text-[#ffd5da]">
@@ -633,6 +756,28 @@ export function NoteView({ note, headings, nav }: NoteViewProps) {
             >
               荧光笔
               <span className="ui-en ml-1">Highlight</span>
+            </button>
+          </div>
+        ) : null}
+
+        {canSyncHighlights && floatingDeletePosition.visible && floatingDeletePosition.highlightId !== null ? (
+          <div
+            className="fixed z-[86] -translate-x-1/2"
+            data-highlight-action="delete"
+            style={{
+              top: `${floatingDeletePosition.top}px`,
+              left: `${floatingDeletePosition.left}px`,
+            }}
+          >
+            <button
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => void deleteSingleHighlight(floatingDeletePosition.highlightId as number)}
+              disabled={savingHighlight}
+              className="inline-flex items-center rounded-capsule border border-[#b4232f]/30 bg-card px-3 py-1 text-[12px] font-semibold tracking-tightCaption text-[#8f1d27] shadow-card transition hover:bg-[#b4232f]/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b4232f] disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#ff6a77]/35 dark:text-[#ffc4cb] dark:hover:bg-[#ff6a77]/[0.12]"
+            >
+              删除高亮
+              <span className="ui-en ml-1">Delete Highlight</span>
             </button>
           </div>
         ) : null}
