@@ -168,6 +168,10 @@ async function loadPromptTemplateFromSite(): Promise<string> {
 async function extractPdfText(file: File): Promise<string> {
   const pdfJs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const typedPdfJs = pdfJs as unknown as {
+    version?: string;
+    GlobalWorkerOptions: {
+      workerSrc: string;
+    };
     getDocument: (options: unknown) => {
       promise: Promise<{
         numPages: number;
@@ -178,13 +182,39 @@ async function extractPdfText(file: File): Promise<string> {
     };
   };
 
-  const task = typedPdfJs.getDocument({
-    data: new Uint8Array(await file.arrayBuffer()),
-    disableWorker: true,
-    isEvalSupported: false,
-    useSystemFonts: true,
-  });
-  const pdf = await task.promise;
+  if (!typedPdfJs.GlobalWorkerOptions.workerSrc) {
+    const version = typedPdfJs.version ?? "5.6.205";
+    typedPdfJs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/pdf.worker.min.mjs`;
+  }
+
+  const sourceData = new Uint8Array(await file.arrayBuffer());
+  let pdf: {
+    numPages: number;
+    getPage: (pageNumber: number) => Promise<{
+      getTextContent: () => Promise<{ items: Array<{ str?: string }> }>;
+    }>;
+  };
+
+  try {
+    pdf = await typedPdfJs.getDocument({
+      data: sourceData,
+      isEvalSupported: false,
+      useSystemFonts: true,
+    }).promise;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("GlobalWorkerOptions.workerSrc")) {
+      throw error;
+    }
+
+    pdf = await typedPdfJs.getDocument({
+      data: sourceData,
+      disableWorker: true,
+      isEvalSupported: false,
+      useSystemFonts: true,
+    }).promise;
+  }
+
   const pageTexts: string[] = [];
 
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
