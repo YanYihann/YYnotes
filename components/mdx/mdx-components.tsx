@@ -295,7 +295,8 @@ function A(props: ComponentPropsWithoutRef<"a">) {
 
 function Blockquote(props: ComponentPropsWithoutRef<"blockquote">) {
   const children = highlightTerms(props.children, "quote");
-  const isAddedBlock = collectText(props.children).includes("【新增内容");
+  const quoteText = collectText(props.children);
+  const isAddedBlock = quoteText.includes("【新增内容") || quoteText.includes("【笔记注释");
   const rest = { ...props };
   delete (rest as { children?: ReactNode }).children;
 

@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { useLanguage } from "@/components/language-provider";
 import { ReadingWorkspace } from "@/components/notes/reading-workspace";
-import { NoteEditorPanel } from "@/components/notes/note-editor-panel";
+import { NoteEditorPanel, type NoteEditorMode } from "@/components/notes/note-editor-panel";
 import { NoteMarkdown } from "@/components/notes/note-markdown";
 import type { Heading } from "@/lib/content";
 import { prepareNoteMarkdown } from "@/lib/mdx";
@@ -364,12 +364,14 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
   const [savingHighlight, setSavingHighlight] = useState(false);
   const [highlightError, setHighlightError] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
+  const [editorMode, setEditorMode] = useState<NoteEditorMode | null>(null);
   const [savingNote, setSavingNote] = useState(false);
   const [editError, setEditError] = useState("");
 
   useEffect(() => {
     setNoteSource(note.noteContent);
     setEditorOpen(false);
+    setEditorMode(null);
     setEditError("");
   }, [note.noteContent, note.slug]);
 
@@ -403,6 +405,7 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
 
         setNoteSource(nextSource);
         setEditorOpen(false);
+        setEditorMode(null);
         router.refresh();
       } catch (error) {
         const message = error instanceof Error ? error.message : "保存笔记失败。";
@@ -752,14 +755,21 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
             <button
               type="button"
               onClick={() => {
-                setEditorOpen((value) => !value);
+                setEditorOpen((value) => {
+                  const nextOpen = !value;
+                  setEditorMode(null);
+                  if (nextOpen) {
+                    clearSelection();
+                  }
+                  return nextOpen;
+                });
                 setEditError("");
               }}
               disabled={storageMode === "cloud" && !authToken}
               className="btn-apple-primary inline-flex items-center rounded-apple px-4 py-1.5 font-text text-[13px] transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
             >
-              {editorOpen ? "关闭编辑" : "编辑 / 新增内容"}
-              <span className="ui-en ml-1">{editorOpen ? "Close Editor" : "Edit / Add"}</span>
+              {editorOpen ? "关闭编辑" : "编辑笔记"}
+              <span className="ui-en ml-1">{editorOpen ? "Close Editor" : "Edit Note"}</span>
             </button>
             {storageMode === "cloud" && !authToken ? (
               <p className="font-text text-[12px] text-muted-foreground">
@@ -776,18 +786,7 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
           </p>
         ) : null}
 
-        {editorOpen ? (
-          <NoteEditorPanel
-            source={noteSource}
-            saving={savingNote}
-            onSave={saveNoteContent}
-            onCancel={() => {
-              setEditorOpen(false);
-              setEditError("");
-            }}
-          />
-        ) : null}
-
+        {!editorOpen ? (
         <div className="mb-6 rounded-apple border border-border bg-muted/40 px-3 py-2">
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -833,10 +832,26 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
             </p>
           ) : null}
         </div>
+        ) : null}
 
-        <div ref={noteContentRef} className="note-prose drake-theme" data-note-content>
-          <NoteMarkdown source={renderedSource} />
-        </div>
+        {editorOpen ? (
+          <NoteEditorPanel
+            source={noteSource}
+            mode={editorMode}
+            saving={savingNote}
+            onModeChange={setEditorMode}
+            onSave={saveNoteContent}
+            onCancel={() => {
+              setEditorOpen(false);
+              setEditorMode(null);
+              setEditError("");
+            }}
+          />
+        ) : (
+          <div ref={noteContentRef} className="note-prose drake-theme" data-note-content>
+            <NoteMarkdown source={renderedSource} />
+          </div>
+        )}
 
         {canSyncHighlights && selection && floatingHighlightPosition.visible ? (
           <div
