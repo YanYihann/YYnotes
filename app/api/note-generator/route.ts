@@ -1,4 +1,4 @@
-﻿import fs from "node:fs/promises";
+import fs from "node:fs/promises";
 import path from "node:path";
 import matter from "gray-matter";
 import JSZip from "jszip";
@@ -17,7 +17,6 @@ const CHAT_COMPLETIONS_ENDPOINT = `${OPENAI_BASE_URL}/chat/completions`;
 const PROMPT_TEMPLATE_PATH = path.join(process.cwd(), "prompt.md");
 const NOTES_DIR_PATH = path.join(process.cwd(), "笔记");
 
-const MAX_FILE_SIZE_BYTES = 4 * 1024 * 1024;
 const MAX_SOURCE_CHARS = 35_000;
 const MAX_STYLE_CONTEXT_CHARS = 16_000;
 const MAX_METADATA_SOURCE_CHARS = 8_000;
@@ -897,23 +896,30 @@ export async function POST(request: Request) {
     const topicInput = String(formData.get("topic") ?? "").trim();
     const tagsInput = String(formData.get("tags") ?? "").trim();
 
-    const sourceFile = formData.get("sourceFile");
-    if (!(sourceFile instanceof File)) {
-      return NextResponse.json({ error: "请先上传文档文件。" }, { status: 400 });
-    }
-
-    if (sourceFile.size <= 0) {
-      return NextResponse.json({ error: "上传文件为空，请检查后重试。" }, { status: 400 });
-    }
-
-    if (sourceFile.size > MAX_FILE_SIZE_BYTES) {
-      return NextResponse.json({ error: "文件过大，请控制在 4MB 以内。" }, { status: 400 });
-    }
+    const sourceFileEntry = formData.get("sourceFile");
+    const sourceTextInput = normalizeNewlines(String(formData.get("sourceText") ?? ""));
+    const fileNameInput = String(formData.get("fileName") ?? "").trim();
+    const sourceFile = sourceFileEntry instanceof File ? sourceFileEntry : null;
 
     const overwrite = asBoolean(formData.get("overwrite"));
     const extraInstruction = String(formData.get("extraInstruction") ?? "");
 
-    const extractedSource = await extractSourceText(sourceFile);
+    let extractedSource = "";
+    let resolvedFileName = fileNameInput;
+
+    if (sourceFile) {
+      if (sourceFile.size <= 0) {
+        return NextResponse.json({ error: "上传文件为空，请检查后重试。" }, { status: 400 });
+      }
+      extractedSource = await extractSourceText(sourceFile);
+      resolvedFileName = sourceFile.name;
+    } else {
+      extractedSource = clampText(sourceTextInput, MAX_SOURCE_CHARS);
+      if (!extractedSource) {
+        return NextResponse.json({ error: "请先上传文档文件，或提供可解析的文本内容。" }, { status: 400 });
+      }
+    }
+
     if (!extractedSource || extractedSource.length < 40) {
       return NextResponse.json({ error: "文档可解析内容过少，无法生成有效笔记。" }, { status: 400 });
     }
@@ -923,7 +929,7 @@ export async function POST(request: Request) {
       topicInput,
       tagsInput: parseTagsInput(tagsInput),
       sourceText: extractedSource,
-      fileName: sourceFile.name,
+      fileName: resolvedFileName,
     });
 
     const title = resolvedMeta.title;

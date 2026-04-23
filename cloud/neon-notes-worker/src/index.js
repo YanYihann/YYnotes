@@ -1,7 +1,6 @@
-﻿import { neon } from "@neondatabase/serverless";
+import { neon } from "@neondatabase/serverless";
 import JSZip from "jszip";
 
-const MAX_FILE_SIZE_BYTES = 4 * 1024 * 1024;
 const MAX_SOURCE_CHARS = 35_000;
 const MAX_METADATA_SOURCE_CHARS = 8_000;
 const MAX_EXTRA_INSTRUCTION_CHARS = 1_500;
@@ -568,10 +567,6 @@ async function extractSourceFromFile(file) {
 
   if (file.size <= 0) {
     throw new Error("上传文件为空，请检查后重试。");
-  }
-
-  if (file.size > MAX_FILE_SIZE_BYTES) {
-    throw new Error("文件过大，请控制在 4MB 以内。");
   }
 
   const extension = fileExtension(file.name);

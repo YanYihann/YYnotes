@@ -36,6 +36,12 @@ type MetadataUpdateResult = {
   note: GeneratedNote | null;
 };
 
+type GenerationSourcePayload = {
+  sourceFile?: File;
+  sourceText?: string;
+  fileName: string;
+};
+
 type WeekNoteGeneratorProps = {
   existingNotes: ExistingNote[];
 };
@@ -159,11 +165,83 @@ async function loadPromptTemplateFromSite(): Promise<string> {
   throw new Error(`无法读取 prompt.md，请确认该文件已发布到站点根目录。已尝试路径：${candidates.join("，")}`);
 }
 
+async function extractPdfText(file: File): Promise<string> {
+  const pdfJs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const typedPdfJs = pdfJs as unknown as {
+    getDocument: (options: unknown) => {
+      promise: Promise<{
+        numPages: number;
+        getPage: (pageNumber: number) => Promise<{
+          getTextContent: () => Promise<{ items: Array<{ str?: string }> }>;
+        }>;
+      }>;
+    };
+  };
+
+  const task = typedPdfJs.getDocument({
+    data: new Uint8Array(await file.arrayBuffer()),
+    disableWorker: true,
+    isEvalSupported: false,
+    useSystemFonts: true,
+  });
+  const pdf = await task.promise;
+  const pageTexts: string[] = [];
+
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    const page = await pdf.getPage(pageNumber);
+    const content = await page.getTextContent();
+    const text = content.items
+      .map((item) => (typeof item?.str === "string" ? item.str : ""))
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    if (text) {
+      pageTexts.push(text);
+    }
+  }
+
+  return pageTexts.join("\n\n").trim();
+}
+
+async function resolveGenerationSourcePayload(sourceFile: File): Promise<GenerationSourcePayload> {
+  const extension = fileExtension(sourceFile.name);
+  if (extension === "doc" || extension === "ppt") {
+    throw new Error("暂不支持旧版 .doc / .ppt，请先另存为 .docx / .pptx 后再上传。");
+  }
+
+  if (extension !== "pdf") {
+    return {
+      sourceFile,
+      fileName: sourceFile.name,
+    };
+  }
+
+  const sourceText = (await extractPdfText(sourceFile)).trim();
+  if (!sourceText) {
+    throw new Error("PDF 文件可读内容过少，请更换文件或转成 DOCX / TXT 后重试。");
+  }
+
+  return {
+    sourceText,
+    fileName: sourceFile.name,
+  };
+}
+
+function appendGenerationSource(body: FormData, source: GenerationSourcePayload): void {
+  if (source.sourceFile instanceof File) {
+    body.append("sourceFile", source.sourceFile);
+  }
+  if (source.sourceText) {
+    body.append("sourceText", source.sourceText);
+  }
+  body.append("fileName", source.fileName);
+}
+
 async function callLocalGenerator(params: {
   title: string;
   topic: string;
   tags: string;
-  sourceFile: File;
+  source: GenerationSourcePayload;
   overwrite: boolean;
   extraInstruction: string;
 }): Promise<GenerationResult> {
@@ -171,7 +249,7 @@ async function callLocalGenerator(params: {
   body.append("title", params.title);
   body.append("topic", params.topic);
   body.append("tags", params.tags);
-  body.append("sourceFile", params.sourceFile);
+  appendGenerationSource(body, params.source);
   body.append("overwrite", params.overwrite ? "true" : "false");
   if (params.extraInstruction) {
     body.append("extraInstruction", params.extraInstruction);
@@ -199,23 +277,18 @@ async function callCloudGenerator(params: {
   title: string;
   topic: string;
   tags: string;
-  sourceFile: File;
+  source: GenerationSourcePayload;
   overwrite: boolean;
   extraInstruction: string;
   authToken: string;
 }): Promise<GenerationResult> {
-  const extension = fileExtension(params.sourceFile.name);
-  if (extension === "doc" || extension === "ppt") {
-    throw new Error("暂不支持旧版 .doc / .ppt，请先另存为 .docx / .pptx 后再上传。");
-  }
-
   const promptTemplate = await loadPromptTemplateFromSite();
   const apiBase = normalizeApiBase(CLOUD_API_BASE);
   const body = new FormData();
   body.append("title", params.title);
   body.append("topic", params.topic);
   body.append("tags", params.tags);
-  body.append("sourceFile", params.sourceFile);
+  appendGenerationSource(body, params.source);
   body.append("overwrite", params.overwrite ? "true" : "false");
   body.append("promptTemplate", promptTemplate);
   if (params.extraInstruction) {
@@ -357,11 +430,12 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
     setResult(null);
 
     try {
+      const source = await resolveGenerationSourcePayload(sourceFile);
       const payload = {
         title: title.trim(),
         topic: topic.trim(),
         tags: tags.trim(),
-        sourceFile,
+        source,
         overwrite,
         extraInstruction: extraInstruction.trim(),
         authToken: session?.token || "",
@@ -489,7 +563,7 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
           <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/60 dark:text-white/60">原始资料文件</span>
           <input
             type="file"
-            accept=".txt,.md,.markdown,.doc,.docx,.ppt,.pptx,.tex,.csv"
+            accept=".txt,.md,.markdown,.doc,.docx,.ppt,.pptx,.pdf,.tex,.csv"
             onChange={(event) => setSourceFile(event.target.files?.[0] ?? null)}
             className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] text-foreground outline-none file:mr-3 file:rounded-capsule file:border-0 file:bg-primary file:px-3 file:py-1 file:text-[12px] file:text-primary-foreground hover:file:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring"
           />
