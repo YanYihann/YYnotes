@@ -100,19 +100,19 @@ const authTestimonials: Testimonial[] = [
     avatarSrc: "https://randomuser.me/api/portraits/women/57.jpg",
     name: "Sarah Chen",
     handle: "@sarahdigital",
-    text: "The bilingual notes structure keeps my math review concise and fast.",
+    text: "The bilingual note structure keeps my course review concise and fast.",
   },
   {
     avatarSrc: "https://randomuser.me/api/portraits/men/64.jpg",
     name: "Marcus Johnson",
     handle: "@marcustech",
-    text: "I can switch between Chinese and English wording without losing formulas.",
+    text: "I can switch between Chinese and English wording without losing key details.",
   },
   {
     avatarSrc: "https://randomuser.me/api/portraits/men/32.jpg",
     name: "David Martinez",
     handle: "@davidcreates",
-    text: "Cloud sync and note organization make weekly revision much easier.",
+    text: "Cloud sync and folder organization make long-term review much easier.",
   },
 ];
 

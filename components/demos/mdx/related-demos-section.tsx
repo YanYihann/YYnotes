@@ -19,7 +19,7 @@ export function RelatedDemosSection({ demos }: RelatedDemosSectionProps) {
       <p className="mt-2 font-text text-[14px] leading-[1.45] tracking-tightCaption text-muted-foreground">
         本周知识点可直接在下面的演示中调参观察，帮助理解公式、收敛与误差结构。
         <span className="ui-en ml-1">
-          These demos are mapped to this week so you can tune parameters and inspect formulas, convergence, and errors.
+          These demos are mapped to the current note so you can tune parameters and inspect the related concepts.
         </span>
       </p>
 

@@ -1,4 +1,4 @@
-﻿<!-- Improved compatibility of back to top link -->
+<!-- Improved compatibility of back to top link -->
 <a id="readme-top"></a>
 
 [![Contributors][contributors-shield]][contributors-url]
@@ -11,15 +11,15 @@
 <div align="center">
   <h3 align="center">YYNotes</h3>
   <p align="center">
-    Bilingual AI Note Workspace for Numerical Analysis and Beyond
+    General-purpose bilingual AI note generation workspace
     <br />
-    <a href="https://github.com/YanYihann/YYnotes"><strong>Explore the docs »</strong></a>
+    <a href="https://github.com/YanYihann/YYnotes"><strong>Explore the docs</strong></a>
     <br />
     <br />
     <a href="https://yynotes.pages.dev">Live Demo</a>
-    ·
+    |
     <a href="https://github.com/YanYihann/YYnotes/issues">Report Bug</a>
-    ·
+    |
     <a href="https://github.com/YanYihann/YYnotes/issues">Request Feature</a>
   </p>
 </div>
@@ -56,17 +56,20 @@
 
 ## About The Project
 
-YYNotes is a bilingual (Chinese-first + English support) study platform focused on math-heavy notes with Markdown/MDX + KaTeX rendering, AI-assisted note generation, and cloud note management.
+YYNotes is a general-purpose AI note generation and study workspace. It turns raw learning materials, lecture notes, screenshots, documents, or pasted text into structured bilingual Markdown/MDX notes with Chinese-first and English-version output.
+
+The project is not limited to one subject. It is designed for cross-course and cross-domain note workflows, including technical courses, humanities readings, language learning, exam review, research summaries, and formula-heavy materials that need stable KaTeX rendering.
 
 It supports two working modes:
 - Local mode: write/read notes from `笔记/*.mdx` and use local Next.js API routes.
 - Cloud mode: authenticate users and manage notes/folders through a Cloudflare Worker + Neon PostgreSQL backend.
 
-This project is especially designed for structured weekly study workflows:
-- Generate notes from uploaded source files (`.txt/.md/.docx/.pptx`).
-- Keep Chinese and English content structure consistent.
-- Use note-aware AI assistant with current-page context and selected text.
-- Organize notes by folders and edit metadata quickly.
+Typical workflows include:
+- Generate bilingual notes from uploaded source files (`.txt/.md/.docx/.pptx`) or pasted content.
+- Keep the Chinese version and English version structurally aligned.
+- Preserve formulas, tables, code, images, derivations, examples, and important source details.
+- Use a note-aware AI assistant with current-page context and selected text.
+- Organize notes by folders, edit metadata, annotate notes, and sync cloud notes.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -82,15 +85,14 @@ This project is especially designed for structured weekly study workflows:
 
 ### Core Features
 
-- Bilingual note rendering with formula-friendly typography.
+- Chinese-first + English Version bilingual note generation.
+- Markdown/MDX rendering with formula-friendly KaTeX support.
 - AI note generation using strict `prompt.md` rules.
-- AI study assistant with:
-  - page context
-  - selected-text grounding
-  - question history
-  - file upload + voice upload entry in prompt box
+- AI study assistant with page context, selected-text grounding, question history, file upload, and voice upload entry.
+- Typora-like rendered note editing, including annotation mode and full-note editing.
+- Image paste support that saves images as Markdown image syntax.
 - Google Sign-In + email/password auth.
-- Cloud note CRUD + folder management (assign/move/delete).
+- Cloud note CRUD + folder management.
 - Cloudflare Pages + Worker split deployment with GitHub Actions automation.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
@@ -101,7 +103,7 @@ This project is especially designed for structured weekly study workflows:
 
 - Node.js 20+ (recommended)
 - npm 10+
-- (Optional, cloud mode) Cloudflare account + Neon database
+- Optional for cloud mode: Cloudflare account + Neon database
 
 ### Installation
 
@@ -131,7 +133,7 @@ Create `.env.local` in project root:
 # Required for local AI generation / assistant API routes
 OPENAI_API_KEY=your_openai_api_key
 
-# Optional overrides
+# Optional OpenAI-compatible model provider overrides
 OPENAI_MODEL=gpt-4.1-mini
 OPENAI_BASE_URL=https://api.openai.com/v1
 
@@ -143,6 +145,7 @@ NEXT_PUBLIC_GOOGLE_CLIENT_ID=<your-google-oauth-web-client-id>
 Notes:
 - If `NEXT_PUBLIC_NOTES_API_BASE` is missing, cloud login/cloud notes are disabled.
 - Local note files are stored under `笔记/*.mdx`.
+- The app saves notes as MDX so ordinary Markdown notes can later be extended with reusable React/MDX blocks when needed.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -169,17 +172,20 @@ npm run build
 
 ### Main routes
 
-- `/` Home + cloud note sections
+- `/` Home + note generation entry
 - `/auth` Login/Register (email + Google)
 - `/notes` Notes index
+- `/notes/[slug]` Local note detail viewer
 - `/notes/cloud?slug=...` Cloud note detail viewer
 - `/demos/sign-in` Sign-in UI demo
 
-### Authoring rules
+### Authoring Rules
 
 - Generation prompt source: `prompt.md`
 - Synced public copy: `public/prompt.md`
-- Each week typically maps to one MDX note file.
+- Generated notes should follow the Chinese-first + English Version structure defined in `prompt.md`.
+- Notes may be general Markdown, but are saved as `.mdx` for future support of reusable blocks, rich callouts, and interactive components.
+- Formula-heavy content must remain compatible with `remark-math + rehype-katex`.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -188,11 +194,11 @@ npm run build
 ### Next.js local API routes
 
 - `POST /api/note-generator`  
-  Generate and save MDX note from uploaded file.
+  Generate and save an MDX note from uploaded materials.
 - `POST /api/notes-assistant`  
   Note-aware assistant response.
 - `PATCH /api/notes?slug=...`  
-  Update local note title/topic metadata.
+  Update local note metadata or note content.
 - `DELETE /api/notes?slug=...`  
   Delete local note file.
 
@@ -272,8 +278,9 @@ YYnotes/
 - [x] Bilingual rendering mode controls
 - [x] AI assistant with contextual Q&A
 - [x] Prompt box with file and voice upload entry
+- [x] Rendered note editing with annotation mode
 - [ ] Full speech-to-text pipeline for voice attachments
-- [ ] More reusable MDX blocks (theorem/example/warning/summary/practice)
+- [ ] More reusable MDX blocks for definitions, examples, warnings, summaries, practice, and subject-specific callouts
 - [ ] Better visual docs and screenshots in README
 
 See [open issues][issues-url] for ongoing tasks and proposals.
