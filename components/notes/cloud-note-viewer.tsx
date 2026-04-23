@@ -175,6 +175,7 @@ export function CloudNoteViewer() {
 
   return (
     <NoteView
+      storageMode="cloud"
       headings={normalizedNote.headings}
       note={{
         slug: normalizedNote.slug || slug,

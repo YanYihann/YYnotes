@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { useLanguage } from "@/components/language-provider";
 import { ReadingWorkspace } from "@/components/notes/reading-workspace";
+import { NoteEditorPanel } from "@/components/notes/note-editor-panel";
 import { NoteMarkdown } from "@/components/notes/note-markdown";
 import type { Heading } from "@/lib/content";
 import { prepareNoteMarkdown } from "@/lib/mdx";
@@ -36,6 +38,7 @@ type NoteViewProps = {
     left?: NoteViewNavLink;
     right?: NoteViewNavLink;
   };
+  storageMode?: "local" | "cloud";
 };
 
 type NoteHighlight = {
@@ -72,6 +75,11 @@ type HighlightApiResponse = {
   success?: boolean;
   highlights?: unknown;
   highlight?: unknown;
+  error?: string;
+};
+
+type SaveNoteContentResponse = {
+  success?: boolean;
   error?: string;
 };
 
@@ -327,13 +335,15 @@ function NoteNavLink({ link }: { link: NoteViewNavLink }) {
   );
 }
 
-export function NoteView({ note, headings, nav }: NoteViewProps) {
+export function NoteView({ note, headings, nav, storageMode = "local" }: NoteViewProps) {
+  const router = useRouter();
   const { showEnglish } = useLanguage();
   const { session } = useAuth();
   const authToken = session?.token ?? "";
+  const [noteSource, setNoteSource] = useState(note.noteContent);
   const renderedSource = useMemo(
-    () => prepareNoteMarkdown(note.noteContent, { showEnglish }),
-    [note.noteContent, showEnglish],
+    () => prepareNoteMarkdown(noteSource, { showEnglish }),
+    [noteSource, showEnglish],
   );
   const canSyncHighlights = Boolean(CLOUD_API_BASE && authToken && note.slug);
   const noteContentRef = useRef<HTMLDivElement | null>(null);
@@ -353,6 +363,57 @@ export function NoteView({ note, headings, nav }: NoteViewProps) {
   const [loadingHighlights, setLoadingHighlights] = useState(false);
   const [savingHighlight, setSavingHighlight] = useState(false);
   const [highlightError, setHighlightError] = useState("");
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [savingNote, setSavingNote] = useState(false);
+  const [editError, setEditError] = useState("");
+
+  useEffect(() => {
+    setNoteSource(note.noteContent);
+    setEditorOpen(false);
+    setEditError("");
+  }, [note.noteContent, note.slug]);
+
+  const saveNoteContent = useCallback(
+    async (nextSource: string) => {
+      setSavingNote(true);
+      setEditError("");
+      try {
+        const response =
+          storageMode === "cloud"
+            ? await fetch(buildCloudApiUrl(`/notes/${encodeURIComponent(note.slug)}`), {
+                method: "PATCH",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${authToken}`,
+                },
+                body: JSON.stringify({ mdxContent: nextSource }),
+              })
+            : await fetch(`/api/notes?slug=${encodeURIComponent(note.slug)}`, {
+                method: "PATCH",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ content: nextSource }),
+              });
+
+        const json = (await response.json().catch(() => null)) as SaveNoteContentResponse | null;
+        if (!response.ok || !json?.success) {
+          throw new Error(json?.error || "保存笔记失败。");
+        }
+
+        setNoteSource(nextSource);
+        setEditorOpen(false);
+        router.refresh();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "保存笔记失败。";
+        setEditError(message);
+        throw error;
+      } finally {
+        setSavingNote(false);
+      }
+    },
+    [authToken, note.slug, router, storageMode],
+  );
 
   const fetchHighlights = useCallback(async () => {
     if (!canSyncHighlights) {
@@ -656,7 +717,7 @@ export function NoteView({ note, headings, nav }: NoteViewProps) {
         weekLabelEn: note.topicEn,
         zhTitle: note.zhTitle,
         enTitle: note.enTitle,
-        noteContent: note.noteContent,
+        noteContent: noteSource,
       }}
     >
       <article className="rounded-apple bg-card px-5 py-8 text-card-foreground shadow-card sm:px-8 md:px-10">
@@ -687,7 +748,45 @@ export function NoteView({ note, headings, nav }: NoteViewProps) {
             {note.descriptionZh}
             <span className="ui-en mt-1 block text-muted-foreground">{note.descriptionEn}</span>
           </p>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setEditorOpen((value) => !value);
+                setEditError("");
+              }}
+              disabled={storageMode === "cloud" && !authToken}
+              className="btn-apple-primary inline-flex items-center rounded-apple px-4 py-1.5 font-text text-[13px] transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
+            >
+              {editorOpen ? "关闭编辑" : "编辑 / 新增内容"}
+              <span className="ui-en ml-1">{editorOpen ? "Close Editor" : "Edit / Add"}</span>
+            </button>
+            {storageMode === "cloud" && !authToken ? (
+              <p className="font-text text-[12px] text-muted-foreground">
+                登录后才能编辑云端笔记。
+                <span className="ui-en ml-1">Sign in to edit cloud notes.</span>
+              </p>
+            ) : null}
+          </div>
         </header>
+
+        {editError ? (
+          <p className="mb-4 rounded-apple border border-[#b4232f]/30 bg-[#b4232f]/[0.08] px-3 py-2 font-text text-[13px] leading-[1.4] text-[#7f1820] dark:border-[#ff6a77]/35 dark:bg-[#ff6a77]/[0.12] dark:text-[#ffd5da]">
+            {editError}
+          </p>
+        ) : null}
+
+        {editorOpen ? (
+          <NoteEditorPanel
+            source={noteSource}
+            saving={savingNote}
+            onSave={saveNoteContent}
+            onCancel={() => {
+              setEditorOpen(false);
+              setEditError("");
+            }}
+          />
+        ) : null}
 
         <div className="mb-6 rounded-apple border border-border bg-muted/40 px-3 py-2">
           <div className="flex flex-wrap items-center gap-2">

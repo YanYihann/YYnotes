@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 import { cloneElement, isValidElement } from "react";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import {
@@ -294,6 +295,7 @@ function A(props: ComponentPropsWithoutRef<"a">) {
 
 function Blockquote(props: ComponentPropsWithoutRef<"blockquote">) {
   const children = highlightTerms(props.children, "quote");
+  const isAddedBlock = collectText(props.children).includes("【新增内容");
   const rest = { ...props };
   delete (rest as { children?: ReactNode }).children;
 
@@ -302,11 +304,26 @@ function Blockquote(props: ComponentPropsWithoutRef<"blockquote">) {
       {...rest}
       className={cn(
         "my-7 rounded-apple border-l-[3px] border-border bg-card/85 px-4 py-3 text-[16px] italic leading-[1.6] text-muted-foreground",
+        isAddedBlock &&
+          "border-primary/70 bg-primary/[0.08] text-foreground shadow-card/20 ring-1 ring-primary/15",
         props.className,
       )}
     >
       {children}
     </blockquote>
+  );
+}
+
+function Img(props: ComponentPropsWithoutRef<"img">) {
+  return (
+    <img
+      {...props}
+      alt={props.alt ?? ""}
+      className={cn(
+        "my-5 max-h-[640px] w-auto max-w-full rounded-apple border border-border bg-card object-contain shadow-card",
+        props.className,
+      )}
+    />
   );
 }
 
@@ -388,6 +405,7 @@ const components = {
   table: Table,
   th: TH,
   td: TD,
+  img: Img,
   TheoremBlock,
   DefinitionBlock,
   ExampleBlock,

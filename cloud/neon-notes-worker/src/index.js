@@ -2074,7 +2074,7 @@ export default {
         }
 
         const rows = await sql`
-          SELECT slug, title, topic, topic_zh, topic_en, tags, folder_id
+          SELECT slug, title, topic, topic_zh, topic_en, tags, folder_id, mdx_content
           FROM notes
           WHERE user_id = ${userId} AND slug = ${slug}
           LIMIT 1
@@ -2089,6 +2089,7 @@ export default {
         const topicInput = String(body.topic ?? "").trim();
         const tagsInput = parseTags(body.tags);
         const hasFolderId = Object.prototype.hasOwnProperty.call(body, "folderId");
+        const hasMdxContent = Object.prototype.hasOwnProperty.call(body, "mdxContent");
         let nextFolderId = current.folder_id === null || current.folder_id === undefined ? null : Number(current.folder_id);
 
         if (hasFolderId) {
@@ -2122,6 +2123,13 @@ export default {
           String(current.topic ?? "").trim() ||
           deriveTopicFromTitleOrTags(nextTitle, nextTags);
         const topicParts = splitTopic(topicSeed, nextTitle);
+        const nextMdxContent = hasMdxContent
+          ? normalizeNewlines(String(body.mdxContent ?? "")).trim()
+          : String(current.mdx_content ?? "");
+
+        if (hasMdxContent && !nextMdxContent) {
+          return jsonResponse({ error: "mdxContent cannot be empty." }, 400, corsOrigin);
+        }
 
         await sql`
           UPDATE notes
@@ -2132,6 +2140,7 @@ export default {
             topic_en = ${topicParts.topicEn},
             tags = ${JSON.stringify(nextTags)},
             folder_id = ${nextFolderId},
+            mdx_content = ${nextMdxContent},
             updated_at = NOW()
           WHERE user_id = ${userId} AND slug = ${slug}
         `;

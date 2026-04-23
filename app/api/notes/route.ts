@@ -25,6 +25,13 @@ function normalizeEditableText(value: unknown, maxLength: number): string {
     .slice(0, maxLength);
 }
 
+function normalizeEditableContent(value: unknown): string {
+  return String(value ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .trim();
+}
+
 export async function PATCH(request: Request) {
   try {
     const slug = parseSlugFromRequest(request);
@@ -41,25 +48,30 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Refusing to update file outside notes directory." }, { status: 400 });
     }
 
-    const body = (await request.json().catch(() => null)) as { title?: unknown; topic?: unknown } | null;
+    const body = (await request.json().catch(() => null)) as { title?: unknown; topic?: unknown; content?: unknown } | null;
     if (!body || typeof body !== "object") {
       return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
     }
 
     const hasTitle = Object.prototype.hasOwnProperty.call(body, "title");
     const hasTopic = Object.prototype.hasOwnProperty.call(body, "topic");
-    if (!hasTitle && !hasTopic) {
+    const hasContent = Object.prototype.hasOwnProperty.call(body, "content");
+    if (!hasTitle && !hasTopic && !hasContent) {
       return NextResponse.json({ error: "No update field provided." }, { status: 400 });
     }
 
     const nextTitle = hasTitle ? normalizeEditableText(body.title, 80) : note.zhTitle;
     const nextTopic = hasTopic ? normalizeEditableText(body.topic, 64) : note.topicZh;
+    const nextContent = hasContent ? normalizeEditableContent(body.content) : null;
 
     if (!nextTitle) {
       return NextResponse.json({ error: "Title cannot be empty." }, { status: 400 });
     }
     if (!nextTopic) {
       return NextResponse.json({ error: "Topic cannot be empty." }, { status: 400 });
+    }
+    if (hasContent && !nextContent) {
+      return NextResponse.json({ error: "Content cannot be empty." }, { status: 400 });
     }
 
     const rawSource = await fs.readFile(note.filePath, "utf8");
@@ -73,7 +85,8 @@ export async function PATCH(request: Request) {
       frontmatter.topicEn = nextTopic;
     }
 
-    const nextSource = matter.stringify(parsed.content, frontmatter);
+    const nextBody = hasContent && nextContent ? `${nextContent.trimEnd()}\n` : parsed.content;
+    const nextSource = matter.stringify(nextBody, frontmatter);
     await fs.writeFile(note.filePath, nextSource, "utf8");
 
     return NextResponse.json({

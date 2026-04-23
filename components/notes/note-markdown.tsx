@@ -1,6 +1,6 @@
 "use client";
 
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
@@ -26,6 +26,7 @@ const markdownComponents = {
   table: allComponents.table,
   th: allComponents.th,
   td: allComponents.td,
+  img: allComponents.img,
 };
 
 type NoteMarkdownProps = {
@@ -36,6 +37,12 @@ export function NoteMarkdown({ source }: NoteMarkdownProps) {
   return (
     <ReactMarkdown
       components={markdownComponents}
+      urlTransform={(url, key, node) => {
+        if (key === "src" && node.tagName === "img" && /^data:image\//i.test(url)) {
+          return url;
+        }
+        return defaultUrlTransform(url);
+      }}
       remarkPlugins={[remarkGfm, remarkMath]}
       rehypePlugins={[
         rehypeRaw,
