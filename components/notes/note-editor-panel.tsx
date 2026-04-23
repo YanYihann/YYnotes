@@ -24,7 +24,7 @@ type NoteEditorPanelProps = {
   onCancel: () => void;
 };
 
-type EditableBlockKind = "heading" | "paragraph" | "blockquote" | "list" | "code" | "image" | "raw";
+type EditableBlockKind = "heading" | "paragraph" | "blockquote" | "list" | "code" | "math" | "table" | "image" | "raw";
 
 type EditableBlock = {
   id: string;
@@ -92,8 +92,22 @@ function isSpecialLine(line: string): boolean {
     /^>\s?/.test(line) ||
     /^(\s*)([-*+]|\d+[.)])\s+/.test(line) ||
     /^```/.test(line) ||
+    line.trim() === "$$" ||
+    isTableLine(line) ||
     /^!\[[^\]]*]\([^)]+\)\s*$/.test(line)
   );
+}
+
+function isTableLine(line: string): boolean {
+  return line.includes("|") && line.trim().length > 0;
+}
+
+function isTableSeparatorLine(line: string): boolean {
+  return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
+}
+
+function isTableStart(lines: string[], index: number): boolean {
+  return isTableLine(lines[index] ?? "") && isTableSeparatorLine(lines[index + 1] ?? "");
 }
 
 function parseMarkdownBlocks(source: string): EditableBlock[] {
@@ -136,6 +150,41 @@ function parseMarkdownBlocks(source: string): EditableBlock[] {
         text: lines.slice(contentStart, endLine).join("\n"),
       });
       index = Math.min(lines.length, closeLine + 1);
+      continue;
+    }
+
+    if (line.trim() === "$$") {
+      const contentStart = index + 1;
+      let endLine = contentStart;
+      while (endLine < lines.length && lines[endLine].trim() !== "$$") {
+        endLine += 1;
+      }
+      const closeLine = endLine < lines.length ? endLine : endLine - 1;
+      blocks.push({
+        id: createBlockId(),
+        kind: "math",
+        raw: blockRaw(lines, index, Math.min(lines.length, closeLine + 1)),
+        start,
+        end: getLineEnd(lines, starts, Math.max(index, closeLine)),
+        text: lines.slice(contentStart, endLine).join("\n"),
+      });
+      index = Math.min(lines.length, closeLine + 1);
+      continue;
+    }
+
+    if (isTableStart(lines, index)) {
+      let endLine = index + 2;
+      while (endLine < lines.length && isTableLine(lines[endLine])) {
+        endLine += 1;
+      }
+      blocks.push({
+        id: createBlockId(),
+        kind: "table",
+        raw: blockRaw(lines, index, endLine),
+        start,
+        end: getLineEnd(lines, starts, endLine - 1),
+      });
+      index = endLine;
       continue;
     }
 
@@ -401,6 +450,10 @@ function blockToMarkdown(block: EditableBlock, element: HTMLElement | null): str
     return src ? `![${alt}](${src})` : "";
   }
 
+  if (block.kind === "code" || block.kind === "math" || block.kind === "table") {
+    return normalizeNewlines(element?.innerText ?? block.raw).trimEnd();
+  }
+
   const text = normalizeNewlines(element?.innerText ?? block.text ?? block.lines?.join("\n") ?? "").trimEnd();
 
   if (block.kind === "heading") {
@@ -419,10 +472,6 @@ function blockToMarkdown(block: EditableBlock, element: HTMLElement | null): str
       .map((line) => line.trim())
       .filter(Boolean);
     return lines.map((line, index) => (block.ordered ? `${index + 1}. ${line}` : `- ${line}`)).join("\n");
-  }
-
-  if (block.kind === "code") {
-    return `${block.fence ?? "```"}\n${text}\n\`\`\``;
   }
 
   return text.trim();
@@ -445,6 +494,11 @@ function syncBlocksFromDom(blocks: EditableBlock[], refs: Map<string, HTMLElemen
         imageAlt: img?.getAttribute("alt") || block.imageAlt,
         imageSrc: img?.getAttribute("src") || block.imageSrc,
       };
+    }
+
+    if (block.kind === "code" || block.kind === "math" || block.kind === "table") {
+      const raw = normalizeNewlines(refs.get(block.id)?.innerText ?? block.raw).trimEnd();
+      return { ...block, raw };
     }
 
     const text = normalizeNewlines(refs.get(block.id)?.innerText ?? block.text ?? block.lines?.join("\n") ?? "").trimEnd();
@@ -484,11 +538,15 @@ function RenderedReadOnlyBlock({
 function EditableBlockView({
   block,
   setRef,
+  active,
+  onActivate,
   onFocus,
   onPaste,
 }: {
   block: EditableBlock;
   setRef: (id: string, node: HTMLElement | null) => void;
+  active: boolean;
+  onActivate: (id: string) => void;
   onFocus: (id: string) => void;
   onPaste: (event: ClipboardEvent<HTMLElement>, id: string) => void;
 }) {
@@ -587,7 +645,26 @@ function EditableBlockView({
     );
   }
 
-  if (block.kind === "code") {
+  if (block.kind === "code" || block.kind === "math" || block.kind === "table") {
+    if (!active) {
+      return (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => onActivate(block.id)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onActivate(block.id);
+            }
+          }}
+          className="rounded-apple px-2 py-1 transition hover:bg-primary/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+        >
+          <NoteMarkdown source={block.raw} />
+        </div>
+      );
+    }
+
     return (
       <pre
         ref={(node) => setRef(block.id, node)}
@@ -596,9 +673,9 @@ function EditableBlockView({
         data-editor-block-id={block.id}
         onFocus={() => onFocus(block.id)}
         onPaste={(event) => onPaste(event, block.id)}
-        className="my-7 whitespace-pre-wrap rounded-apple bg-secondary px-4 py-4 font-text text-[15px] leading-[1.6] text-secondary-foreground outline-none shadow-card focus-visible:ring-2 focus-visible:ring-primary/35"
+        className="my-7 whitespace-pre-wrap rounded-apple border border-primary/25 bg-secondary px-4 py-4 font-mono text-[14px] leading-[1.6] text-secondary-foreground outline-none shadow-card focus-visible:ring-2 focus-visible:ring-primary/35"
       >
-        {renderEditableText(block.text ?? "")}
+        {renderEditableText(block.raw)}
       </pre>
     );
   }
@@ -637,11 +714,14 @@ export function NoteEditorPanel({
   const [fullBlocks, setFullBlocks] = useState<EditableBlock[]>(
     parsedBlocks.length ? parsedBlocks : [createEmptyParagraphBlock()],
   );
+  const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
   const [annotationInsertionIndex, setAnnotationInsertionIndex] = useState(parsedBlocks.length);
   const [error, setError] = useState("");
 
   useEffect(() => {
     setFullBlocks(parsedBlocks.length ? parsedBlocks : [createEmptyParagraphBlock()]);
+    setActiveBlockId(null);
+    activeBlockIdRef.current = null;
     setAnnotationInsertionIndex(parsedBlocks.length);
     setError("");
   }, [parsedBlocks]);
@@ -656,6 +736,12 @@ export function NoteEditorPanel({
 
   const syncFullBlocks = useCallback(() => {
     setFullBlocks((current) => syncBlocksFromDom(current, fullBlockRefs.current));
+  }, []);
+
+  const activateFullBlock = useCallback((id: string) => {
+    setFullBlocks((current) => syncBlocksFromDom(current, fullBlockRefs.current));
+    activeBlockIdRef.current = id;
+    setActiveBlockId(id);
   }, []);
 
   const insertImagesAfterBlock = useCallback((blockId: string | null, images: ImageMarkdown[]) => {
@@ -899,8 +985,11 @@ export function NoteEditorPanel({
                 key={block.id}
                 block={block}
                 setRef={setFullBlockRef}
+                active={activeBlockId === block.id}
+                onActivate={activateFullBlock}
                 onFocus={(id) => {
                   activeBlockIdRef.current = id;
+                  setActiveBlockId(id);
                 }}
                 onPaste={(event, id) => void handleFullPaste(event, id)}
               />
