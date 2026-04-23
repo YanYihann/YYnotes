@@ -414,7 +414,7 @@ async function readNoteFromFile(filePath: string): Promise<WeekNote | null> {
   const zhTitle =
     frontmatterTitle && frontmatterTitleLang === "zh"
       ? frontmatterTitle
-      : topTitles.zhTitle ?? `笔记：${path.parse(fileName).name}`;
+      : topTitles.zhTitle ?? path.parse(fileName).name;
 
   const parsedDescriptions = extractBilingualDescription(source);
   const sectionZhDescription = sections.hasStructuredSections ? extractFirstParagraph(sections.zhBody) : undefined;

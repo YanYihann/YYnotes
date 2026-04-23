@@ -2,14 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { AIModelSelector, NOTE_GENERATION_MODEL_OPTIONS } from "@/components/ui/animated-ai-input";
 import { WeekCard } from "@/components/week-card";
-
-type ExistingNote = {
-  slug: string;
-};
 
 type GeneratedNote = {
   slug: string;
@@ -43,28 +39,8 @@ type GenerationSourcePayload = {
   fileName: string;
 };
 
-type WeekNoteGeneratorProps = {
-  existingNotes: ExistingNote[];
-};
-
 const CLOUD_API_BASE = process.env.NEXT_PUBLIC_NOTES_API_BASE?.trim() ?? "";
 const IS_CLOUD_MODE = CLOUD_API_BASE.length > 0;
-
-function slugifyTitle(input: string): string {
-  const base = input
-    .trim()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-  if (base) {
-    return base;
-  }
-
-  return "new-note";
-}
 
 function normalizeApiBase(input: string): string {
   return input.replace(/\/+$/, "");
@@ -76,21 +52,6 @@ function fileExtension(fileName: string): string {
     return "";
   }
   return fileName.slice(index + 1).toLowerCase();
-}
-
-function deriveTitleFromFileName(fileName: string): string {
-  const trimmed = fileName.trim();
-  if (!trimmed) {
-    return "";
-  }
-
-  const dot = trimmed.lastIndexOf(".");
-  const base = dot > 0 ? trimmed.slice(0, dot) : trimmed;
-
-  return base
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 function parseTagsInput(raw: string): string[] {
@@ -277,7 +238,6 @@ async function callLocalGenerator(params: {
   topic: string;
   tags: string;
   source: GenerationSourcePayload;
-  overwrite: boolean;
   extraInstruction: string;
   model: string;
 }): Promise<GenerationResult> {
@@ -286,7 +246,6 @@ async function callLocalGenerator(params: {
   body.append("topic", params.topic);
   body.append("tags", params.tags);
   appendGenerationSource(body, params.source);
-  body.append("overwrite", params.overwrite ? "true" : "false");
   body.append("model", params.model);
   if (params.extraInstruction) {
     body.append("extraInstruction", params.extraInstruction);
@@ -315,7 +274,6 @@ async function callCloudGenerator(params: {
   topic: string;
   tags: string;
   source: GenerationSourcePayload;
-  overwrite: boolean;
   extraInstruction: string;
   model: string;
   authToken: string;
@@ -327,7 +285,6 @@ async function callCloudGenerator(params: {
   body.append("topic", params.topic);
   body.append("tags", params.tags);
   appendGenerationSource(body, params.source);
-  body.append("overwrite", params.overwrite ? "true" : "false");
   body.append("promptTemplate", promptTemplate);
   body.append("model", params.model);
   if (params.extraInstruction) {
@@ -412,13 +369,12 @@ async function callCloudMetadataUpdate(params: {
   return json as MetadataUpdateResult;
 }
 
-export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
+export function WeekNoteGenerator() {
   const router = useRouter();
   const { session } = useAuth();
   const [title, setTitle] = useState("");
   const [topic, setTopic] = useState("");
   const [tags, setTags] = useState("");
-  const [overwrite, setOverwrite] = useState(false);
   const [extraInstruction, setExtraInstruction] = useState("");
   const [selectedModel, setSelectedModel] = useState("qwen3.6-flash");
   const [sourceFile, setSourceFile] = useState<File | null>(null);
@@ -429,28 +385,6 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
   const [editTitle, setEditTitle] = useState("");
   const [editTopic, setEditTopic] = useState("");
   const [editTags, setEditTags] = useState("");
-
-  const slugPreview = useMemo(() => {
-    const manualTitle = title.trim();
-    if (manualTitle) {
-      return slugifyTitle(manualTitle);
-    }
-
-    if (sourceFile) {
-      const guessedTitle = deriveTitleFromFileName(sourceFile.name);
-      if (guessedTitle) {
-        return slugifyTitle(guessedTitle);
-      }
-    }
-
-    return "";
-  }, [title, sourceFile]);
-
-  const existingSlugSet = useMemo(() => {
-    return new Set(existingNotes.map((note) => note.slug));
-  }, [existingNotes]);
-
-  const noteAlreadyExists = slugPreview ? existingSlugSet.has(slugPreview) : false;
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -476,7 +410,6 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
         topic: topic.trim(),
         tags: tags.trim(),
         source,
-        overwrite,
         extraInstruction: extraInstruction.trim(),
         model: selectedModel,
         authToken: session?.token || "",
