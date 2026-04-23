@@ -57,6 +57,105 @@ function isTableLine(line: string): boolean {
   return trimmed.includes("|") && /^[:\-\s|]+$/.test(trimmed);
 }
 
+function isHeadingLine(line: string): boolean {
+  return /^#{1,6}\s+/.test(line.trim());
+}
+
+function isListItemLine(line: string): boolean {
+  return /^\s*(?:[-*+]\s+|\d+\.\s+)/.test(line);
+}
+
+function splitBodyIntoDisplayUnits(source: string): string[] {
+  const lines = normalizeNewlines(source).split("\n");
+  const units: string[] = [];
+  let current: string[] = [];
+  let inCodeFence = false;
+  let inDisplayMathFence = false;
+
+  const flush = () => {
+    const block = current.join("\n").trim();
+    if (block) {
+      units.push(block);
+    }
+    current = [];
+  };
+
+  for (const line of lines) {
+    if (isCodeFenceLine(line)) {
+      inCodeFence = !inCodeFence;
+      current.push(line);
+      continue;
+    }
+
+    if (!inCodeFence && isDisplayMathFenceLine(line)) {
+      inDisplayMathFence = !inDisplayMathFence;
+      current.push(line);
+      continue;
+    }
+
+    if (inCodeFence || inDisplayMathFence) {
+      current.push(line);
+      continue;
+    }
+
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      flush();
+      continue;
+    }
+
+    if (isHeadingLine(line)) {
+      flush();
+      units.push(trimmed);
+      continue;
+    }
+
+    if (isListItemLine(line) && current.length > 0) {
+      flush();
+    }
+
+    current.push(line);
+  }
+
+  flush();
+  return units;
+}
+
+function interleaveBilingualBodies(zhBody: string, enBody: string): string {
+  const zhUnits = splitBodyIntoDisplayUnits(zhBody);
+  const enUnits = splitBodyIntoDisplayUnits(enBody);
+
+  if (!zhUnits.length && !enUnits.length) {
+    return "";
+  }
+
+  if (!enUnits.length) {
+    return zhBody;
+  }
+
+  if (!zhUnits.length) {
+    return enBody;
+  }
+
+  const output: string[] = [];
+  const maxLength = Math.max(zhUnits.length, enUnits.length);
+
+  for (let index = 0; index < maxLength; index += 1) {
+    const zhUnit = zhUnits[index];
+    const enUnit = enUnits[index];
+
+    if (zhUnit) {
+      output.push(zhUnit);
+    }
+    if (enUnit) {
+      output.push(enUnit);
+    }
+  }
+
+  return output.join("\n\n").trim();
+}
+
 function normalizeMathDelimiters(source: string): string {
   let output = normalizeNewlines(source);
 
@@ -267,7 +366,7 @@ function composeRenderedSource(source: string, showEnglish: boolean): string {
     return sections.zhBody;
   }
 
-  return [sections.zhBody, "---", "## English Version", sections.enBody].join("\n\n");
+  return interleaveBilingualBodies(sections.zhBody, sections.enBody);
 }
 
 export function prepareNoteMarkdown(source: string, options: PrepareNoteMarkdownOptions = {}): string {
