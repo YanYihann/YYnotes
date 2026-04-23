@@ -165,10 +165,33 @@ async function loadPromptTemplateFromSite(): Promise<string> {
   throw new Error(`无法读取 prompt.md，请确认该文件已发布到站点根目录。已尝试路径：${candidates.join("，")}`);
 }
 
+function resolvePdfWorkerSrcFromCurrentOrigin(): string {
+  if (typeof window === "undefined") {
+    return "/pdf.worker.min.mjs";
+  }
+
+  const scriptEl = document.querySelector<HTMLScriptElement>('script[src*="/_next/"]');
+  let prefix = "";
+
+  if (scriptEl?.src) {
+    try {
+      const scriptUrl = new URL(scriptEl.src, window.location.origin);
+      const nextIndex = scriptUrl.pathname.indexOf("/_next/");
+      if (nextIndex > 0) {
+        prefix = scriptUrl.pathname.slice(0, nextIndex);
+      }
+    } catch {
+      prefix = "";
+    }
+  }
+
+  const normalized = `${prefix}/pdf.worker.min.mjs`.replace(/\/{2,}/g, "/");
+  return new URL(normalized, window.location.origin).toString();
+}
+
 async function extractPdfText(file: File): Promise<string> {
   const pdfJs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const typedPdfJs = pdfJs as unknown as {
-    version?: string;
     GlobalWorkerOptions: {
       workerSrc: string;
     };
@@ -182,38 +205,19 @@ async function extractPdfText(file: File): Promise<string> {
     };
   };
 
-  if (!typedPdfJs.GlobalWorkerOptions.workerSrc) {
-    const version = typedPdfJs.version ?? "5.6.205";
-    typedPdfJs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/pdf.worker.min.mjs`;
-  }
+  typedPdfJs.GlobalWorkerOptions.workerSrc = resolvePdfWorkerSrcFromCurrentOrigin();
 
   const sourceData = new Uint8Array(await file.arrayBuffer());
-  let pdf: {
+  const pdf: {
     numPages: number;
     getPage: (pageNumber: number) => Promise<{
       getTextContent: () => Promise<{ items: Array<{ str?: string }> }>;
     }>;
-  };
-
-  try {
-    pdf = await typedPdfJs.getDocument({
-      data: sourceData,
-      isEvalSupported: false,
-      useSystemFonts: true,
-    }).promise;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (!message.includes("GlobalWorkerOptions.workerSrc")) {
-      throw error;
-    }
-
-    pdf = await typedPdfJs.getDocument({
-      data: sourceData,
-      disableWorker: true,
-      isEvalSupported: false,
-      useSystemFonts: true,
-    }).promise;
-  }
+  } = await typedPdfJs.getDocument({
+    data: sourceData,
+    isEvalSupported: false,
+    useSystemFonts: true,
+  }).promise;
 
   const pageTexts: string[] = [];
 
