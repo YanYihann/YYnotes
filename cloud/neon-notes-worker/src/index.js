@@ -13,6 +13,8 @@ const MAX_HIGHLIGHT_TEXT_CHARS = 1_200;
 const MAX_HIGHLIGHTS_PER_NOTE = 1_500;
 const SUPPORTED_TEXT_EXTENSIONS = new Set(["txt", "md", "markdown", "tex", "csv", "rst"]);
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
+const ALLOWED_ASSISTANT_MODELS = new Set(["gpt-5.4-nano-2026-03-17", "gpt-4.1-mini"]);
+const ALLOWED_NOTE_GENERATION_MODELS = new Set(["qwen3.6-flash", "gpt-4.1-mini"]);
 const SUPPORTED_HIGHLIGHT_COLORS = new Set(["yellow"]);
 let highlightSchemaEnsured = false;
 
@@ -409,6 +411,14 @@ function normalizeApiBase(input, fallback = DEFAULT_OPENAI_BASE_URL) {
     return fallback;
   }
   return raw.replace(/\/+$/, "");
+}
+
+function resolveModelName(env, requestedModel, allowedModels) {
+  const normalized = String(requestedModel ?? "").trim();
+  if (normalized && allowedModels.has(normalized)) {
+    return normalized;
+  }
+  return env.OPENAI_MODEL || "gpt-4.1-mini";
 }
 
 function clampText(value, max) {
@@ -856,11 +866,11 @@ function deriveTopicFromTitleOrTags(title, tags) {
   return "学习笔记";
 }
 
-async function inferMissingMetadata({ env, sourceText, fileName }) {
+async function inferMissingMetadata({ env, sourceText, fileName, modelName }) {
   const openaiBaseUrl = normalizeApiBase(env.OPENAI_BASE_URL);
   const responsesEndpoint = `${openaiBaseUrl}/responses`;
   const chatCompletionsEndpoint = `${openaiBaseUrl}/chat/completions`;
-  const modelName = env.OPENAI_MODEL || "gpt-4.1-mini";
+  const resolvedModelName = modelName || resolveModelName(env, "", ALLOWED_NOTE_GENERATION_MODELS);
 
   const systemPrompt = [
     "你是学习笔记元信息生成器。",
@@ -899,7 +909,7 @@ async function inferMissingMetadata({ env, sourceText, fileName }) {
       Authorization: `Bearer ${env.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: modelName,
+      model: resolvedModelName,
       input,
     }),
   });
@@ -922,7 +932,7 @@ async function inferMissingMetadata({ env, sourceText, fileName }) {
       Authorization: `Bearer ${env.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: modelName,
+      model: resolvedModelName,
       messages: flattenInputMessages(input),
     }),
   });
@@ -944,7 +954,7 @@ async function inferMissingMetadata({ env, sourceText, fileName }) {
   return parseMetadataResponse(chatText);
 }
 
-async function resolveGenerationMetadata({ env, titleInput, topicInput, tagsInput, sourceText, fileName }) {
+async function resolveGenerationMetadata({ env, titleInput, topicInput, tagsInput, sourceText, fileName, modelName }) {
   const hasManualTitle = String(titleInput ?? "").trim().length > 0;
   const hasManualTopic = String(topicInput ?? "").trim().length > 0;
   const hasManualTags = Array.isArray(tagsInput) && tagsInput.length > 0;
@@ -959,6 +969,7 @@ async function resolveGenerationMetadata({ env, titleInput, topicInput, tagsInpu
         env,
         sourceText,
         fileName,
+        modelName,
       });
 
       if (!title && inferred.title) {
@@ -1208,6 +1219,7 @@ function sanitizeAssistantPayload(payload) {
   return {
     question: clampText(raw.question, MAX_QUESTION_CHARS),
     quickAction: clampText(raw.quickAction, 120) || undefined,
+    model: clampText(raw.model, 80) || undefined,
     history: normalizeAssistantHistory(raw.history),
     context: {
       slug: clampText(context.slug, 120),
@@ -1263,7 +1275,7 @@ async function generateAssistantAnswer(env, payload) {
   const openaiBaseUrl = normalizeApiBase(env.OPENAI_BASE_URL);
   const responsesEndpoint = `${openaiBaseUrl}/responses`;
   const chatCompletionsEndpoint = `${openaiBaseUrl}/chat/completions`;
-  const modelName = env.OPENAI_MODEL || "gpt-4.1-mini";
+  const modelName = resolveModelName(env, payload.model, ALLOWED_ASSISTANT_MODELS);
 
   const input = [
     {
@@ -1330,11 +1342,11 @@ async function generateAssistantAnswer(env, payload) {
   return chatText;
 }
 
-async function generateMdx({ env, title, topic, tags, sourceText, extraInstruction, promptTemplate }) {
+async function generateMdx({ env, title, topic, tags, sourceText, extraInstruction, promptTemplate, modelName }) {
   const openaiBaseUrl = normalizeApiBase(env.OPENAI_BASE_URL);
   const responsesEndpoint = `${openaiBaseUrl}/responses`;
   const chatCompletionsEndpoint = `${openaiBaseUrl}/chat/completions`;
-  const modelName = env.OPENAI_MODEL || "gpt-4.1-mini";
+  const resolvedModelName = modelName || resolveModelName(env, "", ALLOWED_NOTE_GENERATION_MODELS);
   const systemPrompt = buildSystemPrompt(promptTemplate);
   const userPrompt = buildUserPrompt({ title, topic, tags, sourceText, extraInstruction });
 
@@ -1345,7 +1357,7 @@ async function generateMdx({ env, title, topic, tags, sourceText, extraInstructi
       Authorization: `Bearer ${env.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: modelName,
+      model: resolvedModelName,
       input: [
         {
           role: "system",
@@ -1383,7 +1395,7 @@ async function generateMdx({ env, title, topic, tags, sourceText, extraInstructi
       Authorization: `Bearer ${env.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: modelName,
+      model: resolvedModelName,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
@@ -1505,6 +1517,7 @@ async function parseGeneratePayload(request) {
       fileName: sourceFile instanceof File ? sourceFile.name : String(formData.get("fileName") || "").trim(),
       extraInstruction: clampText(String(formData.get("extraInstruction") || ""), MAX_EXTRA_INSTRUCTION_CHARS),
       promptTemplate: String(formData.get("promptTemplate") || "").trim(),
+      model: String(formData.get("model") || "").trim(),
       overwrite: asBoolean(formData.get("overwrite")),
     };
   }
@@ -1522,6 +1535,7 @@ async function parseGeneratePayload(request) {
     fileName: String(body.fileName || "").trim(),
     extraInstruction: clampText(String(body.extraInstruction || ""), MAX_EXTRA_INSTRUCTION_CHARS),
     promptTemplate: String(body.promptTemplate || "").trim(),
+    model: String(body.model || "").trim(),
     overwrite: Boolean(body.overwrite),
   };
 }
@@ -2178,6 +2192,7 @@ export default {
         }
 
         const { title: titleInput, topicInput, tags: tagsInput, sourceText, fileName, extraInstruction, promptTemplate, overwrite } = payload;
+        const modelName = resolveModelName(env, payload.model, ALLOWED_NOTE_GENERATION_MODELS);
 
         if (!sourceText) {
           return jsonResponse({ error: "sourceText is required." }, 400, corsOrigin);
@@ -2194,6 +2209,7 @@ export default {
           tagsInput,
           sourceText,
           fileName,
+          modelName,
         });
 
         const title = resolvedMeta.title;
@@ -2219,6 +2235,7 @@ export default {
           sourceText,
           extraInstruction,
           promptTemplate,
+          modelName,
         });
         const mdxContent = normalizeGeneratedMdx(mdxContentRaw);
 

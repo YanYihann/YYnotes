@@ -9,6 +9,7 @@ import { useLanguage } from "@/components/language-provider";
 import { askNoteAssistant } from "@/lib/ai/client";
 import type { AssistantMessage, NoteAssistantRequest } from "@/lib/ai/note-assistant";
 import { PromptBox, type PromptAttachment, type PromptSubmitPayload } from "@/components/ui/chatgpt-prompt-input";
+import { ASSISTANT_MODEL_OPTIONS } from "@/components/ui/animated-ai-input";
 
 type NoteAssistantPanelProps = {
   noteContext: {
@@ -240,6 +241,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
   const [savedRecords, setSavedRecords] = useState<SavedQuestionRecord[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [fontSizePx, setFontSizePx] = useState(DEFAULT_FONT_SIZE);
+  const [selectedModel, setSelectedModel] = useState("gpt-5.4-nano-2026-03-17");
 
   const desktopMessagesRef = useRef<HTMLDivElement>(null);
   const mobileMessagesRef = useRef<HTMLDivElement>(null);
@@ -357,6 +359,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
         const payload: NoteAssistantRequest = {
           question: normalizedQuestion,
           quickAction,
+          model: selectedModel,
           history: serializeHistory(nextMessages),
           context: {
             ...noteContext,
@@ -392,7 +395,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
         setLoading(false);
       }
     },
-    [loading, messages, noteContext, selectedText],
+    [loading, messages, noteContext, selectedModel, selectedText],
   );
 
   const submitPrompt = useCallback(
@@ -547,6 +550,9 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
           onValueChange={setInput}
           onSubmitPrompt={submitPrompt}
           disabled={loading}
+          modelOptions={ASSISTANT_MODEL_OPTIONS}
+          selectedModel={selectedModel}
+          onSelectedModelChange={setSelectedModel}
           placeholder="例如：比较本页里的两种方法，并说明误差差异。"
           textareaStyle={messageTextStyle}
           className="rounded-apple"

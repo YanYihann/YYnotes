@@ -10,7 +10,11 @@ import { extractResponseText } from "@/lib/ai/note-assistant";
 
 export const runtime = "nodejs";
 
-const MODEL_NAME = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+const DEFAULT_MODEL_NAME = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+const ALLOWED_MODEL_NAMES = new Set([
+  "qwen3.6-flash",
+  "gpt-4.1-mini",
+]);
 const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL?.trim().replace(/\/+$/, "") || "https://api.openai.com/v1";
 const RESPONSES_ENDPOINT = `${OPENAI_BASE_URL}/responses`;
 const CHAT_COMPLETIONS_ENDPOINT = `${OPENAI_BASE_URL}/chat/completions`;
@@ -49,6 +53,14 @@ function toInputItem(role: AssistantRole, text: string): OpenAIInputItem {
     role,
     content: [{ type: "input_text", text }],
   };
+}
+
+function resolveModelName(requestedModel?: string): string {
+  const normalized = String(requestedModel ?? "").trim();
+  if (normalized && ALLOWED_MODEL_NAMES.has(normalized)) {
+    return normalized;
+  }
+  return DEFAULT_MODEL_NAME;
 }
 
 function extractProviderMessage(payload: unknown): string {
@@ -119,7 +131,7 @@ function extractChatCompletionsText(payload: unknown): string {
     .trim();
 }
 
-async function attemptResponses(input: OpenAIInputItem[], signal: AbortSignal): Promise<ProviderAttempt> {
+async function attemptResponses(input: OpenAIInputItem[], modelName: string, signal: AbortSignal): Promise<ProviderAttempt> {
   const response = await fetch(RESPONSES_ENDPOINT, {
     method: "POST",
     headers: {
@@ -127,7 +139,7 @@ async function attemptResponses(input: OpenAIInputItem[], signal: AbortSignal): 
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: MODEL_NAME,
+      model: modelName,
       input,
     }),
     signal,
@@ -157,7 +169,7 @@ async function attemptResponses(input: OpenAIInputItem[], signal: AbortSignal): 
   return { ok: true, content, provider: "responses" };
 }
 
-async function attemptChatCompletions(input: OpenAIInputItem[], signal: AbortSignal): Promise<ProviderAttempt> {
+async function attemptChatCompletions(input: OpenAIInputItem[], modelName: string, signal: AbortSignal): Promise<ProviderAttempt> {
   const response = await fetch(CHAT_COMPLETIONS_ENDPOINT, {
     method: "POST",
     headers: {
@@ -165,7 +177,7 @@ async function attemptChatCompletions(input: OpenAIInputItem[], signal: AbortSig
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: MODEL_NAME,
+      model: modelName,
       messages: flattenMessages(input),
     }),
     signal,
@@ -518,6 +530,7 @@ function deriveTopicFromTitleOrTags(title: string, tags: string[]): string {
 async function inferMissingMetadata(args: {
   sourceText: string;
   fileName: string;
+  modelName: string;
 }): Promise<Partial<InferredMetadata>> {
   const systemPrompt = [
     "你是学习笔记元信息生成器。",
@@ -543,12 +556,12 @@ async function inferMissingMetadata(args: {
   const timeout = setTimeout(() => abortController.abort(), 25_000);
 
   try {
-    const responsesAttempt = await attemptResponses(input, abortController.signal);
+    const responsesAttempt = await attemptResponses(input, args.modelName, abortController.signal);
     if (responsesAttempt.ok && responsesAttempt.content) {
       return parseMetadataResponse(responsesAttempt.content);
     }
 
-    const chatAttempt = await attemptChatCompletions(input, abortController.signal);
+    const chatAttempt = await attemptChatCompletions(input, args.modelName, abortController.signal);
     if (chatAttempt.ok && chatAttempt.content) {
       return parseMetadataResponse(chatAttempt.content);
     }
@@ -565,6 +578,7 @@ async function resolveGenerationMetadata(args: {
   tagsInput: string[];
   sourceText: string;
   fileName: string;
+  modelName: string;
 }): Promise<InferredMetadata> {
   const hasManualTitle = args.titleInput.trim().length > 0;
   const hasManualTopic = args.topicInput.trim().length > 0;
@@ -579,6 +593,7 @@ async function resolveGenerationMetadata(args: {
       const inferred = await inferMissingMetadata({
         sourceText: args.sourceText,
         fileName: args.fileName,
+        modelName: args.modelName,
       });
 
       if (!title && inferred.title) {
@@ -903,6 +918,7 @@ export async function POST(request: Request) {
 
     const overwrite = asBoolean(formData.get("overwrite"));
     const extraInstruction = String(formData.get("extraInstruction") ?? "");
+    const modelName = resolveModelName(String(formData.get("model") ?? ""));
 
     let extractedSource = "";
     let resolvedFileName = fileNameInput;
@@ -930,6 +946,7 @@ export async function POST(request: Request) {
       tagsInput: parseTagsInput(tagsInput),
       sourceText: extractedSource,
       fileName: resolvedFileName,
+      modelName,
     });
 
     const title = resolvedMeta.title;
@@ -979,11 +996,11 @@ export async function POST(request: Request) {
     const abortController = new AbortController();
     const timeout = setTimeout(() => abortController.abort(), 70_000);
 
-    const responsesAttempt = await attemptResponses(messages, abortController.signal);
+    const responsesAttempt = await attemptResponses(messages, modelName, abortController.signal);
     let generated = responsesAttempt.ok ? responsesAttempt.content ?? "" : "";
 
     if (!generated) {
-      const chatAttempt = await attemptChatCompletions(messages, abortController.signal);
+      const chatAttempt = await attemptChatCompletions(messages, modelName, abortController.signal);
       clearTimeout(timeout);
 
       if (!chatAttempt.ok) {

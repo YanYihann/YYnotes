@@ -19,6 +19,7 @@ export type NoteAssistantContext = {
 export type NoteAssistantRequest = {
   question: string;
   quickAction?: string;
+  model?: string;
   context: NoteAssistantContext;
   history: AssistantMessage[];
 };
@@ -60,6 +61,7 @@ export function sanitizeAssistantPayload(payload: NoteAssistantRequest): NoteAss
   return {
     question: clampText(payload.question, MAX_QUESTION_CHARS),
     quickAction: payload.quickAction ? clampText(payload.quickAction, 120) : undefined,
+    model: payload.model ? clampText(payload.model, 80) : undefined,
     history: normalizeHistory(payload.history),
     context: {
       slug: clampText(payload.context.slug, 120),

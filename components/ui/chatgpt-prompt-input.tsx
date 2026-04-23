@@ -5,6 +5,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { cn } from "@/lib/utils";
+import { AIModelSelector, type AIModelOption } from "@/components/ui/animated-ai-input";
 
 type PromptAttachmentSource = "file" | "voice";
 
@@ -33,6 +34,9 @@ type PromptBoxProps = Omit<
   disabled?: boolean;
   className?: string;
   textareaStyle?: React.CSSProperties;
+  modelOptions?: AIModelOption[];
+  selectedModel?: string;
+  onSelectedModelChange?: (modelId: string) => void;
 };
 
 interface WebSpeechRecognitionAlternative {
@@ -279,6 +283,9 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
       disabled = false,
       placeholder = "Message...",
       textareaStyle,
+      modelOptions,
+      selectedModel,
+      onSelectedModelChange,
       ...props
     },
     ref,
@@ -612,6 +619,20 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
                   <p>Attach files</p>
                 </TooltipContent>
               </Tooltip>
+
+              {modelOptions?.length && selectedModel && onSelectedModelChange ? (
+                <>
+                  <AIModelSelector
+                    models={modelOptions}
+                    value={selectedModel}
+                    onValueChange={onSelectedModelChange}
+                    disabled={disabled}
+                    triggerClassName="h-8 rounded-full px-2 text-[12px] text-foreground dark:text-foreground"
+                    contentClassName="font-text"
+                  />
+                  <div className="h-4 w-px bg-black/15 dark:bg-gray-600" />
+                </>
+              ) : null}
 
               <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
                 <Tooltip>

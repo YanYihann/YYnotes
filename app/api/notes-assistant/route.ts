@@ -7,7 +7,11 @@ import {
   type NoteAssistantRequest,
 } from "@/lib/ai/note-assistant";
 
-const MODEL_NAME = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+const DEFAULT_MODEL_NAME = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+const ALLOWED_MODEL_NAMES = new Set([
+  "gpt-5.4-nano-2026-03-17",
+  "gpt-4.1-mini",
+]);
 const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL?.trim().replace(/\/+$/, "") || "https://api.openai.com/v1";
 const RESPONSES_ENDPOINT = `${OPENAI_BASE_URL}/responses`;
 const CHAT_COMPLETIONS_ENDPOINT = `${OPENAI_BASE_URL}/chat/completions`;
@@ -32,6 +36,14 @@ function toInputItem(role: OpenAIInputItem["role"], text: string): OpenAIInputIt
     role,
     content: [{ type: "input_text", text }],
   };
+}
+
+function resolveModelName(requestedModel?: string): string {
+  const normalized = String(requestedModel ?? "").trim();
+  if (normalized && ALLOWED_MODEL_NAMES.has(normalized)) {
+    return normalized;
+  }
+  return DEFAULT_MODEL_NAME;
 }
 
 function extractProviderMessage(payload: unknown): string {
@@ -104,7 +116,7 @@ function extractChatCompletionsText(payload: unknown): string {
   return text;
 }
 
-async function attemptResponses(input: OpenAIInputItem[], signal: AbortSignal): Promise<ProviderAttempt> {
+async function attemptResponses(input: OpenAIInputItem[], modelName: string, signal: AbortSignal): Promise<ProviderAttempt> {
   const response = await fetch(RESPONSES_ENDPOINT, {
     method: "POST",
     headers: {
@@ -112,7 +124,7 @@ async function attemptResponses(input: OpenAIInputItem[], signal: AbortSignal): 
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: MODEL_NAME,
+      model: modelName,
       input,
     }),
     signal,
@@ -146,7 +158,7 @@ async function attemptResponses(input: OpenAIInputItem[], signal: AbortSignal): 
   };
 }
 
-async function attemptChatCompletions(input: OpenAIInputItem[], signal: AbortSignal): Promise<ProviderAttempt> {
+async function attemptChatCompletions(input: OpenAIInputItem[], modelName: string, signal: AbortSignal): Promise<ProviderAttempt> {
   const response = await fetch(CHAT_COMPLETIONS_ENDPOINT, {
     method: "POST",
     headers: {
@@ -154,7 +166,7 @@ async function attemptChatCompletions(input: OpenAIInputItem[], signal: AbortSig
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: MODEL_NAME,
+      model: modelName,
       messages: flattenMessages(input),
     }),
     signal,
@@ -211,17 +223,18 @@ export async function POST(request: Request) {
       ...payload.history.map((item) => toInputItem(item.role, item.content)),
       toInputItem("user", buildAssistantUserPrompt(payload)),
     ];
+    const modelName = resolveModelName(payload.model);
 
     const abortController = new AbortController();
     const timeout = setTimeout(() => abortController.abort(), 45_000);
 
-    const responsesAttempt = await attemptResponses(messages, abortController.signal);
+    const responsesAttempt = await attemptResponses(messages, modelName, abortController.signal);
     if (responsesAttempt.ok) {
       clearTimeout(timeout);
       return NextResponse.json({ answer: responsesAttempt.answer });
     }
 
-    const chatAttempt = await attemptChatCompletions(messages, abortController.signal);
+    const chatAttempt = await attemptChatCompletions(messages, modelName, abortController.signal);
     clearTimeout(timeout);
 
     if (chatAttempt.ok) {

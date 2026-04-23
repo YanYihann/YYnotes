@@ -11,7 +11,7 @@ Project: Numerical Analysis Bilingual Study Website
 
 ## Content rules
 - Every week is one MDX file
-- English first, Chinese immediately below
+- Chinese-first + English Version
 - Use consistent terminology
 - Use formal mathematical notation
 - Preserve complete derivations and examples

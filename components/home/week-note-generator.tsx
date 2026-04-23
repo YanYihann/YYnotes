@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
+import { AIModelSelector, NOTE_GENERATION_MODEL_OPTIONS } from "@/components/ui/animated-ai-input";
 import { WeekCard } from "@/components/week-card";
 
 type ExistingNote = {
@@ -278,6 +279,7 @@ async function callLocalGenerator(params: {
   source: GenerationSourcePayload;
   overwrite: boolean;
   extraInstruction: string;
+  model: string;
 }): Promise<GenerationResult> {
   const body = new FormData();
   body.append("title", params.title);
@@ -285,6 +287,7 @@ async function callLocalGenerator(params: {
   body.append("tags", params.tags);
   appendGenerationSource(body, params.source);
   body.append("overwrite", params.overwrite ? "true" : "false");
+  body.append("model", params.model);
   if (params.extraInstruction) {
     body.append("extraInstruction", params.extraInstruction);
   }
@@ -314,6 +317,7 @@ async function callCloudGenerator(params: {
   source: GenerationSourcePayload;
   overwrite: boolean;
   extraInstruction: string;
+  model: string;
   authToken: string;
 }): Promise<GenerationResult> {
   const promptTemplate = await loadPromptTemplateFromSite();
@@ -325,6 +329,7 @@ async function callCloudGenerator(params: {
   appendGenerationSource(body, params.source);
   body.append("overwrite", params.overwrite ? "true" : "false");
   body.append("promptTemplate", promptTemplate);
+  body.append("model", params.model);
   if (params.extraInstruction) {
     body.append("extraInstruction", params.extraInstruction);
   }
@@ -415,6 +420,7 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
   const [tags, setTags] = useState("");
   const [overwrite, setOverwrite] = useState(false);
   const [extraInstruction, setExtraInstruction] = useState("");
+  const [selectedModel, setSelectedModel] = useState("qwen3.6-flash");
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [savingMeta, setSavingMeta] = useState(false);
@@ -472,6 +478,7 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
         source,
         overwrite,
         extraInstruction: extraInstruction.trim(),
+        model: selectedModel,
         authToken: session?.token || "",
       };
 
@@ -555,6 +562,25 @@ export function WeekNoteGenerator({ existingNotes }: WeekNoteGeneratorProps) {
       </div>
 
       <form onSubmit={onSubmit} className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-2 md:col-span-2">
+          <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+            AI Model
+          </span>
+          <div className="flex flex-wrap items-center gap-3 rounded-apple border border-input bg-background px-3 py-2">
+            <AIModelSelector
+              models={NOTE_GENERATION_MODEL_OPTIONS}
+              value={selectedModel}
+              onValueChange={setSelectedModel}
+              disabled={submitting}
+              triggerClassName="h-8 rounded-full px-2 text-[12px] text-foreground dark:text-foreground"
+              contentClassName="font-text"
+            />
+            <p className="font-text text-[12px] leading-[1.4] text-muted-foreground">
+              Qwen3.6 Flash is selected for low-cost Chinese-first note generation; switch to GPT-4.1 Mini if stricter MDX formatting is needed.
+            </p>
+          </div>
+        </div>
+
         <label className="space-y-2 md:col-span-2">
           <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             标题（可选，留空自动生成）
