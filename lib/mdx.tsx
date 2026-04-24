@@ -26,6 +26,7 @@ const markdownComponents = {
   table: allComponents.table,
   th: allComponents.th,
   td: allComponents.td,
+  div: allComponents.div,
 };
 
 type PrepareNoteMarkdownOptions = {

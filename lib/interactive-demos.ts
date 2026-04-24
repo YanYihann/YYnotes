@@ -11,7 +11,7 @@ export type InteractiveDemoDescriptor = {
   keywords: string[];
 };
 
-const DEMO_REGISTRY: InteractiveDemoDescriptor[] = [
+export const INTERACTIVE_DEMO_REGISTRY: InteractiveDemoDescriptor[] = [
   {
     key: "differentiation",
     anchorId: "interactive-demo-differentiation",
@@ -62,25 +62,23 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function buildJumpLinkLabel(demo: InteractiveDemoDescriptor, language: "zh" | "en"): string {
-  return language === "zh"
-    ? `查看交互 Demo：${demo.titleZh}`
-    : `Jump to interactive demo: ${demo.titleEn}`;
-}
-
-function buildOpenDemoLabel(language: "zh" | "en"): string {
-  return language === "zh" ? "打开演示页面" : "Open the demo page";
+function buildJumpLinkLabel(demo: InteractiveDemoDescriptor): string {
+  return `跳转到交互 Demo：${demo.titleZh}`;
 }
 
 function findHeadingIndex(lines: string[], demo: InteractiveDemoDescriptor): number {
-  const keywords = demo.keywords.map((item) => normalizeText(item));
+  const keywords = demo.keywords.map((item) => normalizeText(item)).filter(Boolean);
+  if (!keywords.length) {
+    return -1;
+  }
+
   for (let index = 0; index < lines.length; index += 1) {
     const trimmed = lines[index].trim();
-    if (!/^#{3,4}\s+/.test(trimmed)) {
+    if (!/^#{2,4}\s+/.test(trimmed)) {
       continue;
     }
 
-    const headingText = normalizeText(trimmed.replace(/^#{3,4}\s+/, ""));
+    const headingText = normalizeText(trimmed.replace(/^#{2,4}\s+/, ""));
     if (keywords.some((keyword) => headingText.includes(keyword))) {
       return index;
     }
@@ -89,7 +87,7 @@ function findHeadingIndex(lines: string[], demo: InteractiveDemoDescriptor): num
   return -1;
 }
 
-function insertConceptJumpLinks(body: string, demos: InteractiveDemoDescriptor[], language: "zh" | "en"): string {
+function insertConceptJumpLinks(body: string, demos: InteractiveDemoDescriptor[]): string {
   const lines = body.split("\n");
   let offset = 0;
 
@@ -100,7 +98,7 @@ function insertConceptJumpLinks(body: string, demos: InteractiveDemoDescriptor[]
     }
 
     const insertionIndex = headingIndex + 1 + offset;
-    const linkLine = `> [${buildJumpLinkLabel(demo, language)}](#${demo.anchorId})`;
+    const linkLine = `> [${buildJumpLinkLabel(demo)}](#${demo.anchorId})`;
 
     if ((lines[insertionIndex] ?? "").includes(`#${demo.anchorId}`)) {
       continue;
@@ -113,31 +111,31 @@ function insertConceptJumpLinks(body: string, demos: InteractiveDemoDescriptor[]
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-function buildDemoSection(demos: InteractiveDemoDescriptor[], language: "zh" | "en"): string {
-  const heading = language === "zh" ? "### 交互 Demo" : "### Interactive Demos";
-  const blocks = demos.map((demo) => {
-    const title = language === "zh" ? demo.titleZh : demo.titleEn;
-    const description = language === "zh" ? demo.descriptionZh : demo.descriptionEn;
-    return [
-      `<div id="${demo.anchorId}"></div>`,
-      `#### ${title}`,
-      "",
-      `- [${buildOpenDemoLabel(language)}](${demo.href})`,
-      `- ${description}`,
-    ].join("\n");
-  });
-
-  return [heading, "---", ...blocks].join("\n\n").trim();
+function buildDemoEmbedBlock(demo: InteractiveDemoDescriptor): string {
+  return [
+    `### ${demo.titleZh}`,
+    "",
+    `<div id="${demo.anchorId}" class="interactive-demo-embed" data-demo-key="${demo.key}"></div>`,
+  ].join("\n");
 }
 
-function insertSectionBeforeSummary(body: string, demos: InteractiveDemoDescriptor[], language: "zh" | "en"): string {
+function buildDemoSection(demos: InteractiveDemoDescriptor[]): string {
+  return [
+    "## 交互 Demo",
+    "",
+    ...demos.map((demo) => buildDemoEmbedBlock(demo)),
+  ]
+    .join("\n\n")
+    .trim();
+}
+
+function insertSectionBeforeSummary(body: string, demos: InteractiveDemoDescriptor[]): string {
   if (!demos.length) {
     return body;
   }
 
-  const summaryHeading = language === "zh" ? /^###\s+小结\s*$/m : /^###\s+Summary\s*$/m;
-  const section = buildDemoSection(demos, language);
-  const match = body.match(summaryHeading);
+  const section = buildDemoSection(demos);
+  const match = body.match(/^#{2,3}\s+小结\s*$/m);
 
   if (!match || match.index === undefined) {
     return `${body.trim()}\n\n${section}`.trim();
@@ -154,7 +152,7 @@ export function selectInteractiveDemos(input: {
   generatedContent: string;
   limit?: number;
 }): InteractiveDemoDescriptor[] {
-  const limit = Math.max(0, Math.min(input.limit ?? 3, DEMO_REGISTRY.length));
+  const limit = Math.max(0, Math.min(input.limit ?? 3, INTERACTIVE_DEMO_REGISTRY.length));
   if (limit === 0) {
     return [];
   }
@@ -163,11 +161,13 @@ export function selectInteractiveDemos(input: {
     [input.title, input.topic, input.tags.join(" "), input.sourceText, input.generatedContent].join("\n"),
   );
 
-  return DEMO_REGISTRY.map((demo) => {
-    const score = demo.keywords.reduce((total, keyword) => {
-      const matches = haystack.match(new RegExp(escapeRegExp(normalizeText(keyword)), "g"));
+  return INTERACTIVE_DEMO_REGISTRY.map((demo) => {
+    const normalizedKeywords = demo.keywords.map((keyword) => normalizeText(keyword)).filter(Boolean);
+    const score = normalizedKeywords.reduce((total, keyword) => {
+      const matches = haystack.match(new RegExp(escapeRegExp(keyword), "g"));
       return total + (matches?.length ?? 0);
     }, 0);
+
     return { demo, score };
   })
     .filter((item) => item.score > 0)
@@ -189,10 +189,8 @@ export function injectInteractiveDemosIntoNoteContent(
     return source;
   }
 
-  const zhWithLinks = insertConceptJumpLinks(sections.zhBody, demos, "zh");
-  const enWithLinks = insertConceptJumpLinks(sections.enBody, demos, "en");
-  const zhFinal = insertSectionBeforeSummary(zhWithLinks, demos, "zh");
-  const enFinal = insertSectionBeforeSummary(enWithLinks, demos, "en");
+  const zhWithLinks = insertConceptJumpLinks(sections.zhBody, demos);
+  const zhFinal = insertSectionBeforeSummary(zhWithLinks, demos);
 
   return [
     "## 中文版笔记",
@@ -203,7 +201,7 @@ export function injectInteractiveDemosIntoNoteContent(
     "",
     "## English Version",
     "",
-    enFinal.trim(),
+    sections.enBody.trim(),
   ]
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")

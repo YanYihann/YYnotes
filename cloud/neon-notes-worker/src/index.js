@@ -1,4 +1,4 @@
-import { neon } from "@neondatabase/serverless";
+﻿import { neon } from "@neondatabase/serverless";
 import JSZip from "jszip";
 
 const MAX_SOURCE_CHARS = 35_000;
@@ -458,25 +458,23 @@ function escapeRegExp(value) {
   return String(value ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function buildDemoJumpLabel(demo, language) {
-  return language === "zh"
-    ? `查看交互 Demo：${demo.titleZh}`
-    : `Jump to interactive demo: ${demo.titleEn}`;
-}
-
-function buildDemoOpenLabel(language) {
-  return language === "zh" ? "打开演示页面" : "Open the demo page";
+function buildDemoJumpLabel(demo) {
+  return `跳转到交互 Demo：${demo.titleZh}`;
 }
 
 function findDemoHeadingIndex(lines, demo) {
-  const keywords = demo.keywords.map((item) => normalizeDemoText(item));
+  const keywords = demo.keywords.map((item) => normalizeDemoText(item)).filter(Boolean);
+  if (!keywords.length) {
+    return -1;
+  }
+
   for (let index = 0; index < lines.length; index += 1) {
     const trimmed = lines[index].trim();
-    if (!/^#{3,4}\s+/.test(trimmed)) {
+    if (!/^#{2,4}\s+/.test(trimmed)) {
       continue;
     }
 
-    const headingText = normalizeDemoText(trimmed.replace(/^#{3,4}\s+/, ""));
+    const headingText = normalizeDemoText(trimmed.replace(/^#{2,4}\s+/, ""));
     if (keywords.some((keyword) => headingText.includes(keyword))) {
       return index;
     }
@@ -485,7 +483,7 @@ function findDemoHeadingIndex(lines, demo) {
   return -1;
 }
 
-function insertDemoJumpLinks(body, demos, language) {
+function insertDemoJumpLinks(body, demos) {
   const lines = String(body ?? "").split("\n");
   let offset = 0;
 
@@ -496,7 +494,7 @@ function insertDemoJumpLinks(body, demos, language) {
     }
 
     const insertionIndex = headingIndex + 1 + offset;
-    const linkLine = `> [${buildDemoJumpLabel(demo, language)}](#${demo.anchorId})`;
+    const linkLine = `> [${buildDemoJumpLabel(demo)}](#${demo.anchorId})`;
     if (String(lines[insertionIndex] ?? "").includes(`#${demo.anchorId}`)) {
       continue;
     }
@@ -508,29 +506,29 @@ function insertDemoJumpLinks(body, demos, language) {
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-function buildDemoSection(demos, language) {
-  const heading = language === "zh" ? "### 交互 Demo" : "### Interactive Demos";
-  const blocks = demos.map((demo) =>
-    [
-      `<div id="${demo.anchorId}"></div>`,
-      `#### ${language === "zh" ? demo.titleZh : demo.titleEn}`,
-      "",
-      `- [${buildDemoOpenLabel(language)}](${demo.href})`,
-      `- ${language === "zh" ? demo.descriptionZh : demo.descriptionEn}`,
-    ].join("\n"),
-  );
-
-  return [heading, "---", ...blocks].join("\n\n").trim();
+function buildDemoEmbedBlock(demo) {
+  return [
+    `### ${demo.titleZh}`,
+    "",
+    `<div id="${demo.anchorId}" class="interactive-demo-embed" data-demo-key="${demo.key}"></div>`,
+  ].join("\n");
 }
 
-function insertDemoSectionBeforeSummary(body, demos, language) {
+function buildDemoSection(demos) {
+  return [
+    "## 交互 Demo",
+    "",
+    ...demos.map((demo) => buildDemoEmbedBlock(demo)),
+  ].join("\n\n").trim();
+}
+
+function insertDemoSectionBeforeSummary(body, demos) {
   if (!demos.length) {
     return body;
   }
 
-  const summaryHeading = language === "zh" ? /^###\s+小结\s*$/m : /^###\s+Summary\s*$/m;
-  const section = buildDemoSection(demos, language);
-  const match = String(body ?? "").match(summaryHeading);
+  const section = buildDemoSection(demos);
+  const match = String(body ?? "").match(/^#{2,3}\s+小结\s*$/m);
   if (!match || match.index === undefined) {
     return `${String(body ?? "").trim()}\n\n${section}`.trim();
   }
@@ -638,8 +636,9 @@ function selectInteractiveDemos({ title, topic, tags, sourceText, generatedConte
 
   const haystack = normalizeDemoText([title, topic, Array.isArray(tags) ? tags.join(" ") : "", sourceText, generatedContent].join("\n"));
   return INTERACTIVE_DEMO_REGISTRY.map((demo) => {
-    const score = demo.keywords.reduce((total, keyword) => {
-      const matches = haystack.match(new RegExp(escapeRegExp(normalizeDemoText(keyword)), "g"));
+    const normalizedKeywords = demo.keywords.map((keyword) => normalizeDemoText(keyword)).filter(Boolean);
+    const score = normalizedKeywords.reduce((total, keyword) => {
+      const matches = haystack.match(new RegExp(escapeRegExp(keyword), "g"));
       return total + (matches?.length ?? 0);
     }, 0);
     return { demo, score };
@@ -660,10 +659,8 @@ function injectInteractiveDemosIntoNoteContent(source, demos) {
     return source;
   }
 
-  const zhWithLinks = insertDemoJumpLinks(sections.zhBody, demos, "zh");
-  const enWithLinks = insertDemoJumpLinks(sections.enBody, demos, "en");
-  const zhFinal = insertDemoSectionBeforeSummary(zhWithLinks, demos, "zh");
-  const enFinal = insertDemoSectionBeforeSummary(enWithLinks, demos, "en");
+  const zhWithLinks = insertDemoJumpLinks(sections.zhBody, demos);
+  const zhFinal = insertDemoSectionBeforeSummary(zhWithLinks, demos);
 
   return [
     "## 中文版笔记",
@@ -674,7 +671,7 @@ function injectInteractiveDemosIntoNoteContent(source, demos) {
     "",
     "## English Version",
     "",
-    enFinal.trim(),
+    sections.enBody.trim(),
   ]
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")

@@ -12,6 +12,7 @@ import {
   TryThisDemoBlock,
   WarningBlock,
 } from "@/components/mdx/blocks";
+import { InteractiveDemoEmbed } from "@/components/demos/mdx/interactive-demo-embed";
 import { cn } from "@/lib/utils";
 
 const KEY_TERMS: Array<{ zh: string; en: string }> = [
@@ -328,6 +329,18 @@ function Img(props: ComponentPropsWithoutRef<"img">) {
   );
 }
 
+function Div(props: ComponentPropsWithoutRef<"div">) {
+  const className = typeof props.className === "string" ? props.className : "";
+  const dataAttributes = props as ComponentPropsWithoutRef<"div"> & { "data-demo-key"?: string };
+  const demoKey = typeof dataAttributes["data-demo-key"] === "string" ? dataAttributes["data-demo-key"] : "";
+
+  if (className.includes("interactive-demo-embed") && demoKey) {
+    return <InteractiveDemoEmbed demoKey={demoKey} anchorId={typeof props.id === "string" ? props.id : undefined} />;
+  }
+
+  return <div {...props} className={cn(props.className)} />;
+}
+
 function Pre(props: ComponentPropsWithoutRef<"pre">) {
   return (
     <pre
@@ -407,6 +420,7 @@ const components = {
   th: TH,
   td: TD,
   img: Img,
+  div: Div,
   TheoremBlock,
   DefinitionBlock,
   ExampleBlock,
