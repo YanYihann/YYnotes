@@ -27,6 +27,7 @@ const markdownComponents = {
   th: allComponents.th,
   td: allComponents.td,
   img: allComponents.img,
+  div: allComponents.div,
 };
 
 type NoteMarkdownProps = {
