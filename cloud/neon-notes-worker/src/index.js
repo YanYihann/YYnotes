@@ -539,6 +539,97 @@ function insertDemoSectionBeforeSummary(body, demos, language) {
   return `${source.slice(0, match.index).trimEnd()}\n\n${section}\n\n${source.slice(match.index).trimStart()}`.trim();
 }
 
+function normalizeBilingualSectionMarkerTitle(title) {
+  return String(title ?? "")
+    .toLowerCase()
+    .replace(/[`*_~]/g, "")
+    .replace(/[()（）[\]{}<>\-—–/\\|.,，。:：!?！？\s]/g, "")
+    .trim();
+}
+
+function isChineseSectionMarker(title) {
+  const normalized = normalizeBilingualSectionMarkerTitle(title);
+  return (
+    normalized === "中文版笔记" ||
+    normalized === "中文笔记" ||
+    normalized === "中文版" ||
+    normalized === "chineseversion" ||
+    normalized === "chinesenotes" ||
+    normalized === "chinesenote"
+  );
+}
+
+function isEnglishSectionMarker(title) {
+  const normalized = normalizeBilingualSectionMarkerTitle(title);
+  return (
+    normalized === "englishversion" ||
+    normalized === "englishnotes" ||
+    normalized === "englishnote" ||
+    normalized === "英文版笔记" ||
+    normalized === "英文笔记" ||
+    normalized === "英文版"
+  );
+}
+
+function extractHeadingTitle(line) {
+  const match = String(line ?? "").match(/^#{1,6}\s+(.+)$/);
+  return match ? match[1].trim() : null;
+}
+
+function splitBilingualNoteSections(source) {
+  const lines = normalizeNewlines(source).split("\n");
+  let zhMarkerLine = -1;
+  let enMarkerLine = -1;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const headingTitle = extractHeadingTitle(lines[index].trim());
+    if (!headingTitle) {
+      continue;
+    }
+
+    if (zhMarkerLine === -1 && isChineseSectionMarker(headingTitle)) {
+      zhMarkerLine = index;
+      continue;
+    }
+
+    if (enMarkerLine === -1 && isEnglishSectionMarker(headingTitle)) {
+      enMarkerLine = index;
+    }
+  }
+
+  const hasStructuredSections = zhMarkerLine >= 0 && enMarkerLine > zhMarkerLine;
+  if (!hasStructuredSections) {
+    return {
+      hasStructuredSections: false,
+      zhMarkerLine,
+      enMarkerLine,
+      zhBody: "",
+      enBody: "",
+    };
+  }
+
+  const zhBody = lines.slice(zhMarkerLine + 1, enMarkerLine).join("\n").trim();
+  const enBody = lines.slice(enMarkerLine + 1).join("\n").trim();
+
+  if (!zhBody || !enBody) {
+    return {
+      hasStructuredSections: false,
+      zhMarkerLine,
+      enMarkerLine,
+      zhBody: "",
+      enBody: "",
+    };
+  }
+
+  return {
+    hasStructuredSections: true,
+    zhMarkerLine,
+    enMarkerLine,
+    zhBody,
+    enBody,
+  };
+}
+
 function selectInteractiveDemos({ title, topic, tags, sourceText, generatedContent, limit = 3 }) {
   const safeLimit = Math.max(0, Math.min(limit, INTERACTIVE_DEMO_REGISTRY.length));
   if (safeLimit === 0) {
