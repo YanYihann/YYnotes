@@ -6,6 +6,7 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import rehypeSlug from "rehype-slug";
+import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import allComponents from "@/components/mdx/mdx-components";
@@ -44,7 +45,7 @@ export function NoteMarkdown({ source }: NoteMarkdownProps) {
         }
         return defaultUrlTransform(url);
       }}
-      remarkPlugins={[remarkGfm, remarkMath]}
+      remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
       rehypePlugins={[
         rehypeRaw,
         [rehypeHighlight, { detect: true, ignoreMissing: true }],

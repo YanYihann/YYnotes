@@ -4,6 +4,7 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import rehypeSlug from "rehype-slug";
+import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import type { WeekNote } from "@/lib/content";
@@ -383,7 +384,7 @@ export async function renderWeekContent(note: WeekNote) {
   return (
     <ReactMarkdown
       components={markdownComponents}
-      remarkPlugins={[remarkGfm, remarkMath]}
+    remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
       rehypePlugins={[
         rehypeRaw,
         [rehypeHighlight, { detect: true, ignoreMissing: true }],
