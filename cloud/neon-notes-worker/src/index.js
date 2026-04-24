@@ -1792,6 +1792,28 @@ function stripLeadingFrontmatter(content) {
   return normalized.slice(end + 5).trim();
 }
 
+function extractMarkdownFromAssistantResponse(content) {
+  const normalized = normalizeNewlines(String(content ?? "")).trim();
+  if (!normalized) {
+    return "";
+  }
+
+  const fencedMatch = normalized.match(/```(?:md|mdx|markdown)?\s*([\s\S]*?)\s*```/i);
+  if (fencedMatch && typeof fencedMatch[1] === "string" && fencedMatch[1].trim()) {
+    return fencedMatch[1].trim();
+  }
+
+  const frontmatterIndex = normalized.indexOf("---\n");
+  if (frontmatterIndex > 0) {
+    const possibleFrontmatter = normalized.slice(frontmatterIndex).trim();
+    if (possibleFrontmatter.startsWith("---\n")) {
+      return possibleFrontmatter;
+    }
+  }
+
+  return normalized;
+}
+
 function extractImportedDescription(markdown) {
   const lines = normalizeNewlines(String(markdown ?? ""))
     .split("\n")
@@ -2913,7 +2935,7 @@ export default {
 
         const title = String(body.title ?? "").trim().slice(0, 80);
         const topicInput = String(body.topic ?? "").trim().slice(0, 64);
-        const rawContent = normalizeNewlines(String(body.content ?? "")).trim();
+        const rawContent = extractMarkdownFromAssistantResponse(String(body.content ?? ""));
         const noteBody = stripLeadingFrontmatter(rawContent);
 
         if (!title) {

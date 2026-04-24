@@ -41,6 +41,28 @@ function normalizeEditableContent(value: unknown): string {
     .trim();
 }
 
+function extractMarkdownFromAssistantResponse(value: string): string {
+  const normalized = normalizeEditableContent(value);
+  if (!normalized) {
+    return "";
+  }
+
+  const fencedMatch = normalized.match(/```(?:md|mdx|markdown)?\s*([\s\S]*?)\s*```/i);
+  if (fencedMatch?.[1]?.trim()) {
+    return fencedMatch[1].trim();
+  }
+
+  const frontmatterIndex = normalized.indexOf("---\n");
+  if (frontmatterIndex > 0) {
+    const possibleFrontmatter = normalized.slice(frontmatterIndex).trim();
+    if (possibleFrontmatter.startsWith("---\n")) {
+      return possibleFrontmatter;
+    }
+  }
+
+  return normalized;
+}
+
 function slugifyTitle(input: string): string {
   const normalized = String(input ?? "")
     .trim()
@@ -148,7 +170,7 @@ async function createImportedNote(params: {
 }) {
   const normalizedTitle = normalizeEditableText(params.title, 80);
   const normalizedTopic = normalizeEditableText(params.topic, 64);
-  const normalizedContent = normalizeEditableContent(params.content);
+  const normalizedContent = extractMarkdownFromAssistantResponse(String(params.content ?? ""));
 
   if (!normalizedTitle) {
     throw new Error("Title is required.");
