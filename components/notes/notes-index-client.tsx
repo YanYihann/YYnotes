@@ -1030,7 +1030,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
   return (
     <>
-      <div className="sticky top-[calc(3rem+0.75rem)] z-30 mb-6 space-y-4">
+      <div className="mb-6 space-y-4">
         <section className="rounded-apple bg-card p-4 text-card-foreground shadow-card">
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -1056,7 +1056,10 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
             文件夹与筛选会固定在顶部导航下方；拖拽笔记卡片到文件夹可快速归类。
           </p>
 
-          <div className="mt-4 max-h-[42vh] overflow-y-auto pr-1">
+        </section>
+
+        <section className="sticky top-[calc(3rem+0.75rem)] z-30 rounded-apple bg-card p-4 text-card-foreground shadow-card">
+          <div className="max-h-[42vh] overflow-y-auto pr-1">
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <div
                 role="button"

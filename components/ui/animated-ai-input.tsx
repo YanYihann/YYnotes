@@ -181,14 +181,14 @@ export const ASSISTANT_MODEL_OPTIONS: AIModelOption[] = [
 
 export const NOTE_GENERATION_MODEL_OPTIONS: AIModelOption[] = [
   {
+    id: "gpt-4.1-mini",
+    label: "GPT-4.1 Mini",
+    description: "Default stable note generation",
+  },
+  {
     id: "qwen3.6-flash",
     label: "Qwen3.6 Flash",
     description: "Chinese-first long-context generation",
-  },
-  {
-    id: "gpt-4.1-mini",
-    label: "GPT-4.1 Mini",
-    description: "Strict MDX and instruction following",
   },
 ];
 

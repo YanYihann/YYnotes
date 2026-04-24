@@ -379,7 +379,7 @@ export function WeekNoteGenerator() {
   const [topic, setTopic] = useState("");
   const [tags, setTags] = useState("");
   const [extraInstruction, setExtraInstruction] = useState("");
-  const [selectedModel, setSelectedModel] = useState("qwen3.6-flash");
+  const [selectedModel, setSelectedModel] = useState("gpt-4.1-mini");
   const [generateInteractiveDemo, setGenerateInteractiveDemo] = useState(false);
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -514,7 +514,7 @@ export function WeekNoteGenerator() {
               contentClassName="font-text"
             />
             <p className="font-text text-[12px] leading-[1.4] text-muted-foreground">
-              Qwen3.6 Flash is selected for low-cost Chinese-first note generation; switch to GPT-4.1 Mini if stricter MDX formatting is needed.
+              GPT-4.1 Mini is selected by default for stable note generation; switch to Qwen3.6 Flash if you want a lower-cost Chinese-first option.
             </p>
           </div>
         </div>
