@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { summarizeCardDescription } from "@/lib/note-card-summary";
 import { cn } from "@/lib/utils";
 
 type WeekCardProps = {
@@ -42,6 +43,8 @@ export function WeekCard({
   const descClass = compact
     ? "font-text text-[13px] leading-[1.45] tracking-tightCaption text-muted-foreground"
     : "font-text text-[14px] leading-[1.45] tracking-tightCaption text-muted-foreground";
+  const conciseDescriptionZh = summarizeCardDescription(descriptionZh, "zh", zhTitle);
+  const conciseDescriptionEn = summarizeCardDescription(descriptionEn, "en", enTitle);
 
   return (
     <article
@@ -85,7 +88,7 @@ export function WeekCard({
         </h3>
         <p className={descClass}>
           <span className={compact ? "block overflow-hidden [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]" : "block"}>
-            {descriptionZh}
+            {conciseDescriptionZh}
           </span>
           <span
             className={cn(
@@ -93,7 +96,7 @@ export function WeekCard({
               compact && "overflow-hidden [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]",
             )}
           >
-            {descriptionEn}
+            {conciseDescriptionEn}
           </span>
         </p>
       </div>

@@ -493,7 +493,7 @@ export function normalizeCloudNote(note: CloudNoteRecord | null): NormalizedClou
     (rowTitle && rowTitleLang !== "en" ? rowTitle : undefined) ??
     (frontmatterTitle && frontmatterTitleLang === "zh" ? frontmatterTitle : undefined) ??
     topTitles.zhTitle ??
-    `\u7b14\u8bb0\uff1a${slugName}`;
+    slugName;
 
   const parsedDescriptions = extractBilingualDescription(source);
   const sectionZhDescription = sections.hasStructuredSections ? extractFirstParagraph(sections.zhBody) : undefined;

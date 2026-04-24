@@ -2,13 +2,15 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import matter from "gray-matter";
 import { NextResponse } from "next/server";
-import { getWeekBySlug } from "@/lib/content";
+import { getTrashedWeekBySlug, getTrashedWeekNotes, getWeekBySlug, getWeekNotes } from "@/lib/content";
 
 const NOTES_DIR_PATH = path.resolve(path.join(process.cwd(), "笔记"));
+const TRASH_DIR_PATH = path.resolve(path.join(process.cwd(), "笔记回收站"));
 
-function ensureInsideNotesDir(targetPath: string): boolean {
+function ensureInsideDir(targetPath: string, rootDir: string): boolean {
   const normalizedTarget = path.resolve(targetPath);
-  const prefix = NOTES_DIR_PATH.endsWith(path.sep) ? NOTES_DIR_PATH : `${NOTES_DIR_PATH}${path.sep}`;
+  const normalizedRoot = path.resolve(rootDir);
+  const prefix = normalizedRoot.endsWith(path.sep) ? normalizedRoot : `${normalizedRoot}${path.sep}`;
   return normalizedTarget.startsWith(prefix);
 }
 
@@ -16,6 +18,12 @@ function parseSlugFromRequest(request: Request): string {
   const url = new URL(request.url);
   const rawSlug = url.searchParams.get("slug") ?? "";
   return decodeURIComponent(String(rawSlug)).trim();
+}
+
+function parseBooleanFlag(request: Request, key: string): boolean {
+  const url = new URL(request.url);
+  const raw = String(url.searchParams.get(key) ?? "").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
 }
 
 function normalizeEditableText(value: unknown, maxLength: number): string {
@@ -32,6 +40,123 @@ function normalizeEditableContent(value: unknown): string {
     .trim();
 }
 
+function resolveUniqueSlug(baseSlug: string, takenSlugs: Iterable<string>): string {
+  const taken = new Set(Array.from(takenSlugs, (slug) => String(slug ?? "").trim()).filter(Boolean));
+  if (!taken.has(baseSlug)) {
+    return baseSlug;
+  }
+
+  let counter = 2;
+  while (taken.has(`${baseSlug}-${counter}`)) {
+    counter += 1;
+  }
+
+  return `${baseSlug}-${counter}`;
+}
+
+function buildNoteListPayload(
+  notes: Awaited<ReturnType<typeof getWeekNotes>>,
+  trashed: boolean,
+) {
+  return notes.map((note) => ({
+    slug: note.slug,
+    weekLabelZh: note.weekLabelZh,
+    weekLabelEn: note.weekLabelEn,
+    zhTitle: note.zhTitle,
+    enTitle: note.enTitle,
+    descriptionZh: note.descriptionZh,
+    descriptionEn: note.descriptionEn,
+    topicZh: note.topicZh,
+    order: note.order,
+    trashed,
+  }));
+}
+
+async function moveNoteBetweenDirs(params: {
+  slug: string;
+  fromTrash: boolean;
+  destinationDir: string;
+}) {
+  const note = params.fromTrash ? await getTrashedWeekBySlug(params.slug) : await getWeekBySlug(params.slug);
+  if (!note) {
+    return null;
+  }
+
+  const sourceRoot = params.fromTrash ? TRASH_DIR_PATH : NOTES_DIR_PATH;
+  if (!ensureInsideDir(note.filePath, sourceRoot)) {
+    throw new Error("Refusing to move file outside the expected note directory.");
+  }
+
+  const rawSource = await fs.readFile(note.filePath, "utf8");
+  const parsed = matter(rawSource);
+  const destinationNotes = params.destinationDir === TRASH_DIR_PATH ? await getTrashedWeekNotes() : await getWeekNotes();
+  const nextSlug = resolveUniqueSlug(
+    note.slug,
+    destinationNotes.map((item) => item.slug),
+  );
+
+  const frontmatter = { ...(parsed.data as Record<string, unknown>), slug: nextSlug };
+  const targetFilePath = path.join(params.destinationDir, `${nextSlug}.mdx`);
+  await fs.mkdir(params.destinationDir, { recursive: true });
+  await fs.writeFile(targetFilePath, matter.stringify(parsed.content, frontmatter), "utf8");
+  await fs.unlink(note.filePath);
+
+  return {
+    previousSlug: note.slug,
+    nextSlug,
+    fileName: path.basename(targetFilePath),
+  };
+}
+
+export async function GET(request: Request) {
+  try {
+    const includeTrash = parseBooleanFlag(request, "trash");
+    const notes = includeTrash ? await getTrashedWeekNotes() : await getWeekNotes();
+    return NextResponse.json({
+      success: true,
+      notes: buildNoteListPayload(notes, includeTrash),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Load failed.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const slug = parseSlugFromRequest(request);
+    const action = new URL(request.url).searchParams.get("action") ?? "";
+
+    if (!slug) {
+      return NextResponse.json({ error: "Missing slug." }, { status: 400 });
+    }
+
+    if (action !== "restore") {
+      return NextResponse.json({ error: "Unsupported action." }, { status: 400 });
+    }
+
+    const restored = await moveNoteBetweenDirs({
+      slug,
+      fromTrash: true,
+      destinationDir: NOTES_DIR_PATH,
+    });
+
+    if (!restored) {
+      return NextResponse.json({ error: "Note not found in trash." }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      slug: restored.nextSlug,
+      restoredFrom: restored.previousSlug,
+      fileName: restored.fileName,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Restore failed.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
 export async function PATCH(request: Request) {
   try {
     const slug = parseSlugFromRequest(request);
@@ -44,7 +169,7 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Note not found." }, { status: 404 });
     }
 
-    if (!ensureInsideNotesDir(note.filePath)) {
+    if (!ensureInsideDir(note.filePath, NOTES_DIR_PATH)) {
       return NextResponse.json({ error: "Refusing to update file outside notes directory." }, { status: 400 });
     }
 
@@ -110,26 +235,47 @@ export async function PATCH(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const slug = parseSlugFromRequest(request);
+    const permanent = parseBooleanFlag(request, "permanent");
 
     if (!slug) {
       return NextResponse.json({ error: "Missing slug." }, { status: 400 });
     }
 
-    const note = await getWeekBySlug(slug);
-    if (!note) {
+    if (permanent) {
+      const note = await getTrashedWeekBySlug(slug);
+      if (!note) {
+        return NextResponse.json({ error: "Note not found in trash." }, { status: 404 });
+      }
+
+      if (!ensureInsideDir(note.filePath, TRASH_DIR_PATH)) {
+        return NextResponse.json({ error: "Refusing to delete file outside trash directory." }, { status: 400 });
+      }
+
+      await fs.unlink(note.filePath);
+      return NextResponse.json({
+        success: true,
+        slug,
+        deletedFile: path.basename(note.filePath),
+        permanentlyDeleted: true,
+      });
+    }
+
+    const trashed = await moveNoteBetweenDirs({
+      slug,
+      fromTrash: false,
+      destinationDir: TRASH_DIR_PATH,
+    });
+
+    if (!trashed) {
       return NextResponse.json({ error: "Note not found." }, { status: 404 });
     }
 
-    if (!ensureInsideNotesDir(note.filePath)) {
-      return NextResponse.json({ error: "Refusing to delete file outside notes directory." }, { status: 400 });
-    }
-
-    await fs.unlink(note.filePath);
-
     return NextResponse.json({
       success: true,
-      slug,
-      deletedFile: path.basename(note.filePath),
+      slug: trashed.nextSlug,
+      trashedFrom: trashed.previousSlug,
+      deletedFile: trashed.fileName,
+      movedToTrash: true,
     });
   } catch (error) {
     if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT") {

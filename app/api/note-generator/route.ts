@@ -7,6 +7,7 @@ import { NextResponse } from "next/server";
 import { getWeekNotes } from "@/lib/content";
 import { splitBilingualNoteSections } from "@/lib/bilingual-note";
 import { extractResponseText } from "@/lib/ai/note-assistant";
+import { injectInteractiveDemosIntoNoteContent, selectInteractiveDemos } from "@/lib/interactive-demos";
 
 export const runtime = "nodejs";
 
@@ -46,6 +47,10 @@ type InferredMetadata = {
   title: string;
   topic: string;
   tags: string[];
+};
+
+type GenerateOptions = {
+  generateInteractiveDemo: boolean;
 };
 
 function toInputItem(role: AssistantRole, text: string): OpenAIInputItem {
@@ -329,6 +334,20 @@ function slugifyTitle(input: string): string {
 
   const stamp = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
   return `note-${stamp}`;
+}
+
+function resolveUniqueSlug(baseSlug: string, takenSlugs: Iterable<string>): string {
+  const taken = new Set(Array.from(takenSlugs, (slug) => String(slug ?? "").trim()).filter(Boolean));
+  if (!taken.has(baseSlug)) {
+    return baseSlug;
+  }
+
+  let counter = 2;
+  while (taken.has(`${baseSlug}-${counter}`)) {
+    counter += 1;
+  }
+
+  return `${baseSlug}-${counter}`;
 }
 
 function parseTagsInput(raw: string): string[] {
@@ -761,8 +780,12 @@ function buildUserPrompt(args: {
   extractedSource: string;
   styleContext: string;
   extraInstruction?: string;
+  options?: GenerateOptions;
 }): string {
   const extra = args.extraInstruction ? clampText(args.extraInstruction, MAX_EXTRA_INSTRUCTION_CHARS) : "";
+  const demoInstruction = args.options?.generateInteractiveDemo
+    ? "需要为笔记卡片准备简洁摘要，并允许后处理阶段自动插入可交互 demo。正文中的概念表达请尽量明确、可定位。"
+    : "需要为笔记卡片准备简洁摘要。";
 
   return [
     "请基于以下材料生成最终笔记，严格执行系统提示词中的全部规范。",
@@ -776,6 +799,8 @@ function buildUserPrompt(args: {
     "",
     "原始笔记材料：",
     args.extractedSource,
+    "",
+    `补充生成要求：${demoInstruction}`,
     "",
     extra ? `补充要求：\n${extra}\n` : "",
     "请直接输出最终 MDX 内容。",
@@ -794,12 +819,12 @@ function buildFrontmatter(args: {
   const descriptionEn =
     extractFrontmatterText(args.data, "descriptionEn") ??
     extractFrontmatterText(args.data, "description") ??
-    `Bilingual study notes on ${args.title}.`;
+    `A concise study note on ${args.topicEn || args.title}.`;
 
   const descriptionZh =
     extractFrontmatterText(args.data, "descriptionZh") ??
     extractFrontmatterText(args.data, "description") ??
-    `关于“${args.title}”的双语学习笔记。`;
+    `概括 ${args.topicZh || args.title} 核心内容的学习笔记。`;
 
   const description = extractFrontmatterText(args.data, "description") ?? descriptionEn;
 
@@ -855,6 +880,8 @@ function normalizeGeneratedMdx(raw: string, args: {
   topicZh: string;
   topicEn: string;
   tags: string[];
+  sourceText: string;
+  options?: GenerateOptions;
 }): string {
   const cleaned = normalizeNewlines(stripCodeFence(raw));
   const parsed = matter(cleaned);
@@ -869,7 +896,7 @@ function normalizeGeneratedMdx(raw: string, args: {
     throw new Error('AI 输出不符合新模板：必须包含“## 中文版笔记”与“## English Version”两个完整分段。');
   }
 
-  const canonicalContent = [
+  let canonicalContent = [
     "## 中文版笔记",
     "",
     sections.zhBody.trim(),
@@ -884,20 +911,23 @@ function normalizeGeneratedMdx(raw: string, args: {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
+  if (args.options?.generateInteractiveDemo) {
+    const demos = selectInteractiveDemos({
+      title: args.title,
+      topic: args.topic,
+      tags: args.tags,
+      sourceText: args.sourceText,
+      generatedContent: canonicalContent,
+    });
+    canonicalContent = injectInteractiveDemosIntoNoteContent(canonicalContent, demos);
+  }
+
   const frontmatter = buildFrontmatter({
     ...args,
     data: parsed.data as Record<string, unknown>,
   });
 
   return `${matter.stringify(`${canonicalContent}\n`, frontmatter).trimEnd()}\n`;
-}
-
-function asBoolean(value: FormDataEntryValue | null): boolean {
-  if (typeof value !== "string") {
-    return false;
-  }
-  const normalized = value.trim().toLowerCase();
-  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
 export async function POST(request: Request) {
@@ -916,9 +946,9 @@ export async function POST(request: Request) {
     const fileNameInput = String(formData.get("fileName") ?? "").trim();
     const sourceFile = sourceFileEntry instanceof File ? sourceFileEntry : null;
 
-    const overwrite = asBoolean(formData.get("overwrite"));
     const extraInstruction = String(formData.get("extraInstruction") ?? "");
     const modelName = resolveModelName(String(formData.get("model") ?? ""));
+    const generateInteractiveDemo = String(formData.get("generateInteractiveDemo") ?? "").trim() === "true";
 
     let extractedSource = "";
     let resolvedFileName = fileNameInput;
@@ -950,30 +980,14 @@ export async function POST(request: Request) {
     });
 
     const title = resolvedMeta.title;
-    const slug = slugifyTitle(title);
+    const existingNotes = await getWeekNotes();
+    const slug = resolveUniqueSlug(
+      slugifyTitle(title),
+      existingNotes.map((note) => note.slug),
+    );
     const tags = resolvedMeta.tags;
     const topicParts = splitTopic(resolvedMeta.topic, title);
-
-    const existingNotes = await getWeekNotes();
-    const existedBySlug = existingNotes.find((note) => note.slug === slug) ?? null;
-    const targetFilePath = existedBySlug?.filePath ?? path.join(NOTES_DIR_PATH, `${slug}.mdx`);
-
-    let fileExists = false;
-    try {
-      await fs.access(targetFilePath);
-      fileExists = true;
-    } catch {
-      fileExists = false;
-    }
-
-    if (fileExists && !overwrite) {
-      return NextResponse.json(
-        {
-          error: `slug 为 ${slug} 的笔记已存在。若要覆盖，请勾选“允许覆盖”。`,
-        },
-        { status: 409 },
-      );
-    }
+    const targetFilePath = path.join(NOTES_DIR_PATH, `${slug}.mdx`);
 
     const promptTemplate = await loadPromptTemplate();
     const styleContext = buildStyleContext(existingNotes);
@@ -989,6 +1003,9 @@ export async function POST(request: Request) {
           extractedSource,
           styleContext,
           extraInstruction,
+          options: {
+            generateInteractiveDemo,
+          },
         }),
       ),
     ];
@@ -1029,6 +1046,10 @@ export async function POST(request: Request) {
       topicZh: topicParts.topicZh,
       topicEn: topicParts.topicEn,
       tags,
+      sourceText: extractedSource,
+      options: {
+        generateInteractiveDemo,
+      },
     });
 
     await fs.mkdir(NOTES_DIR_PATH, { recursive: true });
@@ -1041,7 +1062,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       slug,
-      replaced: fileExists,
+      replaced: false,
       note: created
         ? {
             slug: created.slug,

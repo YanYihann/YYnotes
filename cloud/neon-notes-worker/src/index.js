@@ -391,6 +391,205 @@ function slugifyTitle(input) {
   return `note-${Date.now()}`;
 }
 
+function resolveUniqueSlug(baseSlug, takenSlugs) {
+  const taken = new Set(
+    Array.from(takenSlugs || [], (slug) => String(slug ?? "").trim()).filter(Boolean),
+  );
+  if (!taken.has(baseSlug)) {
+    return baseSlug;
+  }
+
+  let counter = 2;
+  while (taken.has(`${baseSlug}-${counter}`)) {
+    counter += 1;
+  }
+
+  return `${baseSlug}-${counter}`;
+}
+
+const INTERACTIVE_DEMO_REGISTRY = [
+  {
+    key: "differentiation",
+    anchorId: "interactive-demo-differentiation",
+    href: "/demos/numerical-differentiation",
+    titleZh: "数值微分参数探索",
+    titleEn: "Numerical Differentiation Explorer",
+    descriptionZh: "调整函数、评估点和步长，观察有限差分如何影响导数估计。",
+    descriptionEn: "Adjust the function, evaluation point, and step size to see how finite differences affect derivative estimates.",
+    keywords: ["数值微分", "三点差分", "差分公式", "导数估计", "finite difference", "numerical differentiation", "three-point"],
+  },
+  {
+    key: "integration",
+    anchorId: "interactive-demo-integration",
+    href: "/demos/numerical-integration",
+    titleZh: "数值积分方法演示",
+    titleEn: "Numerical Integration Explorer",
+    descriptionZh: "切换积分方法并修改区间与分割数，观察近似面积与误差变化。",
+    descriptionEn: "Switch methods and change the interval or partition count to compare approximate area and error.",
+    keywords: ["数值积分", "梯形公式", "辛普森", "积分近似", "trapezoidal", "simpson", "numerical integration"],
+  },
+  {
+    key: "integration-comparison",
+    anchorId: "interactive-demo-integration-comparison",
+    href: "/demos/integration-comparison",
+    titleZh: "积分方法误差比较",
+    titleEn: "Integration Error Comparison",
+    descriptionZh: "并排比较不同积分方法在误差和收敛趋势上的差异。",
+    descriptionEn: "Compare multiple integration methods side by side and inspect their error trends.",
+    keywords: ["方法比较", "误差比较", "收敛趋势", "compare integration", "error trend", "comparison"],
+  },
+  {
+    key: "romberg",
+    anchorId: "interactive-demo-romberg",
+    href: "/demos/romberg",
+    titleZh: "Romberg 外推演示",
+    titleEn: "Romberg Extrapolation Demo",
+    descriptionZh: "观察网格加密与 Richardson 外推如何逐步提升积分精度。",
+    descriptionEn: "See how grid refinement and Richardson extrapolation progressively improve integration accuracy.",
+    keywords: ["romberg", "理查森外推", "romberg integration", "richardson extrapolation", "龙贝格"],
+  },
+];
+
+function normalizeDemoText(value) {
+  return String(value ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function escapeRegExp(value) {
+  return String(value ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function buildDemoJumpLabel(demo, language) {
+  return language === "zh"
+    ? `查看交互 Demo：${demo.titleZh}`
+    : `Jump to interactive demo: ${demo.titleEn}`;
+}
+
+function buildDemoOpenLabel(language) {
+  return language === "zh" ? "打开演示页面" : "Open the demo page";
+}
+
+function findDemoHeadingIndex(lines, demo) {
+  const keywords = demo.keywords.map((item) => normalizeDemoText(item));
+  for (let index = 0; index < lines.length; index += 1) {
+    const trimmed = lines[index].trim();
+    if (!/^#{3,4}\s+/.test(trimmed)) {
+      continue;
+    }
+
+    const headingText = normalizeDemoText(trimmed.replace(/^#{3,4}\s+/, ""));
+    if (keywords.some((keyword) => headingText.includes(keyword))) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function insertDemoJumpLinks(body, demos, language) {
+  const lines = String(body ?? "").split("\n");
+  let offset = 0;
+
+  for (const demo of demos) {
+    const headingIndex = findDemoHeadingIndex(lines, demo);
+    if (headingIndex < 0) {
+      continue;
+    }
+
+    const insertionIndex = headingIndex + 1 + offset;
+    const linkLine = `> [${buildDemoJumpLabel(demo, language)}](#${demo.anchorId})`;
+    if (String(lines[insertionIndex] ?? "").includes(`#${demo.anchorId}`)) {
+      continue;
+    }
+
+    lines.splice(insertionIndex, 0, "", linkLine, "");
+    offset += 3;
+  }
+
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function buildDemoSection(demos, language) {
+  const heading = language === "zh" ? "### 交互 Demo" : "### Interactive Demos";
+  const blocks = demos.map((demo) =>
+    [
+      `<div id="${demo.anchorId}"></div>`,
+      `#### ${language === "zh" ? demo.titleZh : demo.titleEn}`,
+      "",
+      `- [${buildDemoOpenLabel(language)}](${demo.href})`,
+      `- ${language === "zh" ? demo.descriptionZh : demo.descriptionEn}`,
+    ].join("\n"),
+  );
+
+  return [heading, "---", ...blocks].join("\n\n").trim();
+}
+
+function insertDemoSectionBeforeSummary(body, demos, language) {
+  if (!demos.length) {
+    return body;
+  }
+
+  const summaryHeading = language === "zh" ? /^###\s+小结\s*$/m : /^###\s+Summary\s*$/m;
+  const section = buildDemoSection(demos, language);
+  const match = String(body ?? "").match(summaryHeading);
+  if (!match || match.index === undefined) {
+    return `${String(body ?? "").trim()}\n\n${section}`.trim();
+  }
+
+  const source = String(body ?? "");
+  return `${source.slice(0, match.index).trimEnd()}\n\n${section}\n\n${source.slice(match.index).trimStart()}`.trim();
+}
+
+function selectInteractiveDemos({ title, topic, tags, sourceText, generatedContent, limit = 3 }) {
+  const safeLimit = Math.max(0, Math.min(limit, INTERACTIVE_DEMO_REGISTRY.length));
+  if (safeLimit === 0) {
+    return [];
+  }
+
+  const haystack = normalizeDemoText([title, topic, Array.isArray(tags) ? tags.join(" ") : "", sourceText, generatedContent].join("\n"));
+  return INTERACTIVE_DEMO_REGISTRY.map((demo) => {
+    const score = demo.keywords.reduce((total, keyword) => {
+      const matches = haystack.match(new RegExp(escapeRegExp(normalizeDemoText(keyword)), "g"));
+      return total + (matches?.length ?? 0);
+    }, 0);
+    return { demo, score };
+  })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || a.demo.key.localeCompare(b.demo.key))
+    .slice(0, safeLimit)
+    .map((item) => item.demo);
+}
+
+function injectInteractiveDemosIntoNoteContent(source, demos) {
+  if (!demos.length) {
+    return source;
+  }
+
+  const sections = splitBilingualNoteSections(source);
+  if (!sections.hasStructuredSections) {
+    return source;
+  }
+
+  const zhWithLinks = insertDemoJumpLinks(sections.zhBody, demos, "zh");
+  const enWithLinks = insertDemoJumpLinks(sections.enBody, demos, "en");
+  const zhFinal = insertDemoSectionBeforeSummary(zhWithLinks, demos, "zh");
+  const enFinal = insertDemoSectionBeforeSummary(enWithLinks, demos, "en");
+
+  return [
+    "## 中文版笔记",
+    "",
+    zhFinal.trim(),
+    "",
+    "---",
+    "",
+    "## English Version",
+    "",
+    enFinal.trim(),
+  ]
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function fileExtension(name) {
   const normalized = String(name ?? "");
   const index = normalized.lastIndexOf(".");
@@ -1022,6 +1221,41 @@ async function resolveGenerationMetadata({ env, titleInput, topicInput, tagsInpu
   };
 }
 
+function extractFrontmatterTextFromRaw(raw, key) {
+  const pattern = new RegExp(`^${key}:\\s*(.+)$`, "im");
+  const match = String(raw ?? "").match(pattern);
+  return typeof match?.[1] === "string" ? match[1].trim().replace(/^['"]|['"]$/g, "") : undefined;
+}
+
+function buildGeneratedFrontmatter({ title, slug, topic, topicZh, topicEn, tags, raw }) {
+  const descriptionEn =
+    extractFrontmatterTextFromRaw(raw, "descriptionEn") ??
+    extractFrontmatterTextFromRaw(raw, "description") ??
+    `A concise study note on ${topicEn || title}.`;
+
+  const descriptionZh =
+    extractFrontmatterTextFromRaw(raw, "descriptionZh") ??
+    extractFrontmatterTextFromRaw(raw, "description") ??
+    `概括 ${topicZh || title} 核心内容的学习笔记。`;
+
+  const description = extractFrontmatterTextFromRaw(raw, "description") ?? descriptionEn;
+
+  return [
+    "---",
+    `title: ${JSON.stringify(title)}`,
+    `description: ${JSON.stringify(description)}`,
+    `descriptionZh: ${JSON.stringify(descriptionZh)}`,
+    `descriptionEn: ${JSON.stringify(descriptionEn)}`,
+    `slug: ${JSON.stringify(slug)}`,
+    `topic: ${JSON.stringify(topic)}`,
+    `topicZh: ${JSON.stringify(topicZh)}`,
+    `topicEn: ${JSON.stringify(topicEn)}`,
+    ...(tags.length ? ["tags:", ...tags.map((tag) => `  - ${JSON.stringify(tag)}`)] : ["tags: []"]),
+    `order: ${Date.now()}`,
+    "---",
+  ].join("\n");
+}
+
 function splitTopic(topicInput, title) {
   const normalized = String(topicInput ?? "").trim();
   if (!normalized) {
@@ -1054,8 +1288,11 @@ function buildSystemPrompt(promptTemplate) {
   ].join("\n");
 }
 
-function buildUserPrompt({ title, topic, tags, sourceText, extraInstruction }) {
+function buildUserPrompt({ title, topic, tags, sourceText, extraInstruction, generateInteractiveDemo }) {
   const tagsLine = tags.length ? tags.join("、") : "未指定";
+  const demoInstruction = generateInteractiveDemo
+    ? "需要为笔记卡片准备简洁摘要，并允许后处理阶段自动插入可交互 demo。正文中的概念表达请尽量明确、可定位。"
+    : "需要为笔记卡片准备简洁摘要。";
 
   return [
     "请基于以下材料生成最终笔记，严格执行系统提示词中的全部规范。",
@@ -1066,6 +1303,8 @@ function buildUserPrompt({ title, topic, tags, sourceText, extraInstruction }) {
     "",
     "原始笔记材料：",
     sourceText,
+    "",
+    `补充生成要求：${demoInstruction}`,
     "",
     extraInstruction ? `补充要求：\n${extraInstruction}\n` : "",
     "请直接输出最终 MDX 内容。",
@@ -1342,13 +1581,13 @@ async function generateAssistantAnswer(env, payload) {
   return chatText;
 }
 
-async function generateMdx({ env, title, topic, tags, sourceText, extraInstruction, promptTemplate, modelName }) {
+async function generateMdx({ env, title, topic, tags, sourceText, extraInstruction, promptTemplate, modelName, generateInteractiveDemo }) {
   const openaiBaseUrl = normalizeApiBase(env.OPENAI_BASE_URL);
   const responsesEndpoint = `${openaiBaseUrl}/responses`;
   const chatCompletionsEndpoint = `${openaiBaseUrl}/chat/completions`;
   const resolvedModelName = modelName || resolveModelName(env, "", ALLOWED_NOTE_GENERATION_MODELS);
   const systemPrompt = buildSystemPrompt(promptTemplate);
-  const userPrompt = buildUserPrompt({ title, topic, tags, sourceText, extraInstruction });
+  const userPrompt = buildUserPrompt({ title, topic, tags, sourceText, extraInstruction, generateInteractiveDemo });
 
   const response = await fetch(responsesEndpoint, {
     method: "POST",
@@ -1419,8 +1658,34 @@ async function generateMdx({ env, title, topic, tags, sourceText, extraInstructi
   return chatText;
 }
 
-function normalizeGeneratedMdx(raw) {
-  return normalizeMathDelimiters(normalizeNewlines(stripCodeFence(raw))).trim();
+function normalizeGeneratedMdx(raw, { title, slug, topic, topicZh, topicEn, tags, sourceText, generateInteractiveDemo }) {
+  let content = normalizeMathDelimiters(normalizeNewlines(stripCodeFence(raw))).trim();
+  if (!content) {
+    return "";
+  }
+
+  if (generateInteractiveDemo) {
+    const demos = selectInteractiveDemos({
+      title,
+      topic,
+      tags,
+      sourceText,
+      generatedContent: content,
+    });
+    content = injectInteractiveDemosIntoNoteContent(content, demos);
+  }
+
+  const frontmatter = buildGeneratedFrontmatter({
+    title,
+    slug,
+    topic,
+    topicZh,
+    topicEn,
+    tags,
+    raw,
+  });
+
+  return `${frontmatter}\n${content}`.trim();
 }
 
 function isDuplicateConstraintError(error, constraintName) {
@@ -1457,6 +1722,7 @@ async function ensureSchema(sql) {
       tags JSONB NOT NULL DEFAULT '[]'::jsonb,
       mdx_content TEXT NOT NULL,
       source_text TEXT NOT NULL,
+      deleted_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE (user_id, slug)
@@ -1477,6 +1743,7 @@ async function ensureSchema(sql) {
 
   await sql`ALTER TABLE notes ADD COLUMN IF NOT EXISTS user_id BIGINT`;
   await sql`ALTER TABLE notes ADD COLUMN IF NOT EXISTS folder_id BIGINT`;
+  await sql`ALTER TABLE notes ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`;
   await sql`ALTER TABLE notes DROP CONSTRAINT IF EXISTS notes_slug_key`;
   try {
     await sql`
@@ -1518,7 +1785,7 @@ async function parseGeneratePayload(request) {
       extraInstruction: clampText(String(formData.get("extraInstruction") || ""), MAX_EXTRA_INSTRUCTION_CHARS),
       promptTemplate: String(formData.get("promptTemplate") || "").trim(),
       model: String(formData.get("model") || "").trim(),
-      overwrite: asBoolean(formData.get("overwrite")),
+      generateInteractiveDemo: asBoolean(formData.get("generateInteractiveDemo")),
     };
   }
 
@@ -1536,7 +1803,7 @@ async function parseGeneratePayload(request) {
     extraInstruction: clampText(String(body.extraInstruction || ""), MAX_EXTRA_INSTRUCTION_CHARS),
     promptTemplate: String(body.promptTemplate || "").trim(),
     model: String(body.model || "").trim(),
-    overwrite: Boolean(body.overwrite),
+    generateInteractiveDemo: Boolean(body.generateInteractiveDemo),
   };
 }
 
@@ -2021,21 +2288,38 @@ export default {
         const rawLimit = Number(url.searchParams.get("limit") || 20);
         const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(Math.floor(rawLimit), 300)) : 20;
         const includeContent = asBoolean(url.searchParams.get("include_content"));
+        const includeTrash = asBoolean(url.searchParams.get("trash"));
         const rows = includeContent
-          ? await sql`
-              SELECT slug, title, topic, topic_zh, topic_en, tags, folder_id, mdx_content, created_at, updated_at
-              FROM notes
-              WHERE user_id = ${userId}
-              ORDER BY updated_at DESC
-              LIMIT ${limit}
-            `
-          : await sql`
-              SELECT slug, title, topic, topic_zh, topic_en, tags, folder_id, created_at, updated_at
-              FROM notes
-              WHERE user_id = ${userId}
-              ORDER BY updated_at DESC
-              LIMIT ${limit}
-            `;
+          ? includeTrash
+            ? await sql`
+                SELECT slug, title, topic, topic_zh, topic_en, tags, folder_id, mdx_content, deleted_at, created_at, updated_at
+                FROM notes
+                WHERE user_id = ${userId} AND deleted_at IS NOT NULL
+                ORDER BY updated_at DESC
+                LIMIT ${limit}
+              `
+            : await sql`
+                SELECT slug, title, topic, topic_zh, topic_en, tags, folder_id, mdx_content, deleted_at, created_at, updated_at
+                FROM notes
+                WHERE user_id = ${userId} AND deleted_at IS NULL
+                ORDER BY updated_at DESC
+                LIMIT ${limit}
+              `
+          : includeTrash
+            ? await sql`
+                SELECT slug, title, topic, topic_zh, topic_en, tags, folder_id, deleted_at, created_at, updated_at
+                FROM notes
+                WHERE user_id = ${userId} AND deleted_at IS NOT NULL
+                ORDER BY updated_at DESC
+                LIMIT ${limit}
+              `
+            : await sql`
+                SELECT slug, title, topic, topic_zh, topic_en, tags, folder_id, deleted_at, created_at, updated_at
+                FROM notes
+                WHERE user_id = ${userId} AND deleted_at IS NULL
+                ORDER BY updated_at DESC
+                LIMIT ${limit}
+              `;
 
         return jsonResponse({ success: true, notes: rows }, 200, corsOrigin);
       }
@@ -2048,9 +2332,9 @@ export default {
         }
 
         const rows = await sql`
-          SELECT slug, title, topic, topic_zh, topic_en, tags, folder_id, mdx_content, created_at, updated_at
+          SELECT slug, title, topic, topic_zh, topic_en, tags, folder_id, mdx_content, deleted_at, created_at, updated_at
           FROM notes
-          WHERE user_id = ${userId} AND slug = ${slug}
+          WHERE user_id = ${userId} AND slug = ${slug} AND deleted_at IS NULL
           LIMIT 1
         `;
 
@@ -2076,7 +2360,7 @@ export default {
         const rows = await sql`
           SELECT slug, title, topic, topic_zh, topic_en, tags, folder_id, mdx_content
           FROM notes
-          WHERE user_id = ${userId} AND slug = ${slug}
+          WHERE user_id = ${userId} AND slug = ${slug} AND deleted_at IS NULL
           LIMIT 1
         `;
 
@@ -2169,21 +2453,81 @@ export default {
       if (request.method === "DELETE" && url.pathname.startsWith("/notes/")) {
         const userId = Number(authenticatedUser?.id);
         const slug = decodeURIComponent(url.pathname.replace("/notes/", "")).trim();
+        const permanent = asBoolean(url.searchParams.get("permanent"));
         if (!slug) {
           return jsonResponse({ error: "Slug is required." }, 400, corsOrigin);
         }
 
-        const deleted = await sql`
-          DELETE FROM notes
-          WHERE user_id = ${userId} AND slug = ${slug}
-          RETURNING slug
-        `;
+        const deleted = permanent
+          ? await sql`
+              DELETE FROM notes
+              WHERE user_id = ${userId} AND slug = ${slug} AND deleted_at IS NOT NULL
+              RETURNING slug
+            `
+          : await sql`
+              UPDATE notes
+              SET deleted_at = NOW(), updated_at = NOW()
+              WHERE user_id = ${userId} AND slug = ${slug} AND deleted_at IS NULL
+              RETURNING slug
+            `;
 
         if (!deleted.length) {
-          return jsonResponse({ error: "Note not found." }, 404, corsOrigin);
+          return jsonResponse({ error: permanent ? "Note not found in trash." : "Note not found." }, 404, corsOrigin);
         }
 
-        return jsonResponse({ success: true, slug }, 200, corsOrigin);
+        if (permanent) {
+          await sql`
+            DELETE FROM note_highlights
+            WHERE user_id = ${userId} AND note_slug = ${slug}
+          `;
+        }
+
+        return jsonResponse({ success: true, slug, movedToTrash: !permanent, permanentlyDeleted: permanent }, 200, corsOrigin);
+      }
+
+      const noteRestoreMatch = url.pathname.match(/^\/notes\/([^/]+)\/restore$/);
+      if (request.method === "POST" && noteRestoreMatch) {
+        const userId = Number(authenticatedUser?.id);
+        const slug = decodeURIComponent(noteRestoreMatch[1] ?? "").trim();
+        if (!slug) {
+          return jsonResponse({ error: "Slug is required." }, 400, corsOrigin);
+        }
+
+        const rows = await sql`
+          SELECT slug, title
+          FROM notes
+          WHERE user_id = ${userId} AND slug = ${slug} AND deleted_at IS NOT NULL
+          LIMIT 1
+        `;
+        if (!rows.length) {
+          return jsonResponse({ error: "Note not found in trash." }, 404, corsOrigin);
+        }
+
+        const baseSlug = String(rows[0].slug ?? "").trim();
+        const matchingSlugs = await sql`
+          SELECT slug
+          FROM notes
+          WHERE user_id = ${userId}
+            AND slug <> ${slug}
+            AND (slug = ${baseSlug} OR slug LIKE ${`${baseSlug}-%`})
+        `;
+        const restoredSlug = resolveUniqueSlug(baseSlug, matchingSlugs.map((row) => row.slug));
+
+        await sql`
+          UPDATE notes
+          SET slug = ${restoredSlug}, deleted_at = NULL, updated_at = NOW()
+          WHERE user_id = ${userId} AND slug = ${slug} AND deleted_at IS NOT NULL
+        `;
+
+        if (restoredSlug !== slug) {
+          await sql`
+            UPDATE note_highlights
+            SET note_slug = ${restoredSlug}
+            WHERE user_id = ${userId} AND note_slug = ${slug}
+          `;
+        }
+
+        return jsonResponse({ success: true, slug: restoredSlug, restoredFrom: slug }, 200, corsOrigin);
       }
 
       if (request.method === "POST" && url.pathname === "/notes/generate") {
@@ -2200,7 +2544,7 @@ export default {
           return jsonResponse({ error: message }, 400, corsOrigin);
         }
 
-        const { title: titleInput, topicInput, tags: tagsInput, sourceText, fileName, extraInstruction, promptTemplate, overwrite } = payload;
+        const { title: titleInput, topicInput, tags: tagsInput, sourceText, fileName, extraInstruction, promptTemplate, generateInteractiveDemo } = payload;
         const modelName = resolveModelName(env, payload.model, ALLOWED_NOTE_GENERATION_MODELS);
 
         if (!sourceText) {
@@ -2223,18 +2567,16 @@ export default {
 
         const title = resolvedMeta.title;
         const tags = resolvedMeta.tags;
-        const slug = slugifyTitle(title);
+        const baseSlug = slugifyTitle(title);
         const topicParts = splitTopic(resolvedMeta.topic, title);
 
-        const existing = await sql`
+        const matchingSlugs = await sql`
           SELECT slug
           FROM notes
-          WHERE user_id = ${userId} AND slug = ${slug}
-          LIMIT 1
+          WHERE user_id = ${userId}
+            AND (slug = ${baseSlug} OR slug LIKE ${`${baseSlug}-%`})
         `;
-        if (existing.length && !overwrite) {
-          return jsonResponse({ error: `slug ${slug} already exists.` }, 409, corsOrigin);
-        }
+        const slug = resolveUniqueSlug(baseSlug, matchingSlugs.map((row) => row.slug));
 
         const mdxContentRaw = await generateMdx({
           env,
@@ -2245,8 +2587,18 @@ export default {
           extraInstruction,
           promptTemplate,
           modelName,
+          generateInteractiveDemo,
         });
-        const mdxContent = normalizeGeneratedMdx(mdxContentRaw);
+        const mdxContent = normalizeGeneratedMdx(mdxContentRaw, {
+          title,
+          slug,
+          topic: topicParts.topic,
+          topicZh: topicParts.topicZh,
+          topicEn: topicParts.topicEn,
+          tags,
+          sourceText,
+          generateInteractiveDemo,
+        });
 
         if (!mdxContent) {
           return jsonResponse({ error: "AI returned empty content." }, 502, corsOrigin);
@@ -2266,16 +2618,6 @@ export default {
             ${sourceText},
             NOW()
           )
-          ON CONFLICT (user_id, slug)
-          DO UPDATE SET
-            title = EXCLUDED.title,
-            topic = EXCLUDED.topic,
-            topic_zh = EXCLUDED.topic_zh,
-            topic_en = EXCLUDED.topic_en,
-            tags = EXCLUDED.tags,
-            mdx_content = EXCLUDED.mdx_content,
-            source_text = EXCLUDED.source_text,
-            updated_at = NOW()
         `;
 
         const preview = mdxContent.split(/\r?\n/).slice(0, 28).join("\n");
@@ -2284,7 +2626,7 @@ export default {
           {
             success: true,
             slug,
-            replaced: existing.length > 0,
+            replaced: false,
             fileName: `${slug}.mdx`,
             preview,
             note: {
@@ -2293,8 +2635,8 @@ export default {
               weekLabelEn: topicParts.topicEn,
               zhTitle: title,
               enTitle: title,
-              descriptionZh: `关于“${title}”的双语学习笔记。`,
-              descriptionEn: `Bilingual study note on ${title}.`,
+              descriptionZh: extractFrontmatterTextFromRaw(mdxContent, "descriptionZh") ?? `概括 ${topicParts.topicZh || title} 核心内容的学习笔记。`,
+              descriptionEn: extractFrontmatterTextFromRaw(mdxContent, "descriptionEn") ?? `A concise study note on ${topicParts.topicEn || title}.`,
               tags,
             },
           },

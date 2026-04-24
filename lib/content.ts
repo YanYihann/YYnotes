@@ -50,6 +50,7 @@ type Frontmatter = {
 const WEEK_FILE_PATTERN = /^week(\d+)\.mdx$/i;
 const NOTE_FILE_PATTERN = /\.mdx$/i;
 const CONTENT_DIRS = ["\u7B14\u8BB0"];
+const TRASH_CONTENT_DIRS = ["\u7B14\u8BB0\u56DE\u6536\u7AD9"];
 const DEFAULT_DESCRIPTION_EN = "Bilingual study notes.";
 const DEFAULT_DESCRIPTION_ZH = "\u53CC\u8BED\u5B66\u4E60\u7B14\u8BB0\u3002";
 
@@ -364,11 +365,11 @@ function parseFrontmatterTags(value: Frontmatter["tags"]): string[] {
   return Array.from(deduped);
 }
 
-async function findNoteFiles(): Promise<string[]> {
+async function findNoteFiles(relativeDirs: string[] = CONTENT_DIRS): Promise<string[]> {
   const root = process.cwd();
   const found = new Set<string>();
 
-  for (const relativeDir of CONTENT_DIRS) {
+  for (const relativeDir of relativeDirs) {
     const absoluteDir = path.join(root, relativeDir);
 
     try {
@@ -386,6 +387,15 @@ async function findNoteFiles(): Promise<string[]> {
   }
 
   return Array.from(found);
+}
+
+async function readNotesFromDirs(relativeDirs: string[]): Promise<WeekNote[]> {
+  const files = await findNoteFiles(relativeDirs);
+  const notes = await Promise.all(files.map((filePath) => readNoteFromFile(filePath)));
+
+  return notes
+    .filter((note): note is WeekNote => note !== null)
+    .sort((a, b) => a.order - b.order || a.slug.localeCompare(b.slug));
 }
 
 async function readNoteFromFile(filePath: string): Promise<WeekNote | null> {
@@ -502,16 +512,20 @@ async function readNoteFromFile(filePath: string): Promise<WeekNote | null> {
 }
 
 export async function getWeekNotes(): Promise<WeekNote[]> {
-  const files = await findNoteFiles();
-  const notes = await Promise.all(files.map((filePath) => readNoteFromFile(filePath)));
+  return readNotesFromDirs(CONTENT_DIRS);
+}
 
-  return notes
-    .filter((note): note is WeekNote => note !== null)
-    .sort((a, b) => a.order - b.order || a.slug.localeCompare(b.slug));
+export async function getTrashedWeekNotes(): Promise<WeekNote[]> {
+  return readNotesFromDirs(TRASH_CONTENT_DIRS);
 }
 
 export async function getWeekBySlug(slug: string): Promise<WeekNote | null> {
   const notes = await getWeekNotes();
+  return notes.find((note) => note.slug === slug) ?? null;
+}
+
+export async function getTrashedWeekBySlug(slug: string): Promise<WeekNote | null> {
+  const notes = await getTrashedWeekNotes();
   return notes.find((note) => note.slug === slug) ?? null;
 }
 

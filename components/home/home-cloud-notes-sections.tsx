@@ -184,7 +184,7 @@ export function HomeCloudNotesSections() {
             </div>
           </div>
 
-          <WeekNoteGenerator existingNotes={notes.map((note) => ({ slug: note.slug }))} />
+          <WeekNoteGenerator />
 
           {loading ? (
             <p className="mb-4 font-text text-[14px] text-primary">正在加载云端笔记...</p>

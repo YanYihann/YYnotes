@@ -21,7 +21,6 @@ type GeneratedNote = {
 type GenerationResult = {
   success: boolean;
   slug: string;
-  replaced: boolean;
   note: GeneratedNote | null;
   fileName: string;
   preview: string;
@@ -240,6 +239,7 @@ async function callLocalGenerator(params: {
   source: GenerationSourcePayload;
   extraInstruction: string;
   model: string;
+  generateInteractiveDemo: boolean;
 }): Promise<GenerationResult> {
   const body = new FormData();
   body.append("title", params.title);
@@ -247,6 +247,7 @@ async function callLocalGenerator(params: {
   body.append("tags", params.tags);
   appendGenerationSource(body, params.source);
   body.append("model", params.model);
+  body.append("generateInteractiveDemo", String(params.generateInteractiveDemo));
   if (params.extraInstruction) {
     body.append("extraInstruction", params.extraInstruction);
   }
@@ -277,6 +278,7 @@ async function callCloudGenerator(params: {
   extraInstruction: string;
   model: string;
   authToken: string;
+  generateInteractiveDemo: boolean;
 }): Promise<GenerationResult> {
   const promptTemplate = await loadPromptTemplateFromSite();
   const apiBase = normalizeApiBase(CLOUD_API_BASE);
@@ -287,6 +289,7 @@ async function callCloudGenerator(params: {
   appendGenerationSource(body, params.source);
   body.append("promptTemplate", promptTemplate);
   body.append("model", params.model);
+  body.append("generateInteractiveDemo", String(params.generateInteractiveDemo));
   if (params.extraInstruction) {
     body.append("extraInstruction", params.extraInstruction);
   }
@@ -377,6 +380,7 @@ export function WeekNoteGenerator() {
   const [tags, setTags] = useState("");
   const [extraInstruction, setExtraInstruction] = useState("");
   const [selectedModel, setSelectedModel] = useState("qwen3.6-flash");
+  const [generateInteractiveDemo, setGenerateInteractiveDemo] = useState(false);
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [savingMeta, setSavingMeta] = useState(false);
@@ -413,6 +417,7 @@ export function WeekNoteGenerator() {
         extraInstruction: extraInstruction.trim(),
         model: selectedModel,
         authToken: session?.token || "",
+        generateInteractiveDemo,
       };
 
       const generationResult = IS_CLOUD_MODE ? await callCloudGenerator(payload) : await callLocalGenerator(payload);
@@ -526,7 +531,7 @@ export function WeekNoteGenerator() {
             className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[15px] text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
           />
           <p className="font-text text-[12px] leading-[1.4] text-muted-foreground">
-            {slugPreview ? `预计 slug：${slugPreview}` : "留空时将自动生成标题、主题、标签和 slug。"}
+            留空时将自动生成标题、主题和标签。
           </p>
         </label>
 
@@ -573,14 +578,17 @@ export function WeekNoteGenerator() {
           />
         </label>
 
-        <label className="md:col-span-2 inline-flex items-center gap-2 font-text text-[13px] text-muted-foreground">
+        <label className="md:col-span-2 inline-flex items-start gap-3 rounded-apple border border-input bg-background px-3 py-3">
           <input
             type="checkbox"
-            checked={overwrite}
-            onChange={(event) => setOverwrite(event.target.checked)}
-            className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
+            checked={generateInteractiveDemo}
+            onChange={(event) => setGenerateInteractiveDemo(event.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-input text-primary focus:ring-ring"
           />
-          若 slug 已存在，允许覆盖已有笔记
+          <span className="font-text text-[13px] leading-[1.45] text-muted-foreground">
+            生成交互 demo（可选）
+            <span className="ui-en ml-1">Add interactive demos if the note contains supported interactive concepts.</span>
+          </span>
         </label>
 
         <div className="md:col-span-2 flex flex-wrap items-center gap-3">
@@ -601,12 +609,6 @@ export function WeekNoteGenerator() {
         </div>
       </form>
 
-      {noteAlreadyExists ? (
-        <p className="mt-4 rounded-apple border border-border bg-muted/50 px-3 py-2 font-text text-[13px] leading-[1.45] text-muted-foreground">
-          该标题对应的 slug 已存在，若要覆盖请勾选“允许覆盖”。
-        </p>
-      ) : null}
-
       {error ? (
         <p className="mt-4 rounded-apple border border-[#b4232f]/30 bg-[#b4232f]/[0.08] px-3 py-2 font-text text-[13px] leading-[1.4] text-[#7f1820] dark:border-[#ff6a77]/35 dark:bg-[#ff6a77]/[0.12] dark:text-[#ffd5da]">
           {error}
@@ -617,8 +619,7 @@ export function WeekNoteGenerator() {
         <div className="mt-5 space-y-4">
           <div className="rounded-apple border border-primary/35 bg-primary/10 p-3">
             <p className="font-text text-[13px] leading-[1.45] text-foreground">
-              已保存 {result.fileName}
-              {result.replaced ? "（已覆盖原文件）。" : "。"}
+              已保存 {result.fileName}。
             </p>
             <Link
               href={buildNoteViewHref(result.slug)}

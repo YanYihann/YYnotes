@@ -71,7 +71,7 @@ type FolderStorePayload = {
   noteFolderMap: Record<string, string>;
 };
 
-type FolderFilterValue = "" | "uncategorized" | `folder:${string}`;
+type FolderFilterValue = "all" | "uncategorized" | `folder:${string}`;
 
 const CLOUD_API_BASE = process.env.NEXT_PUBLIC_NOTES_API_BASE?.trim() ?? "";
 const IS_CLOUD_MODE = CLOUD_API_BASE.length > 0;
@@ -230,19 +230,22 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
   );
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [noteFolderMap, setNoteFolderMap] = useState<Record<string, string>>({});
+  const [trashNotes, setTrashNotes] = useState<NoteListItem[]>([]);
 
   const [loadingRemoteNotes, setLoadingRemoteNotes] = useState(false);
   const [search, setSearch] = useState("");
   const [topicFilter, setTopicFilter] = useState("");
-  const [folderFilter, setFolderFilter] = useState<FolderFilterValue>("");
+  const [folderFilter, setFolderFilter] = useState<FolderFilterValue>("all");
   const [deletingSlug, setDeletingSlug] = useState("");
+  const [restoringSlug, setRestoringSlug] = useState("");
+  const [permanentlyDeletingSlug, setPermanentlyDeletingSlug] = useState("");
   const [updatingSlug, setUpdatingSlug] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
-  const [assigningSlug, setAssigningSlug] = useState("");
   const [deletingFolderId, setDeletingFolderId] = useState("");
   const [draggingSlug, setDraggingSlug] = useState("");
   const [dragOverTarget, setDragOverTarget] = useState<string>("");
   const [error, setError] = useState("");
+  const [trashOpen, setTrashOpen] = useState(false);
 
   const folderStorageKey = useMemo(
     () =>
@@ -264,6 +267,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
     if (!authToken) {
       setNotes([]);
+      setTrashNotes([]);
       setFolders([]);
       setNoteFolderMap({});
       setError("");
@@ -283,13 +287,18 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
           Authorization: `Bearer ${authToken}`,
         };
 
-        const [notesResponse, foldersResponse] = await Promise.all([
+        const [notesResponse, foldersResponse, trashResponse] = await Promise.all([
           fetch(`${apiBase}/notes?limit=200&include_content=1`, {
             method: "GET",
             cache: "no-store",
             headers,
           }),
           fetch(`${apiBase}/folders`, {
+            method: "GET",
+            cache: "no-store",
+            headers,
+          }),
+          fetch(`${apiBase}/notes?limit=200&include_content=1&trash=1`, {
             method: "GET",
             cache: "no-store",
             headers,
@@ -305,8 +314,15 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
         if (!foldersResponse.ok || !foldersJson?.success || !Array.isArray(foldersJson.folders)) {
           throw new Error(foldersJson?.error || "云端文件夹列表加载失败。");
         }
+        const trashJson = (await trashResponse.json().catch(() => null)) as NotesApiResponse | null;
+        if (!trashResponse.ok || !trashJson?.success || !Array.isArray(trashJson.notes)) {
+          throw new Error(trashJson?.error || "云端回收站加载失败。");
+        }
 
         const mappedNotes = notesJson.notes
+          .map((item) => toCloudNoteItem(item as CloudNoteRecord))
+          .filter((item): item is NoteListItem => item !== null);
+        const mappedTrashNotes = trashJson.notes
           .map((item) => toCloudNoteItem(item as CloudNoteRecord))
           .filter((item): item is NoteListItem => item !== null);
         const mappedFolders = foldersJson.folders
@@ -314,7 +330,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
           .filter((item): item is FolderItem => item !== null);
 
         const nextNoteFolderMap: Record<string, string> = {};
-        for (const note of mappedNotes) {
+        for (const note of [...mappedNotes, ...mappedTrashNotes]) {
           if (note.folderId) {
             nextNoteFolderMap[note.slug] = note.folderId;
           }
@@ -322,6 +338,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
         if (!cancelled) {
           setNotes(sortNoteItems(mappedNotes));
+          setTrashNotes(sortNoteItems(mappedTrashNotes));
           setFolders(sortFolders(mappedFolders));
           setNoteFolderMap(nextNoteFolderMap);
         }
@@ -352,11 +369,48 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     if (!parsed) {
       setFolders([]);
       setNoteFolderMap({});
-      return;
+    } else {
+      setFolders(parsed.folders);
+      setNoteFolderMap(parsed.noteFolderMap);
     }
 
-    setFolders(parsed.folders);
-    setNoteFolderMap(parsed.noteFolderMap);
+    let cancelled = false;
+
+    async function loadLocalTrash() {
+      try {
+        const response = await fetch("/api/notes?trash=1", {
+          method: "GET",
+          cache: "no-store",
+        });
+        const json = (await response.json().catch(() => null)) as NotesApiResponse | null;
+        if (!response.ok || !json?.success || !Array.isArray(json.notes)) {
+          throw new Error(json?.error || "本地回收站加载失败。");
+        }
+
+        const rows = json.notes
+          .map((item) => item as InitialNoteItem)
+          .map((note, index) => ({
+            ...note,
+            viewHref: `/notes/${note.slug}`,
+            folderId: "",
+            order: Number.isFinite(note.order) ? note.order : index,
+          }));
+
+        if (!cancelled) {
+          setTrashNotes(sortNoteItems(rows));
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : "本地回收站加载失败。");
+        }
+      }
+    }
+
+    void loadLocalTrash();
+
+    return () => {
+      cancelled = true;
+    };
   }, [folderStorageKey]);
 
   useEffect(() => {
@@ -373,7 +427,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
   }, [folders, noteFolderMap, folderStorageKey]);
 
   useEffect(() => {
-    const knownSlugs = new Set(notes.map((note) => note.slug));
+    const knownSlugs = new Set([...notes, ...trashNotes].map((note) => note.slug));
     const knownFolderIds = new Set(folders.map((folder) => folder.id));
 
     setNoteFolderMap((previous) => {
@@ -390,7 +444,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
       return changed ? next : previous;
     });
-  }, [notes, folders]);
+  }, [notes, trashNotes, folders]);
 
   const folderById = useMemo(() => {
     const map = new Map<string, FolderItem>();
@@ -424,10 +478,6 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
   const filteredNotes = useMemo(() => {
     const keyword = search.trim().toLowerCase();
-
-    if (!folderFilter) {
-      return [];
-    }
 
     return notes.filter((note) => {
       const noteFolderId = noteFolderMap[note.slug] ?? "";
@@ -466,13 +516,16 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
   }, [notes, noteFolderMap, folderFilter, topicFilter, search, folderById]);
 
   const activeFolderLabel = useMemo(() => {
+    if (folderFilter === "all") {
+      return "全部笔记";
+    }
     if (folderFilter === "uncategorized") {
       return "未归类";
     }
     if (folderFilter.startsWith("folder:")) {
       return folderById.get(folderFilter.slice("folder:".length))?.name ?? "文件夹";
     }
-    return "";
+    return "全部笔记";
   }, [folderFilter, folderById]);
 
   function updateLocalFolderMapping(noteSlug: string, folderId: string) {
@@ -488,6 +541,23 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
       } else {
         next[noteSlug] = folderId;
       }
+      return next;
+    });
+  }
+
+  function renameNoteFolderMapping(previousSlug: string, nextSlug: string) {
+    if (previousSlug === nextSlug) {
+      return;
+    }
+
+    setNoteFolderMap((previous) => {
+      if (!(previousSlug in previous)) {
+        return previous;
+      }
+
+      const next = { ...previous };
+      next[nextSlug] = next[previousSlug];
+      delete next[previousSlug];
       return next;
     });
   }
@@ -509,7 +579,6 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
       return;
     }
 
-    setAssigningSlug(noteSlug);
     setError("");
     updateLocalFolderMapping(noteSlug, normalized);
 
@@ -533,8 +602,6 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     } catch (assignError) {
       updateLocalFolderMapping(noteSlug, previousFolderId);
       setError(assignError instanceof Error ? assignError.message : "保存文件夹归类失败。");
-    } finally {
-      setAssigningSlug("");
     }
   }
 
@@ -658,7 +725,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     });
 
     if (folderFilter === `folder:${folder.id}`) {
-      setFolderFilter("");
+      setFolderFilter("all");
     }
   }
 
@@ -766,11 +833,11 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
   }
 
   async function handleDeleteNote(note: NoteListItem) {
-    if (deletingSlug || updatingSlug) {
+    if (deletingSlug || updatingSlug || restoringSlug || permanentlyDeletingSlug) {
       return;
     }
 
-    const shouldDelete = window.confirm(`确认删除笔记“${note.zhTitle}”吗？该操作不可恢复。`);
+    const shouldDelete = window.confirm(`确认将笔记“${note.zhTitle}”移入回收站吗？之后仍可在回收站恢复。`);
     if (!shouldDelete) {
       return;
     }
@@ -803,7 +870,120 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
         throw new Error(json?.error || "删除失败，请稍后重试。");
       }
 
+      const nextSlug = typeof (json as { slug?: unknown }).slug === "string" ? String((json as { slug?: string }).slug) : note.slug;
       setNotes((previous) => previous.filter((item) => item.slug !== note.slug));
+      setTrashNotes((previous) =>
+        sortNoteItems([
+          {
+            ...note,
+            slug: nextSlug,
+            viewHref: IS_CLOUD_MODE ? `/notes/cloud?slug=${encodeURIComponent(nextSlug)}` : `/notes/${nextSlug}`,
+          },
+          ...previous.filter((item) => item.slug !== nextSlug),
+        ]),
+      );
+      renameNoteFolderMapping(note.slug, nextSlug);
+      setTrashOpen(true);
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "删除失败，请稍后重试。");
+    } finally {
+      setDeletingSlug("");
+    }
+  }
+
+  async function handleRestoreNote(note: NoteListItem) {
+    if (restoringSlug || deletingSlug || updatingSlug || permanentlyDeletingSlug) {
+      return;
+    }
+
+    setRestoringSlug(note.slug);
+    setError("");
+
+    try {
+      let response: Response;
+
+      if (IS_CLOUD_MODE) {
+        if (!authToken) {
+          throw new Error("登录状态已失效，请重新登录。");
+        }
+
+        const apiBase = normalizeApiBase(CLOUD_API_BASE);
+        response = await fetch(`${apiBase}/notes/${encodeURIComponent(note.slug)}/restore`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        });
+      } else {
+        response = await fetch(`/api/notes?slug=${encodeURIComponent(note.slug)}&action=restore`, {
+          method: "POST",
+        });
+      }
+
+      const json = (await response.json().catch(() => null)) as { success?: boolean; error?: string; slug?: string } | null;
+      if (!response.ok || !json?.success) {
+        throw new Error(json?.error || "恢复失败，请稍后重试。");
+      }
+
+      const nextSlug = typeof json.slug === "string" && json.slug.trim() ? json.slug.trim() : note.slug;
+      setTrashNotes((previous) => previous.filter((item) => item.slug !== note.slug));
+      setNotes((previous) =>
+        sortNoteItems([
+          {
+            ...note,
+            slug: nextSlug,
+            viewHref: IS_CLOUD_MODE ? `/notes/cloud?slug=${encodeURIComponent(nextSlug)}` : `/notes/${nextSlug}`,
+          },
+          ...previous.filter((item) => item.slug !== nextSlug),
+        ]),
+      );
+      renameNoteFolderMapping(note.slug, nextSlug);
+    } catch (restoreError) {
+      setError(restoreError instanceof Error ? restoreError.message : "恢复失败，请稍后重试。");
+    } finally {
+      setRestoringSlug("");
+    }
+  }
+
+  async function handlePermanentDeleteNote(note: NoteListItem) {
+    if (permanentlyDeletingSlug || deletingSlug || updatingSlug || restoringSlug) {
+      return;
+    }
+
+    const shouldDelete = window.confirm(`确认从回收站彻底删除“${note.zhTitle}”吗？该操作将无法恢复。`);
+    if (!shouldDelete) {
+      return;
+    }
+
+    setPermanentlyDeletingSlug(note.slug);
+    setError("");
+
+    try {
+      let response: Response;
+
+      if (IS_CLOUD_MODE) {
+        if (!authToken) {
+          throw new Error("登录状态已失效，请重新登录。");
+        }
+        const apiBase = normalizeApiBase(CLOUD_API_BASE);
+        response = await fetch(`${apiBase}/notes/${encodeURIComponent(note.slug)}?permanent=1`, {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        });
+      } else {
+        response = await fetch(`/api/notes?slug=${encodeURIComponent(note.slug)}&permanent=1`, {
+          method: "DELETE",
+        });
+      }
+
+      const json = (await response.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+      if (!response.ok || !json?.success) {
+        throw new Error(json?.error || "彻底删除失败，请稍后重试。");
+      }
+
+      setTrashNotes((previous) => previous.filter((item) => item.slug !== note.slug));
       setNoteFolderMap((previous) => {
         if (!(note.slug in previous)) {
           return previous;
@@ -813,14 +993,14 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
         return next;
       });
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "删除失败，请稍后重试。");
+      setError(deleteError instanceof Error ? deleteError.message : "彻底删除失败，请稍后重试。");
     } finally {
-      setDeletingSlug("");
+      setPermanentlyDeletingSlug("");
     }
   }
 
   function handleSelectFolder(next: FolderFilterValue) {
-    setFolderFilter((current) => (current === next ? "" : next));
+    setFolderFilter((current) => (next === "all" ? "all" : current === next ? "all" : next));
   }
 
   function handleCreateFolderButtonClick() {
@@ -850,231 +1030,319 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
   return (
     <>
-      <section className="mb-6 rounded-apple bg-card p-4 text-card-foreground shadow-card">
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            disabled={creatingFolder}
-            onClick={handleCreateFolderButtonClick}
-            className="btn-apple-link inline-flex h-[38px] items-center px-4 font-text text-[14px] tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
-          >
-            {creatingFolder ? "创建中..." : "新建文件夹"}
-          </button>
-          <p className="font-text text-[13px] text-muted-foreground">
-            总笔记 {notes.length} 条
-          </p>
-          {loadingRemoteNotes ? <p className="font-text text-[13px] text-primary">正在加载云端数据...</p> : null}
-        </div>
-
-        {error ? (
-          <p className="mt-3 rounded-apple border border-[#b4232f]/30 bg-[#b4232f]/[0.08] px-3 py-2 font-text text-[13px] leading-[1.4] text-[#7f1820] dark:border-[#ff6a77]/35 dark:bg-[#ff6a77]/[0.12] dark:text-[#ffd5da]">
-            {error}
-          </p>
-        ) : null}
-        <p className="mt-3 font-text text-[13px] text-muted-foreground">点击文件夹即可在下方查看对应笔记，点击同一文件夹可收起。</p>
-
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => handleSelectFolder("uncategorized")}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                handleSelectFolder("uncategorized");
-              }
-            }}
-            onDragOver={(event) => {
-              event.preventDefault();
-              setDragOverTarget("uncategorized");
-            }}
-            onDragLeave={() => setDragOverTarget((previous) => (previous === "uncategorized" ? "" : previous))}
-            onDrop={(event) => void handleFolderDrop(null, event)}
-            className={`rounded-apple border px-3 py-3 transition ${
-              folderFilter === "uncategorized"
-                ? "border-primary/60 bg-primary/10"
-                : dragOverTarget === "uncategorized"
-                ? "border-primary/50 bg-primary/10"
-                : "border-border bg-muted/40"
-            }`}
-          >
-            <p className="font-text text-[13px] font-semibold text-foreground">
-              未归类
-              <span className="ui-en ml-1 text-muted-foreground">Uncategorized</span>
-            </p>
-            <p className="mt-1 font-text text-[12px] text-muted-foreground">{folderCounts.uncategorized ?? 0} 条笔记</p>
-          </div>
-
-          {folders.map((folder) => (
-            <div
-              key={folder.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => handleSelectFolder(`folder:${folder.id}`)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  handleSelectFolder(`folder:${folder.id}`);
-                }
-              }}
-              onDragOver={(event) => {
-                event.preventDefault();
-                setDragOverTarget(folder.id);
-              }}
-              onDragLeave={() => setDragOverTarget((previous) => (previous === folder.id ? "" : previous))}
-              onDrop={(event) => void handleFolderDrop(folder.id, event)}
-              className={`rounded-apple border px-3 py-3 transition ${
-                folderFilter === `folder:${folder.id}`
-                  ? "border-primary/60 bg-primary/10"
-                  : dragOverTarget === folder.id
-                  ? "border-primary/50 bg-primary/10"
-                  : "border-border bg-muted/40"
-              }`}
+      <div className="sticky top-[calc(3rem+0.75rem)] z-30 mb-6 space-y-4">
+        <section className="rounded-apple bg-card p-4 text-card-foreground shadow-card">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={creatingFolder}
+              onClick={handleCreateFolderButtonClick}
+              className="btn-apple-link inline-flex h-[38px] items-center px-4 font-text text-[14px] tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
             >
-              <div className="flex items-start justify-between gap-2">
-                <p className="font-text text-[13px] font-semibold text-foreground">{folder.name}</p>
-                <button
-                  type="button"
-                  disabled={deletingFolderId === folder.id}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void handleDeleteFolder(folder);
-                  }}
-                  className="inline-flex items-center rounded-capsule border border-[#b4232f]/35 px-2 py-0.5 font-text text-[11px] tracking-tightCaption text-[#8f1d27] transition hover:bg-[#b4232f]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b4232f] dark:border-[#ff6a77]/40 dark:text-[#ffc4cb] dark:hover:bg-[#ff6a77]/[0.12]"
-                >
-                  {deletingFolderId === folder.id ? "删除中..." : "删除"}
-                </button>
-              </div>
-              <p className="mt-1 font-text text-[12px] text-muted-foreground">{folderCounts[folder.id] ?? 0} 条笔记</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {folderFilter ? (
-        <>
-          <section className="mb-6 rounded-apple bg-card p-4 text-card-foreground shadow-card">
-            <div className="grid gap-3 md:grid-cols-3">
-              <label className="space-y-1 md:col-span-2">
-                <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">关键词</span>
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="搜索标题或主题"
-                  className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                />
-              </label>
-
-              <label className="space-y-1">
-                <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">主题</span>
-                <select
-                  value={topicFilter}
-                  onChange={(event) => setTopicFilter(event.target.value)}
-                  className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <option value="">全部主题</option>
-                  {topicOptions.map((topic) => (
-                    <option key={topic} value={topic}>
-                      {topic}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <p className="font-text text-[13px] text-muted-foreground">
-                当前文件夹：{activeFolderLabel}，共 {filteredNotes.length} 条
-              </p>
-            </div>
-          </section>
-
-          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-            {filteredNotes.map((note) => {
-              const noteFolderId = noteFolderMap[note.slug] ?? "";
-              const noteFolderName = noteFolderId ? folderById.get(noteFolderId)?.name ?? "" : "";
-              const isDragging = draggingSlug === note.slug;
-
-              return (
-                <div
-                  key={note.slug}
-                  draggable
-                  onDragStart={(event) => {
-                    setDraggingSlug(note.slug);
-                    event.dataTransfer.effectAllowed = "move";
-                    event.dataTransfer.setData("text/yynotes-note-slug", note.slug);
-                    event.dataTransfer.setData("text/plain", note.slug);
-                  }}
-                  onDragEnd={() => {
-                    setDraggingSlug("");
-                    setDragOverTarget("");
-                  }}
-                  className={`transition ${isDragging ? "opacity-60" : ""}`}
-                  title="拖拽到上方文件夹可归类"
-                >
-                  <WeekCard
-                    href={note.viewHref}
-                    weekLabelZh={note.weekLabelZh}
-                    weekLabelEn={note.weekLabelEn}
-                    zhTitle={note.zhTitle}
-                    enTitle={note.enTitle}
-                    descriptionZh={note.descriptionZh}
-                    descriptionEn={note.descriptionEn}
-                    tags={[]}
-                    compact
-                    showOpenLink={false}
-                    headerRight={
-                      <span className="font-text text-[11px] text-muted-foreground">
-                        {noteFolderName ? noteFolderName : "未归类"}
-                      </span>
-                    }
-                    footerAction={
-                      <div className="w-full space-y-2.5 pt-1">
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            disabled={updatingSlug === note.slug || deletingSlug === note.slug}
-                            onClick={() => void handleEditNote(note)}
-                            className="btn-apple-link inline-flex items-center px-3 py-1.5 font-text text-[12px] tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
-                          >
-                            {updatingSlug === note.slug ? "保存中..." : "编辑标题/主题"}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={deletingSlug === note.slug || updatingSlug === note.slug}
-                            onClick={() => handleDeleteNote(note)}
-                            className="inline-flex items-center rounded-capsule border border-[#b4232f]/30 px-3 py-1.5 font-text text-[12px] tracking-tightCaption text-[#8f1d27] transition hover:bg-[#b4232f]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b4232f] dark:border-[#ff6a77]/35 dark:text-[#ffc4cb] dark:hover:bg-[#ff6a77]/[0.12]"
-                          >
-                            {deletingSlug === note.slug ? "删除中..." : "删除"}
-                          </button>
-                          <Link
-                            href={note.viewHref}
-                            className="btn-apple-link ml-auto inline-flex items-center px-3 py-1.5 font-text text-[13px] tracking-tightCaption transition focus-visible:outline-none"
-                          >
-                            打开笔记
-                            <span className="ml-1">&gt;</span>
-                          </Link>
-                        </div>
-                      </div>
-                    }
-                  />
-                </div>
-              );
-            })}
+              {creatingFolder ? "创建中..." : "新建文件夹"}
+            </button>
+            <p className="font-text text-[13px] text-muted-foreground">当前笔记 {notes.length} 条</p>
+            <p className="font-text text-[13px] text-muted-foreground">回收站 {trashNotes.length} 条</p>
+            {loadingRemoteNotes ? <p className="font-text text-[13px] text-primary">正在加载云端数据...</p> : null}
           </div>
 
-          {!filteredNotes.length ? (
-            <p className="mt-6 rounded-apple border border-border bg-card px-4 py-3 font-text text-[14px] leading-[1.45] text-muted-foreground">
-              当前文件夹下没有匹配条件的笔记，请调整关键词或主题。
+          {error ? (
+            <p className="mt-3 rounded-apple border border-[#b4232f]/30 bg-[#b4232f]/[0.08] px-3 py-2 font-text text-[13px] leading-[1.4] text-[#7f1820] dark:border-[#ff6a77]/35 dark:bg-[#ff6a77]/[0.12] dark:text-[#ffd5da]">
+              {error}
             </p>
           ) : null}
-        </>
-      ) : (
-        <p className="mt-2 rounded-apple border border-border bg-card px-4 py-3 font-text text-[14px] leading-[1.45] text-muted-foreground">
-          请先点击上方文件夹（或未归类）查看对应笔记。
+
+          <p className="mt-3 font-text text-[13px] text-muted-foreground">
+            文件夹与筛选会固定在顶部导航下方；拖拽笔记卡片到文件夹可快速归类。
+          </p>
+
+          <div className="mt-4 max-h-[42vh] overflow-y-auto pr-1">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => handleSelectFolder("all")}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    handleSelectFolder("all");
+                  }
+                }}
+                className={`rounded-apple border px-3 py-3 transition ${
+                  folderFilter === "all" ? "border-primary/60 bg-primary/10" : "border-border bg-muted/40"
+                }`}
+              >
+                <p className="font-text text-[13px] font-semibold text-foreground">
+                  全部笔记
+                  <span className="ui-en ml-1 text-muted-foreground">All Notes</span>
+                </p>
+                <p className="mt-1 font-text text-[12px] text-muted-foreground">{notes.length} 条笔记</p>
+              </div>
+
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => handleSelectFolder("uncategorized")}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    handleSelectFolder("uncategorized");
+                  }
+                }}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setDragOverTarget("uncategorized");
+                }}
+                onDragLeave={() => setDragOverTarget((previous) => (previous === "uncategorized" ? "" : previous))}
+                onDrop={(event) => void handleFolderDrop(null, event)}
+                className={`rounded-apple border px-3 py-3 transition ${
+                  folderFilter === "uncategorized"
+                    ? "border-primary/60 bg-primary/10"
+                    : dragOverTarget === "uncategorized"
+                      ? "border-primary/50 bg-primary/10"
+                      : "border-border bg-muted/40"
+                }`}
+              >
+                <p className="font-text text-[13px] font-semibold text-foreground">
+                  未归类
+                  <span className="ui-en ml-1 text-muted-foreground">Uncategorized</span>
+                </p>
+                <p className="mt-1 font-text text-[12px] text-muted-foreground">{folderCounts.uncategorized ?? 0} 条笔记</p>
+              </div>
+
+              {folders.map((folder) => (
+                <div
+                  key={folder.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleSelectFolder(`folder:${folder.id}`)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleSelectFolder(`folder:${folder.id}`);
+                    }
+                  }}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setDragOverTarget(folder.id);
+                  }}
+                  onDragLeave={() => setDragOverTarget((previous) => (previous === folder.id ? "" : previous))}
+                  onDrop={(event) => void handleFolderDrop(folder.id, event)}
+                  className={`rounded-apple border px-3 py-3 transition ${
+                    folderFilter === `folder:${folder.id}`
+                      ? "border-primary/60 bg-primary/10"
+                      : dragOverTarget === folder.id
+                        ? "border-primary/50 bg-primary/10"
+                        : "border-border bg-muted/40"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-text text-[13px] font-semibold text-foreground">{folder.name}</p>
+                    <button
+                      type="button"
+                      disabled={deletingFolderId === folder.id}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void handleDeleteFolder(folder);
+                      }}
+                      className="inline-flex items-center rounded-capsule border border-[#b4232f]/35 px-2 py-0.5 font-text text-[11px] tracking-tightCaption text-[#8f1d27] transition hover:bg-[#b4232f]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b4232f] dark:border-[#ff6a77]/40 dark:text-[#ffc4cb] dark:hover:bg-[#ff6a77]/[0.12]"
+                    >
+                      {deletingFolderId === folder.id ? "删除中..." : "删除"}
+                    </button>
+                  </div>
+                  <p className="mt-1 font-text text-[12px] text-muted-foreground">{folderCounts[folder.id] ?? 0} 条笔记</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-apple bg-card p-4 text-card-foreground shadow-card">
+          <div className="grid gap-3 md:grid-cols-3">
+            <label className="space-y-1 md:col-span-2">
+              <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">关键词</span>
+              <input
+                type="text"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="搜索标题或主题"
+                className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </label>
+
+            <label className="space-y-1">
+              <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">主题</span>
+              <select
+                value={topicFilter}
+                onChange={(event) => setTopicFilter(event.target.value)}
+                className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="">全部主题</option>
+                {topicOptions.map((topic) => (
+                  <option key={topic} value={topic}>
+                    {topic}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <p className="font-text text-[13px] text-muted-foreground">
+              当前范围：{activeFolderLabel}，匹配 {filteredNotes.length} 条
+            </p>
+          </div>
+        </section>
+      </div>
+
+      <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+        {filteredNotes.map((note) => {
+          const noteFolderId = noteFolderMap[note.slug] ?? "";
+          const noteFolderName = noteFolderId ? folderById.get(noteFolderId)?.name ?? "" : "";
+          const isDragging = draggingSlug === note.slug;
+
+          return (
+            <div
+              key={note.slug}
+              draggable
+              onDragStart={(event) => {
+                setDraggingSlug(note.slug);
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/yynotes-note-slug", note.slug);
+                event.dataTransfer.setData("text/plain", note.slug);
+              }}
+              onDragEnd={() => {
+                setDraggingSlug("");
+                setDragOverTarget("");
+              }}
+              className={`transition ${isDragging ? "opacity-60" : ""}`}
+              title="拖拽到上方文件夹可归类"
+            >
+              <WeekCard
+                href={note.viewHref}
+                weekLabelZh={note.weekLabelZh}
+                weekLabelEn={note.weekLabelEn}
+                zhTitle={note.zhTitle}
+                enTitle={note.enTitle}
+                descriptionZh={note.descriptionZh}
+                descriptionEn={note.descriptionEn}
+                tags={[]}
+                compact
+                showOpenLink={false}
+                headerRight={
+                  <span className="font-text text-[11px] text-muted-foreground">
+                    {noteFolderName ? noteFolderName : "未归类"}
+                  </span>
+                }
+                footerAction={
+                  <div className="w-full space-y-2.5 pt-1">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={updatingSlug === note.slug || deletingSlug === note.slug}
+                        onClick={() => void handleEditNote(note)}
+                        className="btn-apple-link inline-flex items-center px-3 py-1.5 font-text text-[12px] tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
+                      >
+                        {updatingSlug === note.slug ? "保存中..." : "编辑标题/主题"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deletingSlug === note.slug || updatingSlug === note.slug}
+                        onClick={() => void handleDeleteNote(note)}
+                        className="inline-flex items-center rounded-capsule border border-[#b4232f]/30 px-3 py-1.5 font-text text-[12px] tracking-tightCaption text-[#8f1d27] transition hover:bg-[#b4232f]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b4232f] dark:border-[#ff6a77]/35 dark:text-[#ffc4cb] dark:hover:bg-[#ff6a77]/[0.12]"
+                      >
+                        {deletingSlug === note.slug ? "移入中..." : "移入回收站"}
+                      </button>
+                      <Link
+                        href={note.viewHref}
+                        className="btn-apple-link ml-auto inline-flex items-center px-3 py-1.5 font-text text-[13px] tracking-tightCaption transition focus-visible:outline-none"
+                      >
+                        打开笔记
+                        <span className="ml-1">&gt;</span>
+                      </Link>
+                    </div>
+                  </div>
+                }
+              />
+            </div>
+          );
+        })}
+      </div>
+
+      {!filteredNotes.length ? (
+        <p className="mt-6 rounded-apple border border-border bg-card px-4 py-3 font-text text-[14px] leading-[1.45] text-muted-foreground">
+          当前筛选下没有匹配的笔记，请调整关键词、主题或文件夹。
         </p>
-      )}
+      ) : null}
+
+      <section className="mt-8 rounded-apple bg-card p-4 text-card-foreground shadow-card">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="font-text text-[13px] font-semibold tracking-[0.06em] text-muted-foreground">
+              回收站
+              <span className="ui-en ml-1">Recycle Bin</span>
+            </p>
+            <p className="mt-1 font-text text-[13px] text-muted-foreground">
+              已移入回收站的笔记可恢复；只有在这里删除后才会真正移除。
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setTrashOpen((value) => !value)}
+            className="btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[13px] tracking-tightCaption transition focus-visible:outline-none"
+          >
+            {trashOpen ? "收起回收站" : `展开回收站（${trashNotes.length}）`}
+          </button>
+        </div>
+
+        {trashOpen ? (
+          trashNotes.length ? (
+            <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {trashNotes.map((note) => (
+                <WeekCard
+                  key={note.slug}
+                  href={note.viewHref}
+                  weekLabelZh="回收站"
+                  weekLabelEn="Trash"
+                  zhTitle={note.zhTitle}
+                  enTitle={note.enTitle}
+                  descriptionZh={note.descriptionZh}
+                  descriptionEn={note.descriptionEn}
+                  tags={[]}
+                  compact
+                  showOpenLink={false}
+                  footerAction={
+                    <div className="w-full space-y-2.5 pt-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={restoringSlug === note.slug || permanentlyDeletingSlug === note.slug}
+                          onClick={() => void handleRestoreNote(note)}
+                          className="btn-apple-link inline-flex items-center px-3 py-1.5 font-text text-[12px] tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
+                        >
+                          {restoringSlug === note.slug ? "恢复中..." : "恢复"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={permanentlyDeletingSlug === note.slug || restoringSlug === note.slug}
+                          onClick={() => void handlePermanentDeleteNote(note)}
+                          className="inline-flex items-center rounded-capsule border border-[#b4232f]/30 px-3 py-1.5 font-text text-[12px] tracking-tightCaption text-[#8f1d27] transition hover:bg-[#b4232f]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b4232f] dark:border-[#ff6a77]/35 dark:text-[#ffc4cb] dark:hover:bg-[#ff6a77]/[0.12]"
+                        >
+                          {permanentlyDeletingSlug === note.slug ? "删除中..." : "彻底删除"}
+                        </button>
+                      </div>
+                    </div>
+                  }
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="mt-4 rounded-apple border border-border bg-muted/40 px-4 py-3 font-text text-[14px] leading-[1.45] text-muted-foreground">
+              回收站为空。
+            </p>
+          )
+        ) : null}
+      </section>
     </>
   );
 }
