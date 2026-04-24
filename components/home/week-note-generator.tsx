@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, type FormEvent, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { AIModelSelector, NOTE_GENERATION_MODEL_OPTIONS } from "@/components/ui/animated-ai-input";
 import { WeekCard } from "@/components/week-card";
@@ -29,13 +29,22 @@ type GenerationResult = {
 type MetadataUpdateResult = {
   success: boolean;
   slug: string;
-  note: GeneratedNote | null;
+  note: (GeneratedNote & { tags?: string[] }) | null;
 };
 
 type GenerationSourcePayload = {
   sourceFile?: File;
   sourceText?: string;
   fileName: string;
+};
+
+type GeneratorMode = "direct" | "chatgpt";
+
+type ImportedNoteResult = {
+  success?: boolean;
+  slug?: string;
+  note?: GeneratedNote | null;
+  error?: string;
 };
 
 const CLOUD_API_BASE = process.env.NEXT_PUBLIC_NOTES_API_BASE?.trim() ?? "";
@@ -69,6 +78,26 @@ function parseTagsInput(raw: string): string[] {
   return Array.from(dedup);
 }
 
+function deriveMetadataFromFileName(fileName: string): { title: string; topic: string } {
+  const baseName = String(fileName ?? "")
+    .replace(/\.(txt|md|markdown|doc|docx|ppt|pptx|pdf|tex|csv)$/i, "")
+    .replace(/[_]+/g, " ")
+    .replace(/[.]+/g, " ")
+    .replace(/\s*[-|]+\s*/g, " - ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!baseName) {
+    return { title: "", topic: "" };
+  }
+
+  const topic = baseName.split(/\s+-\s+|：|:/).map((part) => part.trim()).find(Boolean) ?? baseName;
+  return {
+    title: baseName.slice(0, 80),
+    topic: topic.slice(0, 64),
+  };
+}
+
 function buildNoteViewHref(slug: string): string {
   if (IS_CLOUD_MODE) {
     return `/notes/cloud?slug=${encodeURIComponent(slug)}`;
@@ -93,7 +122,6 @@ function buildPromptCandidates(): string[] {
       candidates.add(`${currentDir}prompt.md`);
     }
 
-    // Keep absolute root as a final fallback to avoid noisy 404 on project pages.
     candidates.add("/prompt.md");
 
     for (const candidate of Array.from(candidates)) {
@@ -372,9 +400,85 @@ async function callCloudMetadataUpdate(params: {
   return json as MetadataUpdateResult;
 }
 
+async function createImportedLocalNote(params: {
+  title: string;
+  topic: string;
+  content: string;
+}): Promise<ImportedNoteResult> {
+  const response = await fetch("/api/notes", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(params),
+  });
+
+  const json = (await response.json().catch(() => null)) as ImportedNoteResult | null;
+  if (!response.ok || !json?.success || !json.slug) {
+    throw new Error(json?.error || "保存 ChatGPT 结果失败，请稍后重试。");
+  }
+
+  return json;
+}
+
+async function createImportedCloudNote(params: {
+  title: string;
+  topic: string;
+  content: string;
+  authToken: string;
+}): Promise<ImportedNoteResult> {
+  const apiBase = normalizeApiBase(CLOUD_API_BASE);
+  const response = await fetch(`${apiBase}/notes`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${params.authToken}`,
+    },
+    body: JSON.stringify({
+      title: params.title,
+      topic: params.topic,
+      content: params.content,
+    }),
+  });
+
+  const json = (await response.json().catch(() => null)) as ImportedNoteResult | null;
+  if (!response.ok || !json?.success || !json.slug) {
+    throw new Error(json?.error || "保存 ChatGPT 结果失败，请稍后重试。");
+  }
+
+  return json;
+}
+
+function SectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+      {children}
+    </span>
+  );
+}
+
+function TextInput(props: InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      {...props}
+      className={`w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[15px] text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring ${props.className ?? ""}`}
+    />
+  );
+}
+
+function TextArea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return (
+    <textarea
+      {...props}
+      className={`w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] leading-[1.45] text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring ${props.className ?? ""}`}
+    />
+  );
+}
+
 export function WeekNoteGenerator() {
   const router = useRouter();
   const { session } = useAuth();
+  const [mode, setMode] = useState<GeneratorMode>("direct");
   const [title, setTitle] = useState("");
   const [topic, setTopic] = useState("");
   const [tags, setTags] = useState("");
@@ -384,13 +488,29 @@ export function WeekNoteGenerator() {
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [savingMeta, setSavingMeta] = useState(false);
+  const [buildingChatGptPrompt, setBuildingChatGptPrompt] = useState(false);
+  const [chatGptPrompt, setChatGptPrompt] = useState("");
+  const [copiedChatGptPrompt, setCopiedChatGptPrompt] = useState(false);
+  const [chatGptMarkdown, setChatGptMarkdown] = useState("");
+  const [savingChatGptMarkdown, setSavingChatGptMarkdown] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<GenerationResult | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editTopic, setEditTopic] = useState("");
   const [editTags, setEditTags] = useState("");
 
-  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+  function handleSourceFileChange(file: File | null) {
+    setSourceFile(file);
+    if (!file) {
+      return;
+    }
+
+    const derived = deriveMetadataFromFileName(file.name);
+    setTitle((current) => (current.trim() ? current : derived.title));
+    setTopic((current) => (current.trim() ? current : derived.topic));
+  }
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!sourceFile) {
@@ -482,6 +602,125 @@ export function WeekNoteGenerator() {
     }
   }
 
+  async function onBuildChatGptPrompt() {
+    if (!sourceFile) {
+      setError("请先上传原始资料文件。");
+      return;
+    }
+
+    setBuildingChatGptPrompt(true);
+    setError("");
+    setCopiedChatGptPrompt(false);
+
+    try {
+      const promptTemplate = await loadPromptTemplateFromSite();
+      const derived = deriveMetadataFromFileName(sourceFile.name);
+      const resolvedTitle = title.trim() || derived.title || "请根据上传资料自动生成标题";
+      const resolvedTopic = topic.trim() || derived.topic || "请根据上传资料自动生成主题";
+      const resolvedTags = parseTagsInput(tags).join("、") || "未指定，可根据资料补全";
+      const prompt = [
+        promptTemplate.trim(),
+        "",
+        "---",
+        "",
+        "以下是本次生成任务的补充上下文，请与系统要求一起严格执行：",
+        `- 目标标题：${resolvedTitle}`,
+        `- 目标主题：${resolvedTopic}`,
+        `- 目标标签：${resolvedTags}`,
+        `- 原始资料文件名：${sourceFile.name}`,
+        `- 需要交互 Demo：${generateInteractiveDemo ? "是" : "否"}`,
+        "- 我会在当前 ChatGPT 对话中上传同一份原始资料文件，请以该文件为主要内容来源。",
+        "- 请直接输出最终 Markdown / MDX 笔记，不要输出解释、分析、前言、后记或代码围栏。",
+        "- 输出内容需要可以直接粘贴回 YYNotes 保存。",
+        extraInstruction.trim() ? `- 额外说明：${extraInstruction.trim()}` : "- 额外说明：无",
+      ].join("\n");
+
+      setChatGptPrompt(prompt);
+    } catch (promptError) {
+      setError(promptError instanceof Error ? promptError.message : "生成 ChatGPT Prompt 失败。");
+    } finally {
+      setBuildingChatGptPrompt(false);
+    }
+  }
+
+  async function onCopyChatGptPrompt() {
+    if (!chatGptPrompt.trim()) {
+      setError("请先生成 ChatGPT Prompt。");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(chatGptPrompt);
+      setCopiedChatGptPrompt(true);
+    } catch {
+      setError("复制 Prompt 失败，请手动复制。");
+    }
+  }
+
+  function onOpenChatGpt() {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.open("https://chatgpt.com/", "_blank", "noopener,noreferrer");
+  }
+
+  async function onSaveChatGptResult() {
+    const derived = deriveMetadataFromFileName(sourceFile?.name ?? "");
+    const resolvedTitle = title.trim() || derived.title;
+    const resolvedTopic = topic.trim() || derived.topic;
+    const resolvedMarkdown = chatGptMarkdown.trim();
+
+    if (!resolvedTitle) {
+      setError("请先填写或确认笔记标题。");
+      return;
+    }
+
+    if (!resolvedTopic) {
+      setError("请先填写或确认笔记主题。");
+      return;
+    }
+
+    if (!resolvedMarkdown) {
+      setError("请先粘贴 ChatGPT 生成的 Markdown / MDX。");
+      return;
+    }
+
+    if (IS_CLOUD_MODE && !session?.token) {
+      setError("请先登录后再保存云端笔记。");
+      return;
+    }
+
+    setSavingChatGptMarkdown(true);
+    setError("");
+
+    try {
+      const saved = IS_CLOUD_MODE
+        ? await createImportedCloudNote({
+            title: resolvedTitle,
+            topic: resolvedTopic,
+            content: resolvedMarkdown,
+            authToken: session?.token || "",
+          })
+        : await createImportedLocalNote({
+            title: resolvedTitle,
+            topic: resolvedTopic,
+            content: resolvedMarkdown,
+          });
+
+      if (!saved.slug) {
+        throw new Error("保存成功，但未返回笔记链接。");
+      }
+
+      router.push(buildNoteViewHref(saved.slug));
+      router.refresh();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "保存 ChatGPT 结果失败，请稍后重试。");
+    } finally {
+      setSavingChatGptMarkdown(false);
+    }
+  }
+
   return (
     <section className="mb-8 rounded-apple bg-card p-5 text-card-foreground shadow-card">
       <div className="mb-4">
@@ -499,213 +738,334 @@ export function WeekNoteGenerator() {
         ) : null}
       </div>
 
-      <form onSubmit={onSubmit} className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-2 md:col-span-2">
-          <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-            AI Model
-          </span>
-          <div className="flex flex-wrap items-center gap-3 rounded-apple border border-input bg-background px-3 py-2">
-            <AIModelSelector
-              models={NOTE_GENERATION_MODEL_OPTIONS}
-              value={selectedModel}
-              onValueChange={setSelectedModel}
-              disabled={submitting}
-              triggerClassName="h-8 rounded-full px-2 text-[12px] text-foreground dark:text-foreground"
-              contentClassName="font-text"
-            />
-            <p className="font-text text-[12px] leading-[1.4] text-muted-foreground">
-              GPT-4.1 Mini is selected by default for stable note generation; switch to Qwen3.6 Flash if you want a lower-cost Chinese-first option.
+      <div className="mb-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setMode("direct")}
+          className={`inline-flex items-center rounded-capsule px-4 py-2 font-text text-[13px] transition focus-visible:outline-none ${
+            mode === "direct" ? "bg-primary text-primary-foreground" : "border border-input bg-background text-foreground"
+          }`}
+        >
+          站内直接生成
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("chatgpt")}
+          className={`inline-flex items-center rounded-capsule px-4 py-2 font-text text-[13px] transition focus-visible:outline-none ${
+            mode === "chatgpt" ? "bg-primary text-primary-foreground" : "border border-input bg-background text-foreground"
+          }`}
+        >
+          ChatGPT 辅助生成
+        </button>
+      </div>
+
+      {mode === "direct" ? (
+        <>
+          <form onSubmit={onSubmit} className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2 md:col-span-2">
+              <SectionLabel>AI Model</SectionLabel>
+              <div className="flex flex-wrap items-center gap-3 rounded-apple border border-input bg-background px-3 py-2">
+                <AIModelSelector
+                  models={NOTE_GENERATION_MODEL_OPTIONS}
+                  value={selectedModel}
+                  onValueChange={setSelectedModel}
+                  disabled={submitting}
+                  triggerClassName="h-8 rounded-full px-2 text-[12px] text-foreground dark:text-foreground"
+                  contentClassName="font-text"
+                />
+                <p className="font-text text-[12px] leading-[1.4] text-muted-foreground">
+                  GPT-4.1 Mini is selected by default for stable note generation; switch to Qwen3.6 Flash if you want a lower-cost Chinese-first option.
+                </p>
+              </div>
+            </div>
+
+            <label className="space-y-2 md:col-span-2">
+              <SectionLabel>标题（可选，留空自动生成）</SectionLabel>
+              <TextInput value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：极限与连续性核心概念" />
+              <p className="font-text text-[12px] leading-[1.4] text-muted-foreground">留空时将自动生成标题、主题和标签。</p>
+            </label>
+
+            <label className="space-y-2">
+              <SectionLabel>主题（可选）</SectionLabel>
+              <TextInput value={topic} onChange={(event) => setTopic(event.target.value)} placeholder="例如：微积分基础" />
+            </label>
+
+            <label className="space-y-2">
+              <SectionLabel>标签（可选）</SectionLabel>
+              <TextInput value={tags} onChange={(event) => setTags(event.target.value)} placeholder="例如：定义, 定理, 证明" />
+            </label>
+
+            <label className="space-y-2 md:col-span-2">
+              <SectionLabel>原始资料文件</SectionLabel>
+              <TextInput
+                type="file"
+                accept=".txt,.md,.markdown,.doc,.docx,.ppt,.pptx,.pdf,.tex,.csv"
+                onChange={(event) => handleSourceFileChange(event.target.files?.[0] ?? null)}
+                className="file:mr-3 file:rounded-capsule file:border-0 file:bg-primary file:px-3 file:py-1 file:text-[12px] file:text-primary-foreground hover:file:bg-primary/90"
+              />
+            </label>
+
+            <label className="space-y-2 md:col-span-2">
+              <SectionLabel>额外说明（可选）</SectionLabel>
+              <TextArea
+                value={extraInstruction}
+                onChange={(event) => setExtraInstruction(event.target.value)}
+                rows={3}
+                placeholder="可填写特殊整理要求，如：强调考试易错点。"
+              />
+            </label>
+
+            <label className="md:col-span-2 inline-flex items-start gap-3 rounded-apple border border-input bg-background px-3 py-3">
+              <input
+                type="checkbox"
+                checked={generateInteractiveDemo}
+                onChange={(event) => setGenerateInteractiveDemo(event.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-input text-primary focus:ring-ring"
+              />
+              <span className="font-text text-[13px] leading-[1.45] text-muted-foreground">
+                生成交互 demo（可选）
+                <span className="ui-en ml-1">Add interactive demos if the note contains supported interactive concepts.</span>
+              </span>
+            </label>
+
+            <div className="md:col-span-2 flex flex-wrap items-center gap-3">
+              <button
+                type="submit"
+                disabled={submitting || (IS_CLOUD_MODE && !session?.token)}
+                className="btn-apple-primary inline-flex items-center rounded-apple px-5 py-2 font-text text-[15px] transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
+              >
+                {submitting ? "生成中..." : IS_CLOUD_MODE && !session?.token ? "请先登录" : "生成并保存笔记"}
+              </button>
+
+              <Link
+                href="/notes"
+                className="btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition focus-visible:outline-none"
+              >
+                查看笔记列表
+              </Link>
+            </div>
+          </form>
+
+          {result ? (
+            <div className="mt-5 space-y-4">
+              <div className="rounded-apple border border-primary/35 bg-primary/10 p-3">
+                <p className="font-text text-[13px] leading-[1.45] text-foreground">已保存 {result.fileName}。</p>
+                <Link
+                  href={buildNoteViewHref(result.slug)}
+                  className="btn-apple-link mt-2 inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition focus-visible:outline-none"
+                >
+                  打开生成结果
+                  <span className="ml-1">&gt;</span>
+                </Link>
+              </div>
+
+              <section className="rounded-apple border border-border bg-card p-4">
+                <p className="font-text text-[13px] font-semibold tracking-[0.06em] text-muted-foreground">
+                  生成后可修改元信息
+                  <span className="ui-en ml-1">Edit Metadata After Generation</span>
+                </p>
+
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <label className="space-y-1 md:col-span-2">
+                    <span className="font-text text-[12px] text-black/62 dark:text-white/66">标题</span>
+                    <TextInput value={editTitle} onChange={(event) => setEditTitle(event.target.value)} placeholder="留空将保留当前标题" className="text-[14px]" />
+                  </label>
+
+                  <label className="space-y-1">
+                    <span className="font-text text-[12px] text-black/62 dark:text-white/66">主题</span>
+                    <TextInput value={editTopic} onChange={(event) => setEditTopic(event.target.value)} placeholder="留空将自动兜底生成主题" className="text-[14px]" />
+                  </label>
+
+                  <label className="space-y-1">
+                    <span className="font-text text-[12px] text-black/62 dark:text-white/66">标签</span>
+                    <TextInput value={editTags} onChange={(event) => setEditTags(event.target.value)} placeholder="用逗号分隔，如：定义, 推导, 例题" className="text-[14px]" />
+                  </label>
+                </div>
+
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    disabled={savingMeta}
+                    onClick={onSaveMetadata}
+                    className="btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
+                  >
+                    {savingMeta ? "保存中..." : "保存元信息修改"}
+                  </button>
+                </div>
+              </section>
+
+              {result.note ? (
+                <WeekCard
+                  href={buildNoteViewHref(result.note.slug)}
+                  weekLabelZh={result.note.weekLabelZh}
+                  weekLabelEn={result.note.weekLabelEn}
+                  zhTitle={result.note.zhTitle}
+                  enTitle={result.note.enTitle}
+                  descriptionZh={result.note.descriptionZh}
+                  descriptionEn={result.note.descriptionEn}
+                  tags={result.note.tags}
+                  className="max-w-[420px]"
+                />
+              ) : null}
+
+              <details className="rounded-apple border border-border bg-card px-4 py-3">
+                <summary className="cursor-pointer font-text text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                  预览前几行
+                </summary>
+                <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded-apple bg-muted p-3 font-mono text-[12px] leading-[1.45] text-muted-foreground">
+                  {result.preview}
+                </pre>
+              </details>
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <div className="space-y-4">
+          <section className="rounded-apple border border-border bg-background p-4">
+            <p className="font-text text-[13px] font-semibold tracking-[0.06em] text-muted-foreground">
+              步骤 1：整理输入
+              <span className="ui-en ml-1">Prepare Inputs</span>
             </p>
-          </div>
+
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <label className="space-y-2 md:col-span-2">
+                <SectionLabel>标题</SectionLabel>
+                <TextInput value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：死锁与资源分配图" />
+              </label>
+
+              <label className="space-y-2">
+                <SectionLabel>主题</SectionLabel>
+                <TextInput value={topic} onChange={(event) => setTopic(event.target.value)} placeholder="例如：操作系统 / Operating Systems" />
+              </label>
+
+              <label className="space-y-2">
+                <SectionLabel>标签（可选）</SectionLabel>
+                <TextInput value={tags} onChange={(event) => setTags(event.target.value)} placeholder="例如：死锁, 资源分配图, 同步" />
+              </label>
+
+              <label className="space-y-2 md:col-span-2">
+                <SectionLabel>原始资料文件</SectionLabel>
+                <TextInput
+                  type="file"
+                  accept=".txt,.md,.markdown,.doc,.docx,.ppt,.pptx,.pdf,.tex,.csv"
+                  onChange={(event) => handleSourceFileChange(event.target.files?.[0] ?? null)}
+                  className="file:mr-3 file:rounded-capsule file:border-0 file:bg-primary file:px-3 file:py-1 file:text-[12px] file:text-primary-foreground hover:file:bg-primary/90"
+                />
+              </label>
+
+              <label className="space-y-2 md:col-span-2">
+                <SectionLabel>额外说明（可选）</SectionLabel>
+                <TextArea
+                  value={extraInstruction}
+                  onChange={(event) => setExtraInstruction(event.target.value)}
+                  rows={3}
+                  placeholder="可填写特殊整理要求，如：更适合考试复习，保留关键例题。"
+                />
+              </label>
+
+              <label className="md:col-span-2 inline-flex items-start gap-3 rounded-apple border border-input bg-card px-3 py-3">
+                <input
+                  type="checkbox"
+                  checked={generateInteractiveDemo}
+                  onChange={(event) => setGenerateInteractiveDemo(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-input text-primary focus:ring-ring"
+                />
+                <span className="font-text text-[13px] leading-[1.45] text-muted-foreground">
+                  生成交互 demo（可选）
+                  <span className="ui-en ml-1">The generated prompt will ask ChatGPT to include interactive demo content when applicable.</span>
+                </span>
+              </label>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => void onBuildChatGptPrompt()}
+                disabled={buildingChatGptPrompt}
+                className="btn-apple-primary inline-flex items-center rounded-apple px-5 py-2 font-text text-[15px] transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
+              >
+                {buildingChatGptPrompt ? "生成 Prompt 中..." : "生成 ChatGPT Prompt"}
+              </button>
+            </div>
+          </section>
+
+          <section className="rounded-apple border border-border bg-background p-4">
+            <p className="font-text text-[13px] font-semibold tracking-[0.06em] text-muted-foreground">
+              步骤 2：发送到 ChatGPT
+              <span className="ui-en ml-1">Send to ChatGPT</span>
+            </p>
+
+            <p className="mt-3 font-text text-[13px] leading-[1.45] text-muted-foreground">
+              推荐流程：打开 ChatGPT，选择 GPT-5.4，上传同一份原始资料文件，再粘贴下面的 Prompt。
+            </p>
+
+            <TextArea
+              value={chatGptPrompt}
+              readOnly
+              rows={12}
+              placeholder="点击上方“生成 ChatGPT Prompt”后，这里会出现完整 Prompt。"
+              className="mt-3 font-mono text-[12px] leading-[1.5]"
+            />
+
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => void onCopyChatGptPrompt()}
+                disabled={!chatGptPrompt.trim()}
+                className="btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
+              >
+                {copiedChatGptPrompt ? "已复制 Prompt" : "复制 Prompt"}
+              </button>
+
+              <button
+                type="button"
+                onClick={onOpenChatGpt}
+                className="btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition focus-visible:outline-none"
+              >
+                打开 ChatGPT
+              </button>
+            </div>
+          </section>
+
+          <section className="rounded-apple border border-border bg-background p-4">
+            <p className="font-text text-[13px] font-semibold tracking-[0.06em] text-muted-foreground">
+              步骤 3：粘贴结果并保存
+              <span className="ui-en ml-1">Paste Result and Save</span>
+            </p>
+
+            <TextArea
+              value={chatGptMarkdown}
+              onChange={(event) => setChatGptMarkdown(event.target.value)}
+              rows={14}
+              placeholder="把 ChatGPT 返回的 Markdown / MDX 结果粘贴到这里，然后保存为笔记。"
+              className="mt-3 font-mono text-[12px] leading-[1.5]"
+            />
+
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => void onSaveChatGptResult()}
+                disabled={savingChatGptMarkdown}
+                className="btn-apple-primary inline-flex items-center rounded-apple px-5 py-2 font-text text-[15px] transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
+              >
+                {savingChatGptMarkdown ? "保存中..." : "保存为笔记"}
+              </button>
+
+              <Link
+                href="/notes"
+                className="btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition focus-visible:outline-none"
+              >
+                查看笔记列表
+              </Link>
+            </div>
+          </section>
         </div>
-
-        <label className="space-y-2 md:col-span-2">
-          <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-            标题（可选，留空自动生成）
-          </span>
-          <input
-            type="text"
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            placeholder="例如：极限与连续性核心概念"
-            className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[15px] text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-          />
-          <p className="font-text text-[12px] leading-[1.4] text-muted-foreground">
-            留空时将自动生成标题、主题和标签。
-          </p>
-        </label>
-
-        <label className="space-y-2">
-          <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/60 dark:text-white/60">主题（可选）</span>
-          <input
-            type="text"
-            value={topic}
-            onChange={(event) => setTopic(event.target.value)}
-            placeholder="例如：微积分基础"
-            className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[15px] text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-          />
-        </label>
-
-        <label className="space-y-2">
-          <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/60 dark:text-white/60">标签（可选）</span>
-          <input
-            type="text"
-            value={tags}
-            onChange={(event) => setTags(event.target.value)}
-            placeholder="例如：定义, 定理, 证明"
-            className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[15px] text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-          />
-        </label>
-
-        <label className="space-y-2 md:col-span-2">
-          <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/60 dark:text-white/60">原始资料文件</span>
-          <input
-            type="file"
-            accept=".txt,.md,.markdown,.doc,.docx,.ppt,.pptx,.pdf,.tex,.csv"
-            onChange={(event) => setSourceFile(event.target.files?.[0] ?? null)}
-            className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] text-foreground outline-none file:mr-3 file:rounded-capsule file:border-0 file:bg-primary file:px-3 file:py-1 file:text-[12px] file:text-primary-foreground hover:file:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring"
-          />
-        </label>
-
-        <label className="space-y-2 md:col-span-2">
-          <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-black/60 dark:text-white/60">额外说明（可选）</span>
-          <textarea
-            value={extraInstruction}
-            onChange={(event) => setExtraInstruction(event.target.value)}
-            rows={3}
-            placeholder="可填写特殊整理要求，如：强调考试易错点。"
-            className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] leading-[1.45] text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-          />
-        </label>
-
-        <label className="md:col-span-2 inline-flex items-start gap-3 rounded-apple border border-input bg-background px-3 py-3">
-          <input
-            type="checkbox"
-            checked={generateInteractiveDemo}
-            onChange={(event) => setGenerateInteractiveDemo(event.target.checked)}
-            className="mt-0.5 h-4 w-4 rounded border-input text-primary focus:ring-ring"
-          />
-          <span className="font-text text-[13px] leading-[1.45] text-muted-foreground">
-            生成交互 demo（可选）
-            <span className="ui-en ml-1">Add interactive demos if the note contains supported interactive concepts.</span>
-          </span>
-        </label>
-
-        <div className="md:col-span-2 flex flex-wrap items-center gap-3">
-          <button
-            type="submit"
-            disabled={submitting || (IS_CLOUD_MODE && !session?.token)}
-            className="btn-apple-primary inline-flex items-center rounded-apple px-5 py-2 font-text text-[15px] transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
-          >
-            {submitting ? "生成中..." : IS_CLOUD_MODE && !session?.token ? "请先登录" : "生成并保存笔记"}
-          </button>
-
-          <Link
-            href="/notes"
-            className="btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition focus-visible:outline-none"
-          >
-            查看笔记列表
-          </Link>
-        </div>
-      </form>
+      )}
 
       {error ? (
         <p className="mt-4 rounded-apple border border-[#b4232f]/30 bg-[#b4232f]/[0.08] px-3 py-2 font-text text-[13px] leading-[1.4] text-[#7f1820] dark:border-[#ff6a77]/35 dark:bg-[#ff6a77]/[0.12] dark:text-[#ffd5da]">
           {error}
         </p>
-      ) : null}
-
-      {result ? (
-        <div className="mt-5 space-y-4">
-          <div className="rounded-apple border border-primary/35 bg-primary/10 p-3">
-            <p className="font-text text-[13px] leading-[1.45] text-foreground">
-              已保存 {result.fileName}。
-            </p>
-            <Link
-              href={buildNoteViewHref(result.slug)}
-              className="btn-apple-link mt-2 inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition focus-visible:outline-none"
-            >
-              打开生成结果
-              <span className="ml-1">&gt;</span>
-            </Link>
-          </div>
-
-          <section className="rounded-apple border border-border bg-card p-4">
-            <p className="font-text text-[13px] font-semibold tracking-[0.06em] text-muted-foreground">
-              生成后可修改元信息
-              <span className="ui-en ml-1">Edit Metadata After Generation</span>
-            </p>
-
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
-              <label className="space-y-1 md:col-span-2">
-                <span className="font-text text-[12px] text-black/62 dark:text-white/66">标题</span>
-                <input
-                  type="text"
-                  value={editTitle}
-                  onChange={(event) => setEditTitle(event.target.value)}
-                  placeholder="留空将保留当前标题"
-                  className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                />
-              </label>
-
-              <label className="space-y-1">
-                <span className="font-text text-[12px] text-black/62 dark:text-white/66">主题</span>
-                <input
-                  type="text"
-                  value={editTopic}
-                  onChange={(event) => setEditTopic(event.target.value)}
-                  placeholder="留空将自动兜底生成主题"
-                  className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                />
-              </label>
-
-              <label className="space-y-1">
-                <span className="font-text text-[12px] text-black/62 dark:text-white/66">标签</span>
-                <input
-                  type="text"
-                  value={editTags}
-                  onChange={(event) => setEditTags(event.target.value)}
-                  placeholder="用逗号分隔，如：定义, 推导, 例题"
-                  className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                />
-              </label>
-            </div>
-
-            <div className="mt-3">
-              <button
-                type="button"
-                disabled={savingMeta}
-                onClick={onSaveMetadata}
-                className="btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
-              >
-                {savingMeta ? "保存中..." : "保存元信息修改"}
-              </button>
-            </div>
-          </section>
-
-          {result.note ? (
-            <WeekCard
-              href={buildNoteViewHref(result.note.slug)}
-              weekLabelZh={result.note.weekLabelZh}
-              weekLabelEn={result.note.weekLabelEn}
-              zhTitle={result.note.zhTitle}
-              enTitle={result.note.enTitle}
-              descriptionZh={result.note.descriptionZh}
-              descriptionEn={result.note.descriptionEn}
-              tags={result.note.tags}
-              className="max-w-[420px]"
-            />
-          ) : null}
-
-          <details className="rounded-apple border border-border bg-card px-4 py-3">
-            <summary className="cursor-pointer font-text text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-              预览前几行
-            </summary>
-            <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded-apple bg-muted p-3 font-mono text-[12px] leading-[1.45] text-muted-foreground">
-              {result.preview}
-            </pre>
-          </details>
-        </div>
       ) : null}
     </section>
   );
