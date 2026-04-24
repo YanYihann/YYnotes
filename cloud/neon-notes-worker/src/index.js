@@ -1778,6 +1778,70 @@ function splitTopic(topicInput, title) {
   };
 }
 
+function stripLeadingFrontmatter(content) {
+  const normalized = normalizeNewlines(String(content ?? "")).trim();
+  if (!normalized.startsWith("---\n")) {
+    return normalized;
+  }
+
+  const end = normalized.indexOf("\n---\n", 4);
+  if (end === -1) {
+    return normalized;
+  }
+
+  return normalized.slice(end + 5).trim();
+}
+
+function extractImportedDescription(markdown) {
+  const lines = normalizeNewlines(String(markdown ?? ""))
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^(#{1,6}\s|>\s|```|\$\$|---$)/.test(line));
+
+  const firstLine = String(lines[0] ?? "").trim();
+  if (!firstLine) {
+    return "导入的 Markdown 笔记。";
+  }
+
+  return (
+    firstLine
+      .replace(/^[-*+]\s+/, "")
+      .replace(/^\d+\.\s+/, "")
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/\[(.*?)\]\(.*?\)/g, "$1")
+      .replace(/\*\*/g, "")
+      .replace(/\*/g, "")
+      .trim()
+      .slice(0, 140) || "导入的 Markdown 笔记。"
+  );
+}
+
+function buildImportedNoteMdx({ slug, title, topic, body }) {
+  const topicParts = splitTopic(topic, title);
+  const description = extractImportedDescription(body);
+  const frontmatter = [
+    "---",
+    `title: ${JSON.stringify(title)}`,
+    `description: ${JSON.stringify(description)}`,
+    `descriptionZh: ${JSON.stringify(description)}`,
+    `descriptionEn: ${JSON.stringify(description)}`,
+    `slug: ${JSON.stringify(slug)}`,
+    `topic: ${JSON.stringify(topicParts.topic)}`,
+    `topicZh: ${JSON.stringify(topicParts.topicZh)}`,
+    `topicEn: ${JSON.stringify(topicParts.topicEn)}`,
+    "tags: []",
+    `order: ${Date.now()}`,
+    "---",
+  ].join("\n");
+
+  return {
+    topicParts,
+    description,
+    mdxContent: `${frontmatter}\n\n${String(body ?? "").trimEnd()}\n`,
+  };
+}
+
 function buildSystemPrompt(promptTemplate) {
   return [
     String(promptTemplate ?? "").trim(),
@@ -2825,6 +2889,82 @@ export default {
               `;
 
         return jsonResponse({ success: true, notes: rows }, 200, corsOrigin);
+      }
+
+      if (request.method === "POST" && url.pathname === "/notes") {
+        const userId = Number(authenticatedUser?.id);
+        const body = await request.json().catch(() => null);
+        if (!body || typeof body !== "object") {
+          return jsonResponse({ error: "Invalid JSON body." }, 400, corsOrigin);
+        }
+
+        const title = String(body.title ?? "").trim().slice(0, 80);
+        const topicInput = String(body.topic ?? "").trim().slice(0, 64);
+        const rawContent = normalizeNewlines(String(body.content ?? "")).trim();
+        const noteBody = stripLeadingFrontmatter(rawContent);
+
+        if (!title) {
+          return jsonResponse({ error: "Title is required." }, 400, corsOrigin);
+        }
+
+        if (!topicInput) {
+          return jsonResponse({ error: "Topic is required." }, 400, corsOrigin);
+        }
+
+        if (!noteBody) {
+          return jsonResponse({ error: "Markdown content cannot be empty." }, 400, corsOrigin);
+        }
+
+        const baseSlug = slugifyTitle(title);
+        const matchingSlugs = await sql`
+          SELECT slug
+          FROM notes
+          WHERE user_id = ${userId}
+            AND (slug = ${baseSlug} OR slug LIKE ${`${baseSlug}-%`})
+        `;
+        const slug = resolveUniqueSlug(baseSlug, matchingSlugs.map((row) => row.slug));
+        const imported = buildImportedNoteMdx({
+          slug,
+          title,
+          topic: topicInput,
+          body: noteBody,
+        });
+
+        await sql`
+          INSERT INTO notes (user_id, slug, title, topic, topic_zh, topic_en, tags, mdx_content, source_text, updated_at)
+          VALUES (
+            ${userId},
+            ${slug},
+            ${title},
+            ${imported.topicParts.topic},
+            ${imported.topicParts.topicZh},
+            ${imported.topicParts.topicEn},
+            ${JSON.stringify([])},
+            ${imported.mdxContent},
+            ${noteBody},
+            NOW()
+          )
+        `;
+
+        return jsonResponse(
+          {
+            success: true,
+            slug,
+            fileName: `${slug}.mdx`,
+            note: {
+              slug,
+              weekLabelZh: imported.topicParts.topicZh,
+              weekLabelEn: imported.topicParts.topicEn,
+              zhTitle: title,
+              enTitle: title,
+              descriptionZh: imported.description,
+              descriptionEn: imported.description,
+              topicZh: imported.topicParts.topicZh,
+            },
+          },
+          201,
+          corsOrigin,
+        );
       }
 
       if (request.method === "GET" && url.pathname.startsWith("/notes/")) {

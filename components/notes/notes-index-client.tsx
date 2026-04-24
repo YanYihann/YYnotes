@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { LoginRequiredCard } from "@/components/auth/login-required-card";
 import { useAuth } from "@/components/auth/auth-provider";
@@ -38,6 +39,15 @@ type NoteUpdateResponse = {
     weekLabelZh?: string;
     weekLabelEn?: string;
     topicZh?: string;
+  };
+  error?: string;
+};
+
+type NoteCreateResponse = {
+  success?: boolean;
+  slug?: unknown;
+  note?: {
+    slug?: string;
   };
   error?: string;
 };
@@ -213,6 +223,7 @@ function toFolderItem(row: CloudFolderRecord): FolderItem | null {
 }
 
 export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
+  const router = useRouter();
   const { isReady, session } = useAuth();
   const authToken = session?.token ?? "";
 
@@ -244,6 +255,10 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
   const [deletingFolderId, setDeletingFolderId] = useState("");
   const [draggingSlug, setDraggingSlug] = useState("");
   const [dragOverTarget, setDragOverTarget] = useState<string>("");
+  const [importTitle, setImportTitle] = useState("");
+  const [importTopic, setImportTopic] = useState("");
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importingNote, setImportingNote] = useState(false);
   const [error, setError] = useState("");
   const [trashOpen, setTrashOpen] = useState(false);
 
@@ -1016,6 +1031,104 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     void handleCreateFolder(input);
   }
 
+  async function handleImportMarkdownNote(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (importingNote) {
+      return;
+    }
+
+    const nextTitle = sanitizeEditableText(importTitle, 80);
+    const nextTopic = sanitizeEditableText(importTopic, 64);
+
+    if (!importFile) {
+      setError("请先选择一个 Markdown 文件。");
+      return;
+    }
+
+    if (!nextTitle) {
+      setError("请输入笔记标题。");
+      return;
+    }
+
+    if (!nextTopic) {
+      setError("请输入笔记主题。");
+      return;
+    }
+
+    const lowerFileName = importFile.name.toLowerCase();
+    if (!lowerFileName.endsWith(".md") && !lowerFileName.endsWith(".markdown") && !lowerFileName.endsWith(".mdx")) {
+      setError("目前仅支持导入 .md / .markdown / .mdx 文件。");
+      return;
+    }
+
+    setImportingNote(true);
+    setError("");
+
+    try {
+      const content = await importFile.text();
+      let response: Response;
+
+      if (IS_CLOUD_MODE) {
+        if (!authToken) {
+          throw new Error("登录状态已失效，请重新登录。");
+        }
+
+        const apiBase = normalizeApiBase(CLOUD_API_BASE);
+        response = await fetch(`${apiBase}/notes`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+          },
+          body: JSON.stringify({
+            title: nextTitle,
+            topic: nextTopic,
+            content,
+          }),
+        });
+      } else {
+        response = await fetch("/api/notes", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            title: nextTitle,
+            topic: nextTopic,
+            content,
+          }),
+        });
+      }
+
+      const json = (await response.json().catch(() => null)) as NoteCreateResponse | null;
+      if (!response.ok || !json?.success) {
+        throw new Error(json?.error || "导入 Markdown 笔记失败。");
+      }
+
+      const slug =
+        typeof json.slug === "string" && json.slug.trim()
+          ? json.slug.trim()
+          : typeof json.note?.slug === "string" && json.note.slug.trim()
+            ? json.note.slug.trim()
+            : "";
+
+      if (!slug) {
+        throw new Error("导入成功，但没有收到可打开的笔记链接。");
+      }
+
+      setImportTitle("");
+      setImportTopic("");
+      setImportFile(null);
+
+      router.push(IS_CLOUD_MODE ? `/notes/cloud?slug=${encodeURIComponent(slug)}` : `/notes/${slug}`);
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : "导入 Markdown 笔记失败。");
+    } finally {
+      setImportingNote(false);
+    }
+  }
+
   if (IS_CLOUD_MODE && !isReady) {
     return (
       <article className="rounded-apple bg-card p-6 text-card-foreground shadow-card">
@@ -1031,6 +1144,68 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
   return (
     <>
       <div className="mb-6 space-y-4">
+        <section className="rounded-apple bg-card p-4 text-card-foreground shadow-card">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-1">
+              <h2 className="font-display text-[22px] font-semibold tracking-tight text-foreground">导入 Markdown 笔记</h2>
+              <p className="font-text text-[13px] text-muted-foreground">
+                上传 `.md` / `.markdown` / `.mdx` 文件，填写标题和主题后会直接创建并打开这篇笔记。
+              </p>
+            </div>
+            {importFile ? (
+              <span className="rounded-capsule border border-border px-3 py-1 font-text text-[12px] text-muted-foreground">
+                已选择：{importFile.name}
+              </span>
+            ) : null}
+          </div>
+
+          <form className="mt-4 grid gap-3 md:grid-cols-2" onSubmit={handleImportMarkdownNote}>
+            <label className="space-y-1 md:col-span-2">
+              <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                Markdown 文件
+              </span>
+              <input
+                type="file"
+                accept=".md,.markdown,.mdx,text/markdown,text/plain"
+                onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
+                className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] text-foreground file:mr-3 file:rounded-capsule file:border-0 file:bg-primary/10 file:px-3 file:py-1.5 file:font-text file:text-[13px] file:text-primary"
+              />
+            </label>
+
+            <label className="space-y-1">
+              <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">标题</span>
+              <input
+                type="text"
+                value={importTitle}
+                onChange={(event) => setImportTitle(event.target.value)}
+                placeholder="例如：操作系统死锁总结"
+                className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </label>
+
+            <label className="space-y-1">
+              <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">主题</span>
+              <input
+                type="text"
+                value={importTopic}
+                onChange={(event) => setImportTopic(event.target.value)}
+                placeholder="例如：操作系统 / Operating Systems"
+                className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </label>
+
+            <div className="md:col-span-2">
+              <button
+                type="submit"
+                disabled={importingNote}
+                className="btn-apple-primary inline-flex h-[42px] items-center px-5 font-text text-[14px] tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
+              >
+                {importingNote ? "正在导入并打开..." : "导入并打开笔记"}
+              </button>
+            </div>
+          </form>
+        </section>
+
         <section className="rounded-apple bg-card p-4 text-card-foreground shadow-card">
           <div className="flex flex-wrap items-center gap-2">
             <button

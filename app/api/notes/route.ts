@@ -4,8 +4,9 @@ import matter from "gray-matter";
 import { NextResponse } from "next/server";
 import { getTrashedWeekBySlug, getTrashedWeekNotes, getWeekBySlug, getWeekNotes } from "@/lib/content";
 
-const NOTES_DIR_PATH = path.resolve(path.join(process.cwd(), "笔记"));
-const TRASH_DIR_PATH = path.resolve(path.join(process.cwd(), "笔记回收站"));
+const NOTES_DIR_PATH = path.resolve(path.join(process.cwd(), "\u7B14\u8BB0"));
+const TRASH_DIR_PATH = path.resolve(path.join(process.cwd(), "\u7B14\u8BB0\u56DE\u6536\u7AD9"));
+const DEFAULT_DESCRIPTION_ZH = "\u5BFC\u5165\u7684 Markdown \u7B14\u8BB0\u3002";
 
 function ensureInsideDir(targetPath: string, rootDir: string): boolean {
   const normalizedTarget = path.resolve(targetPath);
@@ -40,6 +41,18 @@ function normalizeEditableContent(value: unknown): string {
     .trim();
 }
 
+function slugifyTitle(input: string): string {
+  const normalized = String(input ?? "")
+    .trim()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return normalized || `note-${Date.now()}`;
+}
+
 function resolveUniqueSlug(baseSlug: string, takenSlugs: Iterable<string>): string {
   const taken = new Set(Array.from(takenSlugs, (slug) => String(slug ?? "").trim()).filter(Boolean));
   if (!taken.has(baseSlug)) {
@@ -54,10 +67,30 @@ function resolveUniqueSlug(baseSlug: string, takenSlugs: Iterable<string>): stri
   return `${baseSlug}-${counter}`;
 }
 
-function buildNoteListPayload(
-  notes: Awaited<ReturnType<typeof getWeekNotes>>,
-  trashed: boolean,
-) {
+function extractDescriptionFromBody(markdown: string): string {
+  const lines = markdown
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^(#{1,6}\s|>\s|```|\$\$|---$)/.test(line));
+
+  const firstLine = lines[0] ?? "";
+  if (!firstLine) {
+    return DEFAULT_DESCRIPTION_ZH;
+  }
+
+  return firstLine
+    .replace(/^[-*+]\s+/, "")
+    .replace(/^\d+\.\s+/, "")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[(.*?)\]\(.*?\)/g, "$1")
+    .replace(/\*\*/g, "")
+    .replace(/\*/g, "")
+    .trim()
+    .slice(0, 140) || DEFAULT_DESCRIPTION_ZH;
+}
+
+function buildNoteListPayload(notes: Awaited<ReturnType<typeof getWeekNotes>>, trashed: boolean) {
   return notes.map((note) => ({
     slug: note.slug,
     weekLabelZh: note.weekLabelZh,
@@ -108,6 +141,79 @@ async function moveNoteBetweenDirs(params: {
   };
 }
 
+async function createImportedNote(params: {
+  title: string;
+  topic: string;
+  content: string;
+}) {
+  const normalizedTitle = normalizeEditableText(params.title, 80);
+  const normalizedTopic = normalizeEditableText(params.topic, 64);
+  const normalizedContent = normalizeEditableContent(params.content);
+
+  if (!normalizedTitle) {
+    throw new Error("Title is required.");
+  }
+
+  if (!normalizedTopic) {
+    throw new Error("Topic is required.");
+  }
+
+  if (!normalizedContent) {
+    throw new Error("Markdown content cannot be empty.");
+  }
+
+  const parsed = matter(normalizedContent);
+  const cleanedBody = normalizeEditableContent(parsed.content);
+  if (!cleanedBody) {
+    throw new Error("Markdown content cannot be empty.");
+  }
+
+  const [existingNotes, trashedNotes] = await Promise.all([getWeekNotes(), getTrashedWeekNotes()]);
+  const slug = resolveUniqueSlug(
+    slugifyTitle(normalizedTitle),
+    [...existingNotes, ...trashedNotes].map((note) => note.slug),
+  );
+  const description = extractDescriptionFromBody(cleanedBody);
+  const highestOrder = Math.max(
+    0,
+    ...existingNotes.map((note) => (Number.isFinite(note.order) ? note.order : 0)),
+  );
+  const filePath = path.join(NOTES_DIR_PATH, `${slug}.mdx`);
+  const nextSource = matter.stringify(`${cleanedBody.trimEnd()}\n`, {
+    slug,
+    title: normalizedTitle,
+    zhTitle: normalizedTitle,
+    enTitle: normalizedTitle,
+    description,
+    descriptionZh: description,
+    descriptionEn: description,
+    topic: normalizedTopic,
+    topicZh: normalizedTopic,
+    topicEn: normalizedTopic,
+    tags: [],
+    order: highestOrder + 1,
+  });
+
+  await fs.mkdir(NOTES_DIR_PATH, { recursive: true });
+  await fs.writeFile(filePath, nextSource, "utf8");
+
+  return {
+    slug,
+    fileName: path.basename(filePath),
+    note: {
+      slug,
+      weekLabelZh: normalizedTopic,
+      weekLabelEn: normalizedTopic,
+      zhTitle: normalizedTitle,
+      enTitle: normalizedTitle,
+      descriptionZh: description,
+      descriptionEn: description,
+      topicZh: normalizedTopic,
+      order: highestOrder + 1,
+    },
+  };
+}
+
 export async function GET(request: Request) {
   try {
     const includeTrash = parseBooleanFlag(request, "trash");
@@ -124,36 +230,49 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const url = new URL(request.url);
     const slug = parseSlugFromRequest(request);
-    const action = new URL(request.url).searchParams.get("action") ?? "";
+    const action = url.searchParams.get("action") ?? "";
 
-    if (!slug) {
-      return NextResponse.json({ error: "Missing slug." }, { status: 400 });
+    if (action === "restore") {
+      if (!slug) {
+        return NextResponse.json({ error: "Missing slug." }, { status: 400 });
+      }
+
+      const restored = await moveNoteBetweenDirs({
+        slug,
+        fromTrash: true,
+        destinationDir: NOTES_DIR_PATH,
+      });
+
+      if (!restored) {
+        return NextResponse.json({ error: "Note not found in trash." }, { status: 404 });
+      }
+
+      return NextResponse.json({
+        success: true,
+        slug: restored.nextSlug,
+        restoredFrom: restored.previousSlug,
+        fileName: restored.fileName,
+      });
     }
 
-    if (action !== "restore") {
-      return NextResponse.json({ error: "Unsupported action." }, { status: 400 });
+    const body = (await request.json().catch(() => null)) as { title?: unknown; topic?: unknown; content?: unknown } | null;
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
     }
 
-    const restored = await moveNoteBetweenDirs({
-      slug,
-      fromTrash: true,
-      destinationDir: NOTES_DIR_PATH,
+    const created = await createImportedNote({
+      title: String(body.title ?? ""),
+      topic: String(body.topic ?? ""),
+      content: String(body.content ?? ""),
     });
 
-    if (!restored) {
-      return NextResponse.json({ error: "Note not found in trash." }, { status: 404 });
-    }
-
-    return NextResponse.json({
-      success: true,
-      slug: restored.nextSlug,
-      restoredFrom: restored.previousSlug,
-      fileName: restored.fileName,
-    });
+    return NextResponse.json({ success: true, ...created }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Restore failed.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Create failed.";
+    const status = /required|empty/i.test(message) ? 400 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }
 
