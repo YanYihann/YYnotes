@@ -514,20 +514,185 @@ function buildDemoEmbedBlock(demo) {
   ].join("\n");
 }
 
-function buildDemoSection(demos) {
+function stripMarkdownForDemoDesign(value) {
+  return String(value ?? "")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^[-*+]\s+/gm, "")
+    .replace(/^\d+\.\s+/gm, "")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[(.*?)\]\(.*?\)/g, "$1")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .trim();
+}
+
+function toDemoKebabCase(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+}
+
+function parseZhBodySections(body) {
+  const lines = String(body ?? "").split("\n");
+  const sections = [];
+  let currentHeading = "";
+  let currentLines = [];
+
+  const flush = () => {
+    if (!currentHeading) {
+      currentLines = [];
+      return;
+    }
+
+    sections.push({
+      heading: stripMarkdownForDemoDesign(currentHeading),
+      content: currentLines.join("\n").trim(),
+    });
+    currentLines = [];
+  };
+
+  for (const line of lines) {
+    const headingMatch = line.trim().match(/^#{2,4}\s+(.+)$/);
+    if (headingMatch) {
+      flush();
+      currentHeading = headingMatch[1].trim();
+      continue;
+    }
+
+    if (currentHeading) {
+      currentLines.push(line);
+    }
+  }
+
+  flush();
+  return sections;
+}
+
+function collectBulletsForDemoDesign(source) {
+  return String(source ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => /^[-*+]\s+/.test(line))
+    .map((line) => stripMarkdownForDemoDesign(line.replace(/^[-*+]\s+/, "")))
+    .filter(Boolean);
+}
+
+function buildConceptPool(title, topic, zhBody) {
+  const sections = parseZhBodySections(zhBody);
+  const keyConceptSection = sections.find((section) => section.heading === "关键概念");
+  const conceptBullets = keyConceptSection ? collectBulletsForDemoDesign(keyConceptSection.content) : [];
+  const majorHeadings = sections
+    .map((section) => section.heading)
+    .filter((heading) => !["学习目标", "关键概念", "小结", "交互 Demo"].includes(heading));
+
+  return Array.from(
+    new Set(
+      [title, topic, ...conceptBullets, ...majorHeadings]
+        .map((item) => stripMarkdownForDemoDesign(item))
+        .map((item) => item.replace(/[：:]\s*$/, "").trim())
+        .filter((item) => item.length >= 2),
+    ),
+  ).slice(0, 6);
+}
+
+function encodeDemoSpec(spec) {
+  return encodeURIComponent(JSON.stringify(spec));
+}
+
+function buildGeneratedDesignSpecs(title, topic, zhBody) {
+  const conceptPool = buildConceptPool(title, topic, zhBody);
+  if (!conceptPool.length) {
+    return [];
+  }
+
+  const focusOptions = conceptPool.slice(0, 4);
+  const scenarioLabel = topic || title;
+
+  return conceptPool.slice(0, 2).map((concept, index) => ({
+    key: `generated-${toDemoKebabCase(concept) || `demo-${index + 1}`}`,
+    anchorId: `generated-interactive-demo-${toDemoKebabCase(concept) || index + 1}`,
+    titleZh: `${concept} 交互设计`,
+    titleEn: `Interactive design for ${concept}`,
+    summaryZh: `围绕“${concept}”切换关键变量，观察 ${scenarioLabel || concept} 在不同情境下的变化与判断依据。`,
+    summaryEn: `Explore how ${concept} changes across different scenarios and control settings.`,
+    observationsZh: [
+      `观察当场景复杂度提高时，“${concept}”的判断依据会先发生什么变化。`,
+      `对比不同观察重点下，${scenarioLabel || concept} 的关键结论是否一致。`,
+      "尝试打开提示开关，再回到无提示状态，比较你自己的推理路径。",
+    ],
+    observationsEn: [
+      `Observe which part of ${concept} changes first as scenario complexity increases.`,
+      `Compare whether the key conclusion stays consistent across different focus settings.`,
+      "Toggle the hint layer on and off to compare your own reasoning path.",
+    ],
+    tasksZh: [
+      `先用默认设置理解“${concept}”的基本情境。`,
+      `再切换一个观察重点，说明你的判断为什么改变或没有改变。`,
+      "最后记录你最容易混淆的一步，并尝试口头解释给自己听。",
+    ],
+    tasksEn: [
+      `Start with the default setup to understand the baseline idea behind ${concept}.`,
+      "Switch to another focus and explain why your conclusion changes or stays the same.",
+      "Record the step that feels most confusing and explain it in your own words.",
+    ],
+    controls: [
+      {
+        id: "focus",
+        type: "select",
+        labelZh: "观察重点",
+        labelEn: "Focus",
+        optionsZh: focusOptions,
+        optionsEn: focusOptions,
+        initialIndex: Math.min(index, Math.max(0, focusOptions.length - 1)),
+      },
+      {
+        id: "complexity",
+        type: "slider",
+        labelZh: "场景复杂度",
+        labelEn: "Scenario Complexity",
+        min: 1,
+        max: 5,
+        step: 1,
+        initialValue: 3,
+        unitZh: "级",
+        unitEn: "level",
+      },
+      {
+        id: "hints",
+        type: "toggle",
+        labelZh: "显示判断提示",
+        labelEn: "Show Hint Layer",
+        initialValue: true,
+      },
+    ],
+  }));
+}
+
+function buildGeneratedDesignBlock(spec) {
+  return [
+    `### ${spec.titleZh}`,
+    "",
+    `<div id="${spec.anchorId}" class="interactive-demo-design" data-demo-spec="${encodeDemoSpec(spec)}"></div>`,
+  ].join("\n");
+}
+
+function buildDemoSection(demos, generatedDesigns = []) {
   return [
     "## 交互 Demo",
     "",
     ...demos.map((demo) => buildDemoEmbedBlock(demo)),
+    ...generatedDesigns.map((spec) => buildGeneratedDesignBlock(spec)),
   ].join("\n\n").trim();
 }
 
-function insertDemoSectionBeforeSummary(body, demos) {
-  if (!demos.length) {
+function insertDemoSectionBeforeSummary(body, demos, generatedDesigns = []) {
+  if (!demos.length && !generatedDesigns.length) {
     return body;
   }
 
-  const section = buildDemoSection(demos);
+  const section = buildDemoSection(demos, generatedDesigns);
   const match = String(body ?? "").match(/^#{2,3}\s+小结\s*$/m);
   if (!match || match.index === undefined) {
     return `${String(body ?? "").trim()}\n\n${section}`.trim();
@@ -649,18 +814,23 @@ function selectInteractiveDemos({ title, topic, tags, sourceText, generatedConte
     .map((item) => item.demo);
 }
 
-function injectInteractiveDemosIntoNoteContent(source, demos) {
-  if (!demos.length) {
-    return source;
-  }
-
+function injectInteractiveDemosIntoNoteContent(source, demos, options = {}) {
   const sections = splitBilingualNoteSections(source);
   if (!sections.hasStructuredSections) {
     return source;
   }
 
-  const zhWithLinks = insertDemoJumpLinks(sections.zhBody, demos);
-  const zhFinal = insertDemoSectionBeforeSummary(zhWithLinks, demos);
+  const generatedDesigns = demos.length ? [] : buildGeneratedDesignSpecs(options.title || "", options.topic || "", sections.zhBody);
+  const jumpDemos = [
+    ...demos,
+    ...generatedDesigns.map((spec) => ({
+      anchorId: spec.anchorId,
+      titleZh: String(spec.titleZh || "").replace(/\s*交互设计$/, ""),
+      keywords: [String(spec.titleZh || "").replace(/\s*交互设计$/, "")],
+    })),
+  ];
+  const zhWithLinks = insertDemoJumpLinks(sections.zhBody, jumpDemos);
+  const zhFinal = insertDemoSectionBeforeSummary(zhWithLinks, demos, generatedDesigns);
 
   return [
     "## 中文版笔记",
@@ -1760,7 +1930,10 @@ function normalizeGeneratedMdx(raw, { title, slug, topic, topicZh, topicEn, tags
       sourceText,
       generatedContent: content,
     });
-    content = injectInteractiveDemosIntoNoteContent(content, demos);
+    content = injectInteractiveDemosIntoNoteContent(content, demos, {
+      title,
+      topic,
+    });
   }
 
   const frontmatter = buildGeneratedFrontmatter({

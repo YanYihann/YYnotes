@@ -12,6 +12,7 @@ import {
   TryThisDemoBlock,
   WarningBlock,
 } from "@/components/mdx/blocks";
+import { GeneratedInteractiveDesign } from "@/components/demos/mdx/generated-interactive-design";
 import { InteractiveDemoEmbed } from "@/components/demos/mdx/interactive-demo-embed";
 import { cn } from "@/lib/utils";
 
@@ -331,11 +332,16 @@ function Img(props: ComponentPropsWithoutRef<"img">) {
 
 function Div(props: ComponentPropsWithoutRef<"div">) {
   const className = typeof props.className === "string" ? props.className : "";
-  const dataAttributes = props as ComponentPropsWithoutRef<"div"> & { "data-demo-key"?: string };
+  const dataAttributes = props as ComponentPropsWithoutRef<"div"> & { "data-demo-key"?: string; "data-demo-spec"?: string };
   const demoKey = typeof dataAttributes["data-demo-key"] === "string" ? dataAttributes["data-demo-key"] : "";
+  const demoSpec = typeof dataAttributes["data-demo-spec"] === "string" ? dataAttributes["data-demo-spec"] : "";
 
   if (className.includes("interactive-demo-embed") && demoKey) {
     return <InteractiveDemoEmbed demoKey={demoKey} anchorId={typeof props.id === "string" ? props.id : undefined} />;
+  }
+
+  if (className.includes("interactive-demo-design") && demoSpec) {
+    return <GeneratedInteractiveDesign encodedSpec={demoSpec} anchorId={typeof props.id === "string" ? props.id : undefined} />;
   }
 
   return <div {...props} className={cn(props.className)} />;

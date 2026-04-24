@@ -919,7 +919,10 @@ function normalizeGeneratedMdx(raw: string, args: {
       sourceText: args.sourceText,
       generatedContent: canonicalContent,
     });
-    canonicalContent = injectInteractiveDemosIntoNoteContent(canonicalContent, demos);
+    canonicalContent = injectInteractiveDemosIntoNoteContent(canonicalContent, demos, {
+      title: args.title,
+      topic: args.topic,
+    });
   }
 
   const frontmatter = buildFrontmatter({
