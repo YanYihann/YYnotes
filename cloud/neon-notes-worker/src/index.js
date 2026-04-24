@@ -4,6 +4,7 @@ import JSZip from "jszip";
 const MAX_SOURCE_CHARS = 35_000;
 const MAX_METADATA_SOURCE_CHARS = 8_000;
 const MAX_EXTRA_INSTRUCTION_CHARS = 1_500;
+const MAX_INTERACTIVE_DESIGN_RESPONSE_CHARS = 20_000;
 const MAX_NOTE_CONTEXT_CHARS = 14_000;
 const MAX_SELECTION_CHARS = 2_200;
 const MAX_QUESTION_CHARS = 2_000;
@@ -820,7 +821,11 @@ function injectInteractiveDemosIntoNoteContent(source, demos, options = {}) {
     return source;
   }
 
-  const generatedDesigns = demos.length ? [] : buildGeneratedDesignSpecs(options.title || "", options.topic || "", sections.zhBody);
+  const generatedDesigns = Array.isArray(options.generatedSpecs) && options.generatedSpecs.length
+    ? options.generatedSpecs
+    : demos.length
+      ? []
+      : buildGeneratedDesignSpecs(options.title || "", options.topic || "", sections.zhBody);
   const jumpDemos = [
     ...demos,
     ...generatedDesigns.map((spec) => ({
@@ -1276,6 +1281,242 @@ function parseMetadataResponse(raw) {
   }
 }
 
+function sanitizeInteractiveDesignControl(raw, fallbackId) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+
+  const control = raw;
+  const type = typeof control.type === "string" ? control.type : "";
+  const id = typeof control.id === "string" && control.id.trim() ? control.id.trim() : fallbackId;
+  const labelZh = typeof control.labelZh === "string" && control.labelZh.trim() ? control.labelZh.trim() : "交互控件";
+  const labelEn = typeof control.labelEn === "string" && control.labelEn.trim() ? control.labelEn.trim() : "Interactive Control";
+
+  if (type === "select") {
+    const optionsZh = Array.isArray(control.optionsZh) ? control.optionsZh.map((item) => String(item).trim()).filter(Boolean) : [];
+    const optionsEn = Array.isArray(control.optionsEn) ? control.optionsEn.map((item) => String(item).trim()).filter(Boolean) : [];
+    if (!optionsZh.length) {
+      return null;
+    }
+
+    return {
+      id,
+      type,
+      labelZh,
+      labelEn,
+      optionsZh: optionsZh.slice(0, 6),
+      optionsEn: (optionsEn.length ? optionsEn : optionsZh).slice(0, 6),
+      initialIndex:
+        typeof control.initialIndex === "number" && Number.isFinite(control.initialIndex)
+          ? Math.max(0, Math.floor(control.initialIndex))
+          : 0,
+    };
+  }
+
+  if (type === "slider") {
+    const min = typeof control.min === "number" && Number.isFinite(control.min) ? control.min : 1;
+    const max = typeof control.max === "number" && Number.isFinite(control.max) ? control.max : Math.max(min + 1, 5);
+
+    return {
+      id,
+      type,
+      labelZh,
+      labelEn,
+      min,
+      max,
+      step: typeof control.step === "number" && Number.isFinite(control.step) ? control.step : 1,
+      initialValue:
+        typeof control.initialValue === "number" && Number.isFinite(control.initialValue) ? control.initialValue : min,
+      unitZh: typeof control.unitZh === "string" ? control.unitZh.trim() : "",
+      unitEn: typeof control.unitEn === "string" ? control.unitEn.trim() : "",
+    };
+  }
+
+  if (type === "toggle") {
+    return {
+      id,
+      type,
+      labelZh,
+      labelEn,
+      initialValue: Boolean(control.initialValue),
+    };
+  }
+
+  return null;
+}
+
+function sanitizeInteractiveDesignSpecs(raw) {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw
+    .map((item, index) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+
+      const spec = item;
+      const titleZh = typeof spec.titleZh === "string" ? spec.titleZh.trim() : "";
+      if (!titleZh) {
+        return null;
+      }
+
+      const controls = Array.isArray(spec.controls)
+        ? spec.controls
+            .map((control, controlIndex) => sanitizeInteractiveDesignControl(control, `control-${index + 1}-${controlIndex + 1}`))
+            .filter(Boolean)
+        : [];
+      if (!controls.length) {
+        return null;
+      }
+
+      const toStringList = (value, fallback) =>
+        Array.isArray(value) ? value.map((entry) => String(entry).trim()).filter(Boolean).slice(0, 4) : fallback;
+
+      return {
+        key: typeof spec.key === "string" && spec.key.trim() ? spec.key.trim() : `generated-ai-design-${index + 1}`,
+        anchorId:
+          typeof spec.anchorId === "string" && spec.anchorId.trim()
+            ? spec.anchorId.trim()
+            : `generated-ai-interactive-demo-${index + 1}`,
+        titleZh,
+        titleEn: typeof spec.titleEn === "string" && spec.titleEn.trim() ? spec.titleEn.trim() : `Interactive design ${index + 1}`,
+        summaryZh: typeof spec.summaryZh === "string" && spec.summaryZh.trim() ? spec.summaryZh.trim() : `${titleZh} 的交互探索设计。`,
+        summaryEn:
+          typeof spec.summaryEn === "string" && spec.summaryEn.trim()
+            ? spec.summaryEn.trim()
+            : `Interactive study design for ${titleZh}.`,
+        observationsZh: toStringList(spec.observationsZh, ["观察交互状态变化，并记录你的判断依据。"]),
+        observationsEn: toStringList(spec.observationsEn, ["Observe how the state changes and record your reasoning."]),
+        tasksZh: toStringList(spec.tasksZh, ["调整控件后，比较结论是否发生变化。"]),
+        tasksEn: toStringList(spec.tasksEn, ["Adjust the controls and compare how the conclusion changes."]),
+        controls,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 2);
+}
+
+function parseInteractiveDesignResponse(raw) {
+  const cleaned = stripCodeFence(raw).trim();
+  if (!cleaned) {
+    return [];
+  }
+
+  let jsonText = cleaned;
+  const firstBracket = cleaned.indexOf("[");
+  const lastBracket = cleaned.lastIndexOf("]");
+  if (firstBracket !== -1 && lastBracket > firstBracket) {
+    jsonText = cleaned.slice(firstBracket, lastBracket + 1);
+  }
+
+  try {
+    return sanitizeInteractiveDesignSpecs(JSON.parse(jsonText));
+  } catch {
+    return [];
+  }
+}
+
+function buildInteractiveDesignSystemPrompt() {
+  return [
+    "You design interactive study demos for a note page.",
+    "Return JSON only. Do not include markdown fences or explanations.",
+    "Return a JSON array with 1 or 2 demo specs.",
+    "Each demo spec must include: key, anchorId, titleZh, titleEn, summaryZh, summaryEn, observationsZh, observationsEn, tasksZh, tasksEn, controls.",
+    "Each controls item must use exactly one of these shapes:",
+    '{"id":"focus","type":"select","labelZh":"...","labelEn":"...","optionsZh":["..."],"optionsEn":["..."],"initialIndex":0}',
+    '{"id":"level","type":"slider","labelZh":"...","labelEn":"...","min":1,"max":5,"step":1,"initialValue":3,"unitZh":"级","unitEn":"level"}',
+    '{"id":"hint","type":"toggle","labelZh":"...","labelEn":"...","initialValue":true}',
+    "Design controls that help students explore the current note visually and interactively.",
+    "Keep the design concrete, teachable, and directly tied to the note content.",
+  ].join("\n");
+}
+
+function buildInteractiveDesignUserPrompt({ title, topic, tags, noteContent }) {
+  return [
+    "请根据下面这篇笔记，设计可直接渲染到“交互 Demo”部分的交互配置。",
+    "要求：必须输出 JSON 数组；至少 1 个交互设计；最多 2 个交互设计；每个设计都必须包含可操作控件。",
+    "如果笔记没有现成数学可视化，也要围绕概念切换、场景变化、判断条件、流程推演来设计交互。",
+    "",
+    `标题：${title}`,
+    `主题：${topic || "未指定"}`,
+    `标签：${Array.isArray(tags) && tags.length ? tags.join("、") : "未指定"}`,
+    "",
+    "笔记内容：",
+    clampText(noteContent, MAX_INTERACTIVE_DESIGN_RESPONSE_CHARS),
+  ].join("\n");
+}
+
+function buildInteractiveDesignSpecsFromNote({ title, topic, source }) {
+  const sections = splitBilingualNoteSections(source);
+  if (!sections.hasStructuredSections) {
+    return [];
+  }
+
+  return buildGeneratedDesignSpecs(title, topic, sections.zhBody);
+}
+
+async function generateInteractiveDesignSpecsWithAI({ env, title, topic, tags, noteContent, modelName }) {
+  const openaiBaseUrl = normalizeApiBase(env.OPENAI_BASE_URL);
+  const responsesEndpoint = `${openaiBaseUrl}/responses`;
+  const chatCompletionsEndpoint = `${openaiBaseUrl}/chat/completions`;
+  const resolvedModelName = modelName || resolveModelName(env, "", ALLOWED_NOTE_GENERATION_MODELS);
+  const input = [
+    {
+      role: "system",
+      content: [{ type: "input_text", text: buildInteractiveDesignSystemPrompt() }],
+    },
+    {
+      role: "user",
+      content: [{ type: "input_text", text: buildInteractiveDesignUserPrompt({ title, topic, tags, noteContent }) }],
+    },
+  ];
+
+  const response = await fetch(responsesEndpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: resolvedModelName,
+      input,
+    }),
+  });
+
+  const json = await response.json().catch(() => null);
+  if (response.ok) {
+    const text = extractResponsesText(json);
+    if (text) {
+      const parsed = parseInteractiveDesignResponse(text);
+      if (parsed.length) {
+        return parsed;
+      }
+    }
+  }
+
+  const chatResponse = await fetch(chatCompletionsEndpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: resolvedModelName,
+      messages: flattenInputMessages(input),
+    }),
+  });
+
+  const chatJson = await chatResponse.json().catch(() => null);
+  if (!chatResponse.ok) {
+    return [];
+  }
+
+  const chatText = extractChatCompletionsText(chatJson);
+  return chatText ? parseInteractiveDesignResponse(chatText) : [];
+}
+
 function deriveTopicFromSource(sourceText) {
   const lines = normalizeNewlines(sourceText)
     .split("\n")
@@ -1549,7 +1790,7 @@ function buildSystemPrompt(promptTemplate) {
 function buildUserPrompt({ title, topic, tags, sourceText, extraInstruction, generateInteractiveDemo }) {
   const tagsLine = tags.length ? tags.join("、") : "未指定";
   const demoInstruction = generateInteractiveDemo
-    ? "需要为笔记卡片准备简洁摘要，并允许后处理阶段自动插入可交互 demo。正文中的概念表达请尽量明确、可定位。"
+    ? "需要为笔记卡片准备简洁摘要。由于后续会追加一次专门的交互 Demo 生成提示，请让正文中的重点概念、关键变量、判断条件和流程节点表达明确、可定位。"
     : "需要为笔记卡片准备简洁摘要。";
 
   return [
@@ -1916,7 +2157,7 @@ async function generateMdx({ env, title, topic, tags, sourceText, extraInstructi
   return chatText;
 }
 
-function normalizeGeneratedMdx(raw, { title, slug, topic, topicZh, topicEn, tags, sourceText, generateInteractiveDemo }) {
+function normalizeGeneratedMdx(raw, { title, slug, topic, topicZh, topicEn, tags, sourceText, generateInteractiveDemo, interactiveDesignSpecs }) {
   let content = normalizeMathDelimiters(normalizeNewlines(stripCodeFence(raw))).trim();
   if (!content) {
     return "";
@@ -1933,6 +2174,7 @@ function normalizeGeneratedMdx(raw, { title, slug, topic, topicZh, topicEn, tags
     content = injectInteractiveDemosIntoNoteContent(content, demos, {
       title,
       topic,
+      generatedSpecs: interactiveDesignSpecs,
     });
   }
 
@@ -2850,7 +3092,7 @@ export default {
           modelName,
           generateInteractiveDemo,
         });
-        const mdxContent = normalizeGeneratedMdx(mdxContentRaw, {
+        const normalizedArgs = {
           title,
           slug,
           topic: topicParts.topic,
@@ -2858,8 +3100,39 @@ export default {
           topicEn: topicParts.topicEn,
           tags,
           sourceText,
-          generateInteractiveDemo,
+        };
+        const baseMdxContent = normalizeGeneratedMdx(mdxContentRaw, {
+          ...normalizedArgs,
+          generateInteractiveDemo: false,
         });
+
+        let interactiveDesignSpecs = [];
+        if (generateInteractiveDemo) {
+          interactiveDesignSpecs = await generateInteractiveDesignSpecsWithAI({
+            env,
+            title,
+            topic: topicParts.topic,
+            tags,
+            noteContent: baseMdxContent,
+            modelName,
+          });
+
+          if (!interactiveDesignSpecs.length) {
+            interactiveDesignSpecs = buildInteractiveDesignSpecsFromNote({
+              title,
+              topic: topicParts.topic,
+              source: baseMdxContent,
+            });
+          }
+        }
+
+        const mdxContent = generateInteractiveDemo
+          ? normalizeGeneratedMdx(mdxContentRaw, {
+              ...normalizedArgs,
+              generateInteractiveDemo: true,
+              interactiveDesignSpecs,
+            })
+          : baseMdxContent;
 
         if (!mdxContent) {
           return jsonResponse({ error: "AI returned empty content." }, 502, corsOrigin);

@@ -388,6 +388,7 @@ export function injectInteractiveDemosIntoNoteContent(
   options?: {
     title?: string;
     topic?: string;
+    generatedSpecs?: InteractiveDesignSpec[];
   },
 ): string {
   const sections = splitBilingualNoteSections(source);
@@ -395,7 +396,12 @@ export function injectInteractiveDemosIntoNoteContent(
     return source;
   }
 
-  const generatedSpecs = demos.length ? [] : buildDesignSpecs(options?.title ?? "", options?.topic ?? "", sections.zhBody);
+  const generatedSpecs =
+    options?.generatedSpecs && options.generatedSpecs.length
+      ? options.generatedSpecs
+      : demos.length
+        ? []
+        : buildDesignSpecs(options?.title ?? "", options?.topic ?? "", sections.zhBody);
   const jumpTargets = [
     ...demos.map((demo) => ({ anchorId: demo.anchorId, phrase: demo.titleZh })),
     ...generatedSpecs.map((spec) => ({ anchorId: spec.anchorId, phrase: spec.titleZh.replace(/\s*交互设计$/, "") })),

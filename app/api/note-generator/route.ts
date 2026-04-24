@@ -7,7 +7,13 @@ import { NextResponse } from "next/server";
 import { getWeekNotes } from "@/lib/content";
 import { splitBilingualNoteSections } from "@/lib/bilingual-note";
 import { extractResponseText } from "@/lib/ai/note-assistant";
-import { injectInteractiveDemosIntoNoteContent, selectInteractiveDemos } from "@/lib/interactive-demos";
+import {
+  buildInteractiveDesignSpecsFromNote,
+  injectInteractiveDemosIntoNoteContent,
+  type InteractiveDesignControl,
+  type InteractiveDesignSpec,
+  selectInteractiveDemos,
+} from "@/lib/interactive-demos";
 
 export const runtime = "nodejs";
 
@@ -26,6 +32,7 @@ const MAX_SOURCE_CHARS = 35_000;
 const MAX_STYLE_CONTEXT_CHARS = 16_000;
 const MAX_METADATA_SOURCE_CHARS = 8_000;
 const MAX_EXTRA_INSTRUCTION_CHARS = 1_500;
+const MAX_INTERACTIVE_DESIGN_RESPONSE_CHARS = 20_000;
 const SUPPORTED_TEXT_EXTENSIONS = new Set(["txt", "md", "markdown", "tex", "csv", "rst"]);
 
 type AssistantRole = "system" | "user" | "assistant";
@@ -501,6 +508,216 @@ function parseMetadataResponse(raw: string): Partial<InferredMetadata> {
   }
 }
 
+function sanitizeInteractiveDesignControl(
+  raw: unknown,
+  fallbackId: string,
+): InteractiveDesignControl | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+
+  const control = raw as Record<string, unknown>;
+  const type = typeof control.type === "string" ? control.type : "";
+  const id = typeof control.id === "string" && control.id.trim() ? control.id.trim() : fallbackId;
+  const labelZh = typeof control.labelZh === "string" && control.labelZh.trim() ? control.labelZh.trim() : "交互控件";
+  const labelEn = typeof control.labelEn === "string" && control.labelEn.trim() ? control.labelEn.trim() : "Interactive Control";
+
+  if (type === "select") {
+    const optionsZh = Array.isArray(control.optionsZh) ? control.optionsZh.map((item) => String(item).trim()).filter(Boolean) : [];
+    const optionsEn = Array.isArray(control.optionsEn) ? control.optionsEn.map((item) => String(item).trim()).filter(Boolean) : [];
+    if (!optionsZh.length) {
+      return null;
+    }
+
+    return {
+      id,
+      type,
+      labelZh,
+      labelEn,
+      optionsZh: optionsZh.slice(0, 6),
+      optionsEn: (optionsEn.length ? optionsEn : optionsZh).slice(0, 6),
+      initialIndex:
+        typeof control.initialIndex === "number" && Number.isFinite(control.initialIndex) ? Math.max(0, Math.floor(control.initialIndex)) : 0,
+    };
+  }
+
+  if (type === "slider") {
+    const min = typeof control.min === "number" && Number.isFinite(control.min) ? control.min : 1;
+    const max = typeof control.max === "number" && Number.isFinite(control.max) ? control.max : Math.max(min + 1, 5);
+
+    return {
+      id,
+      type,
+      labelZh,
+      labelEn,
+      min,
+      max,
+      step: typeof control.step === "number" && Number.isFinite(control.step) ? control.step : 1,
+      initialValue:
+        typeof control.initialValue === "number" && Number.isFinite(control.initialValue) ? control.initialValue : min,
+      unitZh: typeof control.unitZh === "string" ? control.unitZh.trim() : "",
+      unitEn: typeof control.unitEn === "string" ? control.unitEn.trim() : "",
+    };
+  }
+
+  if (type === "toggle") {
+    return {
+      id,
+      type,
+      labelZh,
+      labelEn,
+      initialValue: Boolean(control.initialValue),
+    };
+  }
+
+  return null;
+}
+
+function sanitizeInteractiveDesignSpecs(raw: unknown): InteractiveDesignSpec[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw
+    .map((item, index) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+
+      const spec = item as Record<string, unknown>;
+      const titleZh = typeof spec.titleZh === "string" ? spec.titleZh.trim() : "";
+      if (!titleZh) {
+        return null;
+      }
+
+      const controls = Array.isArray(spec.controls)
+        ? spec.controls
+            .map((control, controlIndex) => sanitizeInteractiveDesignControl(control, `control-${index + 1}-${controlIndex + 1}`))
+            .filter((control): control is InteractiveDesignControl => Boolean(control))
+        : [];
+
+      if (!controls.length) {
+        return null;
+      }
+
+      const toStringList = (value: unknown, fallback: string[]) =>
+        Array.isArray(value)
+          ? value.map((entry) => String(entry).trim()).filter(Boolean).slice(0, 4)
+          : fallback;
+
+      return {
+        key: typeof spec.key === "string" && spec.key.trim() ? spec.key.trim() : `generated-ai-design-${index + 1}`,
+        anchorId:
+          typeof spec.anchorId === "string" && spec.anchorId.trim()
+            ? spec.anchorId.trim()
+            : `generated-ai-interactive-demo-${index + 1}`,
+        titleZh,
+        titleEn: typeof spec.titleEn === "string" && spec.titleEn.trim() ? spec.titleEn.trim() : `Interactive design ${index + 1}`,
+        summaryZh:
+          typeof spec.summaryZh === "string" && spec.summaryZh.trim() ? spec.summaryZh.trim() : `${titleZh} 的交互探索设计。`,
+        summaryEn:
+          typeof spec.summaryEn === "string" && spec.summaryEn.trim() ? spec.summaryEn.trim() : `Interactive study design for ${titleZh}.`,
+        observationsZh: toStringList(spec.observationsZh, ["观察交互状态变化，并记录你的判断依据。"]),
+        observationsEn: toStringList(spec.observationsEn, ["Observe how the state changes and record your reasoning."]),
+        tasksZh: toStringList(spec.tasksZh, ["调整控件后，比较结论是否发生变化。"]),
+        tasksEn: toStringList(spec.tasksEn, ["Adjust the controls and compare how the conclusion changes."]),
+        controls,
+      };
+    })
+    .filter((item): item is InteractiveDesignSpec => Boolean(item))
+    .slice(0, 2);
+}
+
+function parseInteractiveDesignResponse(raw: string): InteractiveDesignSpec[] {
+  const cleaned = stripCodeFence(raw).trim();
+  if (!cleaned) {
+    return [];
+  }
+
+  let jsonText = cleaned;
+  const firstBracket = cleaned.indexOf("[");
+  const lastBracket = cleaned.lastIndexOf("]");
+  if (firstBracket !== -1 && lastBracket > firstBracket) {
+    jsonText = cleaned.slice(firstBracket, lastBracket + 1);
+  }
+
+  try {
+    return sanitizeInteractiveDesignSpecs(JSON.parse(jsonText));
+  } catch {
+    return [];
+  }
+}
+
+function buildInteractiveDesignSystemPrompt(): string {
+  return [
+    "You design interactive study demos for a note page.",
+    "Return JSON only. Do not include markdown fences or explanations.",
+    "Return a JSON array with 1 or 2 demo specs.",
+    "Each demo spec must include: key, anchorId, titleZh, titleEn, summaryZh, summaryEn, observationsZh, observationsEn, tasksZh, tasksEn, controls.",
+    "Each controls item must use exactly one of these shapes:",
+    '{"id":"focus","type":"select","labelZh":"...","labelEn":"...","optionsZh":["..."],"optionsEn":["..."],"initialIndex":0}',
+    '{"id":"level","type":"slider","labelZh":"...","labelEn":"...","min":1,"max":5,"step":1,"initialValue":3,"unitZh":"级","unitEn":"level"}',
+    '{"id":"hint","type":"toggle","labelZh":"...","labelEn":"...","initialValue":true}',
+    "Design controls that help students explore the current note visually and interactively.",
+    "Keep the design concrete, teachable, and directly tied to the note content.",
+  ].join("\n");
+}
+
+function buildInteractiveDesignUserPrompt(args: {
+  title: string;
+  topic: string;
+  tags: string[];
+  noteContent: string;
+}): string {
+  return [
+    "请根据下面这篇笔记，设计可直接渲染到“交互 Demo”部分的交互配置。",
+    "要求：必须输出 JSON 数组；至少 1 个交互设计；最多 2 个交互设计；每个设计都必须包含可操作控件。",
+    "如果笔记没有现成数学可视化，也要围绕概念切换、场景变化、判断条件、流程推演来设计交互。",
+    "",
+    `标题：${args.title}`,
+    `主题：${args.topic || "未指定"}`,
+    `标签：${args.tags.length ? args.tags.join("、") : "未指定"}`,
+    "",
+    "笔记内容：",
+    clampText(args.noteContent, MAX_INTERACTIVE_DESIGN_RESPONSE_CHARS),
+  ].join("\n");
+}
+
+async function generateInteractiveDesignSpecsWithAI(args: {
+  title: string;
+  topic: string;
+  tags: string[];
+  noteContent: string;
+  modelName: string;
+}): Promise<InteractiveDesignSpec[]> {
+  const input: OpenAIInputItem[] = [
+    toInputItem("system", buildInteractiveDesignSystemPrompt()),
+    toInputItem("user", buildInteractiveDesignUserPrompt(args)),
+  ];
+
+  const abortController = new AbortController();
+  const timeout = setTimeout(() => abortController.abort(), 40_000);
+
+  try {
+    const responsesAttempt = await attemptResponses(input, args.modelName, abortController.signal);
+    if (responsesAttempt.ok && responsesAttempt.content) {
+      const parsed = parseInteractiveDesignResponse(responsesAttempt.content);
+      if (parsed.length) {
+        return parsed;
+      }
+    }
+
+    const chatAttempt = await attemptChatCompletions(input, args.modelName, abortController.signal);
+    if (chatAttempt.ok && chatAttempt.content) {
+      return parseInteractiveDesignResponse(chatAttempt.content);
+    }
+
+    return [];
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function deriveTopicFromSource(source: string): string {
   const lines = normalizeNewlines(source)
     .split("\n")
@@ -882,6 +1099,7 @@ function normalizeGeneratedMdx(raw: string, args: {
   tags: string[];
   sourceText: string;
   options?: GenerateOptions;
+  interactiveDesignSpecs?: InteractiveDesignSpec[];
 }): string {
   const cleaned = normalizeNewlines(stripCodeFence(raw));
   const parsed = matter(cleaned);
@@ -922,6 +1140,7 @@ function normalizeGeneratedMdx(raw: string, args: {
     canonicalContent = injectInteractiveDemosIntoNoteContent(canonicalContent, demos, {
       title: args.title,
       topic: args.topic,
+      generatedSpecs: args.interactiveDesignSpecs,
     });
   }
 
@@ -1042,7 +1261,7 @@ export async function POST(request: Request) {
       clearTimeout(timeout);
     }
 
-    const normalizedMdx = normalizeGeneratedMdx(generated, {
+    const normalizedArgs = {
       title,
       slug,
       topic: topicParts.topic,
@@ -1050,10 +1269,43 @@ export async function POST(request: Request) {
       topicEn: topicParts.topicEn,
       tags,
       sourceText: extractedSource,
+    } as const;
+
+    const baseNormalizedMdx = normalizeGeneratedMdx(generated, {
+      ...normalizedArgs,
       options: {
-        generateInteractiveDemo,
+        generateInteractiveDemo: false,
       },
     });
+
+    let interactiveDesignSpecs: InteractiveDesignSpec[] = [];
+    if (generateInteractiveDemo) {
+      interactiveDesignSpecs = await generateInteractiveDesignSpecsWithAI({
+        title,
+        topic: topicParts.topic,
+        tags,
+        noteContent: baseNormalizedMdx,
+        modelName,
+      });
+
+      if (!interactiveDesignSpecs.length) {
+        interactiveDesignSpecs = buildInteractiveDesignSpecsFromNote({
+          title,
+          topic: topicParts.topic,
+          source: baseNormalizedMdx,
+        });
+      }
+    }
+
+    const normalizedMdx = generateInteractiveDemo
+      ? normalizeGeneratedMdx(generated, {
+          ...normalizedArgs,
+          options: {
+            generateInteractiveDemo: true,
+          },
+          interactiveDesignSpecs,
+        })
+      : baseNormalizedMdx;
 
     await fs.mkdir(NOTES_DIR_PATH, { recursive: true });
     await fs.writeFile(targetFilePath, normalizedMdx, "utf8");

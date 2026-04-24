@@ -6,7 +6,7 @@
     "predev": "node scripts/sync-prompt.mjs",
     "dev": "next dev",
     "prebuild": "node scripts/sync-prompt.mjs",
-    "build": "next build",
+    "build": "node scripts/build.mjs",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
