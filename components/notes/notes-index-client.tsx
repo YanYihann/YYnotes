@@ -108,6 +108,29 @@ function sanitizeEditableText(raw: string, maxLength: number): string {
   return raw.replace(/\s+/g, " ").trim().slice(0, maxLength);
 }
 
+function deriveImportMetadataFromFileName(fileName: string): { title: string; topic: string } {
+  const baseName = String(fileName ?? "")
+    .replace(/\.(md|markdown|mdx)$/i, "")
+    .replace(/[_]+/g, " ")
+    .replace(/[.]+/g, " ")
+    .replace(/\s*[-|]+\s*/g, " - ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const cleaned = sanitizeEditableText(baseName, 80);
+  if (!cleaned) {
+    return { title: "", topic: "" };
+  }
+
+  const topicCandidate =
+    cleaned.split(/\s+-\s+|：|:/).map((part) => part.trim()).find(Boolean) ?? cleaned;
+
+  return {
+    title: cleaned,
+    topic: sanitizeEditableText(topicCandidate, 64) || cleaned,
+  };
+}
+
 function buildFolderStorageKey(params: { cloudMode: boolean; userId?: number }): string {
   const scope = params.cloudMode ? `cloud:${params.userId ?? "anonymous"}` : "local";
   return `yynotes.note-folders.v1:${scope}`;
@@ -1031,6 +1054,21 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     void handleCreateFolder(input);
   }
 
+  function handleImportFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    setImportFile(file);
+
+    if (!file) {
+      setImportTitle("");
+      setImportTopic("");
+      return;
+    }
+
+    const derived = deriveImportMetadataFromFileName(file.name);
+    setImportTitle(derived.title);
+    setImportTopic(derived.topic);
+  }
+
   async function handleImportMarkdownNote(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -1167,7 +1205,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
               <input
                 type="file"
                 accept=".md,.markdown,.mdx,text/markdown,text/plain"
-                onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
+                onChange={handleImportFileChange}
                 className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] text-foreground file:mr-3 file:rounded-capsule file:border-0 file:bg-primary/10 file:px-3 file:py-1.5 file:font-text file:text-[13px] file:text-primary"
               />
             </label>
