@@ -999,6 +999,18 @@ function buildSystemPrompt(promptTemplate: string): string {
   ].join("\n");
 }
 
+function buildInteractiveDemoPromptBlock(): string {
+  return [
+    "Interactive Demo Addendum:",
+    "- This note will later be used to generate an interactive demo.",
+    "- Make interactive concepts explicit and easy to locate in the main content.",
+    "- For concepts that can become demos, clearly state controllable inputs, observable outputs, state changes, comparison cases, and learner tasks.",
+    "- Use concrete subsection wording for key concepts, variables, conditions, and step-by-step processes.",
+    "- If interactive demo content is requested in the final note, place it after Main Content and before Summary.",
+    "- Do not output implementation code, JSON, or internal tool instructions in the final note.",
+  ].join("\n");
+}
+
 function buildUserPrompt(args: {
   title: string;
   topic: string;
@@ -1010,26 +1022,27 @@ function buildUserPrompt(args: {
 }): string {
   const extra = args.extraInstruction ? clampText(args.extraInstruction, MAX_EXTRA_INSTRUCTION_CHARS) : "";
   const demoInstruction = args.options?.generateInteractiveDemo
-    ? "需要为笔记卡片准备简洁摘要，并允许后处理阶段自动插入可交互 demo。正文中的概念表达请尽量明确、可定位。"
-    : "需要为笔记卡片准备简洁摘要。";
+    ? "????????????????????????????? demo???????????????????"
+    : "??????????????";
 
   return [
-    "请基于以下材料生成最终笔记，严格执行系统提示词中的全部规范。",
+    "??????????????????????????????",
     "",
-    `目标标题：${args.title}`,
-    `目标主题：${args.topic || "未指定"}`,
-    `目标标签：${args.tags.length ? args.tags.join("、") : "未指定"}`,
+    `?????${args.title}`,
+    `?????${args.topic || "???"}`,
+    `?????${args.tags.length ? args.tags.join("?") : "???"}`,
     "",
-    "参考站内笔记风格样本：",
-    args.styleContext || "(暂无样本)",
+    "???????????",
+    args.styleContext || "(????)",
     "",
-    "原始笔记材料：",
+    "???????",
     args.extractedSource,
     "",
-    `补充生成要求：${demoInstruction}`,
+    `???????${demoInstruction}`,
+    args.options?.generateInteractiveDemo ? buildInteractiveDemoPromptBlock() : "",
     "",
-    extra ? `补充要求：\n${extra}\n` : "",
-    "请直接输出最终 MDX 内容。",
+    extra ? `?????\n${extra}\n` : "",
+    "??????? MDX ???",
   ].join("\n");
 }
 

@@ -1851,6 +1851,18 @@ function buildSystemPrompt(promptTemplate) {
   ].join("\n");
 }
 
+function buildInteractiveDemoPromptBlock() {
+  return [
+    "Interactive Demo Addendum:",
+    "- This note will later be used to generate an interactive demo.",
+    "- Make interactive concepts explicit and easy to locate in the main content.",
+    "- For concepts that can become demos, clearly state controllable inputs, observable outputs, state changes, comparison cases, and learner tasks.",
+    "- Use concrete subsection wording for key concepts, variables, conditions, and step-by-step processes.",
+    "- If interactive demo content is requested in the final note, place it after Main Content and before Summary.",
+    "- Do not output implementation code, JSON, or internal tool instructions in the final note.",
+  ].join("\n");
+}
+
 function buildUserPrompt({ title, topic, tags, sourceText, extraInstruction, generateInteractiveDemo }) {
   const tagsLine = tags.length ? tags.join("、") : "未指定";
   const demoInstruction = generateInteractiveDemo
@@ -1868,6 +1880,7 @@ function buildUserPrompt({ title, topic, tags, sourceText, extraInstruction, gen
     sourceText,
     "",
     `补充生成要求：${demoInstruction}`,
+    generateInteractiveDemo ? buildInteractiveDemoPromptBlock() : "",
     "",
     extraInstruction ? `补充要求：\n${extraInstruction}\n` : "",
     "请直接输出最终 MDX 内容。",

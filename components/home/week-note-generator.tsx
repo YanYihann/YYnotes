@@ -111,6 +111,18 @@ function deriveMetadataFromFileName(fileName: string): { title: string; topic: s
   };
 }
 
+function buildInteractiveDemoPromptBlockForChatGpt(): string {
+  return [
+    "Interactive Demo Addendum:",
+    "- This note will later be used inside YYNotes to generate or place interactive demos.",
+    "- Make interactive concepts explicit and easy to locate in the main content.",
+    "- For concepts that can become demos, clearly state controllable inputs, observable outputs, state changes, comparison cases, and learner tasks.",
+    "- Use concrete subsection wording for key concepts, variables, conditions, and step-by-step processes.",
+    "- If interactive demo content is required in the final note, place it after Main Content and before Summary.",
+    "- Do not output implementation code, JSON, or internal tool instructions in the final note.",
+  ].join("\\n");
+}
+
 function buildNoteViewHref(slug: string): string {
   if (IS_CLOUD_MODE) {
     return `/notes/cloud?slug=${encodeURIComponent(slug)}`;
@@ -654,6 +666,7 @@ export function WeekNoteGenerator() {
         "- 我会在当前 ChatGPT 对话中上传同一份原始资料文件，请以该文件为主要内容来源。",
         "- 请直接输出最终 Markdown / MDX 笔记，不要输出解释、分析、前言、后记或代码围栏。",
         "- 输出内容需要可以直接粘贴回 YYNotes 保存。",
+        generateInteractiveDemo ? buildInteractiveDemoPromptBlockForChatGpt() : "",
         extraInstruction.trim() ? `- 额外说明：${extraInstruction.trim()}` : "- 额外说明：无",
       ].join("\n");
 
