@@ -39,6 +39,7 @@ type GenerationSourcePayload = {
 };
 
 type GeneratorMode = "direct" | "chatgpt";
+type PromptPreset = "standard" | "detailed";
 
 type ImportedNoteResult = {
   success?: boolean;
@@ -49,6 +50,18 @@ type ImportedNoteResult = {
 
 const CLOUD_API_BASE = process.env.NEXT_PUBLIC_NOTES_API_BASE?.trim() ?? "";
 const IS_CLOUD_MODE = CLOUD_API_BASE.length > 0;
+const PROMPT_PRESET_OPTIONS: Array<{ value: PromptPreset; label: string; description: string }> = [
+  {
+    value: "standard",
+    label: "标准版",
+    description: "使用现有 prompt.md，适合常规结构化笔记生成。",
+  },
+  {
+    value: "detailed",
+    label: "详细版",
+    description: "使用 prompt2.md，适合更细致、更严格的排版与讲解。",
+  },
+];
 
 function normalizeApiBase(input: string): string {
   return input.replace(/\/+$/, "");
@@ -105,8 +118,12 @@ function buildNoteViewHref(slug: string): string {
   return `/notes/${slug}`;
 }
 
-function buildPromptCandidates(): string[] {
-  const candidates = new Set<string>(["./prompt.md"]);
+function resolvePromptTemplateFileName(preset: PromptPreset): string {
+  return preset === "detailed" ? "prompt2.md" : "prompt.md";
+}
+
+function buildPromptCandidates(fileName: string): string[] {
+  const candidates = new Set<string>([`./${fileName}`]);
 
   if (typeof window !== "undefined") {
     const { origin, pathname } = window.location;
@@ -114,15 +131,15 @@ function buildPromptCandidates(): string[] {
     const repoSegment = segments[0];
 
     if (repoSegment) {
-      candidates.add(`/${repoSegment}/prompt.md`);
+      candidates.add(`/${repoSegment}/${fileName}`);
     }
 
     const currentDir = pathname.endsWith("/") ? pathname : pathname.slice(0, pathname.lastIndexOf("/") + 1);
     if (currentDir) {
-      candidates.add(`${currentDir}prompt.md`);
+      candidates.add(`${currentDir}${fileName}`);
     }
 
-    candidates.add("/prompt.md");
+    candidates.add(`/${fileName}`);
 
     for (const candidate of Array.from(candidates)) {
       try {
@@ -136,8 +153,8 @@ function buildPromptCandidates(): string[] {
   return Array.from(candidates);
 }
 
-async function loadPromptTemplateFromSite(): Promise<string> {
-  const candidates = buildPromptCandidates();
+async function loadPromptTemplateFromSite(preset: PromptPreset): Promise<string> {
+  const candidates = buildPromptCandidates(resolvePromptTemplateFileName(preset));
 
   for (const candidate of candidates) {
     const response = await fetch(candidate, { cache: "no-store" });
@@ -267,6 +284,7 @@ async function callLocalGenerator(params: {
   source: GenerationSourcePayload;
   extraInstruction: string;
   model: string;
+  promptPreset: PromptPreset;
   generateInteractiveDemo: boolean;
 }): Promise<GenerationResult> {
   const body = new FormData();
@@ -275,6 +293,7 @@ async function callLocalGenerator(params: {
   body.append("tags", params.tags);
   appendGenerationSource(body, params.source);
   body.append("model", params.model);
+  body.append("promptPreset", params.promptPreset);
   body.append("generateInteractiveDemo", String(params.generateInteractiveDemo));
   if (params.extraInstruction) {
     body.append("extraInstruction", params.extraInstruction);
@@ -305,10 +324,11 @@ async function callCloudGenerator(params: {
   source: GenerationSourcePayload;
   extraInstruction: string;
   model: string;
+  promptPreset: PromptPreset;
   authToken: string;
   generateInteractiveDemo: boolean;
 }): Promise<GenerationResult> {
-  const promptTemplate = await loadPromptTemplateFromSite();
+  const promptTemplate = await loadPromptTemplateFromSite(params.promptPreset);
   const apiBase = normalizeApiBase(CLOUD_API_BASE);
   const body = new FormData();
   body.append("title", params.title);
@@ -479,6 +499,7 @@ export function WeekNoteGenerator() {
   const router = useRouter();
   const { session } = useAuth();
   const [mode, setMode] = useState<GeneratorMode>("direct");
+  const [selectedPromptPreset, setSelectedPromptPreset] = useState<PromptPreset>("standard");
   const [title, setTitle] = useState("");
   const [topic, setTopic] = useState("");
   const [tags, setTags] = useState("");
@@ -536,6 +557,7 @@ export function WeekNoteGenerator() {
         source,
         extraInstruction: extraInstruction.trim(),
         model: selectedModel,
+        promptPreset: selectedPromptPreset,
         authToken: session?.token || "",
         generateInteractiveDemo,
       };
@@ -613,7 +635,7 @@ export function WeekNoteGenerator() {
     setCopiedChatGptPrompt(false);
 
     try {
-      const promptTemplate = await loadPromptTemplateFromSite();
+      const promptTemplate = await loadPromptTemplateFromSite(selectedPromptPreset);
       const derived = deriveMetadataFromFileName(sourceFile.name);
       const resolvedTitle = title.trim() || derived.title || "请根据上传资料自动生成标题";
       const resolvedTopic = topic.trim() || derived.topic || "请根据上传资料自动生成主题";
@@ -757,6 +779,31 @@ export function WeekNoteGenerator() {
         >
           ChatGPT 辅助生成
         </button>
+      </div>
+
+      <div className="mb-4 rounded-apple border border-input bg-background p-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <SectionLabel>Prompt 预设</SectionLabel>
+          <div className="flex flex-wrap gap-2">
+            {PROMPT_PRESET_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setSelectedPromptPreset(option.value)}
+                className={`inline-flex items-center rounded-capsule px-3 py-1.5 font-text text-[12px] transition focus-visible:outline-none ${
+                  selectedPromptPreset === option.value
+                    ? "bg-primary text-primary-foreground"
+                    : "border border-input bg-card text-foreground"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="mt-2 font-text text-[12px] leading-[1.45] text-muted-foreground">
+          {PROMPT_PRESET_OPTIONS.find((option) => option.value === selectedPromptPreset)?.description}
+        </p>
       </div>
 
       {mode === "direct" ? (

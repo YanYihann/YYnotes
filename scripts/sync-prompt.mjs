@@ -1,33 +1,37 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-const rootPromptPath = path.join(process.cwd(), "prompt.md");
-const publicPromptPath = path.join(process.cwd(), "public", "prompt.md");
+const promptFiles = [
+  { root: path.join(process.cwd(), "prompt.md"), public: path.join(process.cwd(), "public", "prompt.md") },
+  { root: path.join(process.cwd(), "prompt2.md"), public: path.join(process.cwd(), "public", "prompt2.md") },
+];
 
 async function main() {
-  const rootPrompt = await fs.readFile(rootPromptPath, "utf8");
-  const normalized = rootPrompt.trim();
+  for (const item of promptFiles) {
+    const rootPrompt = await fs.readFile(item.root, "utf8");
+    const normalized = rootPrompt.trim();
 
-  if (!normalized) {
-    throw new Error("Root prompt.md is empty. Sync stopped.");
+    if (!normalized) {
+      throw new Error(`${path.basename(item.root)} is empty. Sync stopped.`);
+    }
+
+    await fs.mkdir(path.dirname(item.public), { recursive: true });
+
+    let previous = "";
+    try {
+      previous = await fs.readFile(item.public, "utf8");
+    } catch {
+      previous = "";
+    }
+
+    if (previous === rootPrompt) {
+      console.log(`${path.basename(item.root)} already synced to public/${path.basename(item.public)}`);
+      continue;
+    }
+
+    await fs.writeFile(item.public, rootPrompt, "utf8");
+    console.log(`synced ${path.basename(item.root)} -> public/${path.basename(item.public)}`);
   }
-
-  await fs.mkdir(path.dirname(publicPromptPath), { recursive: true });
-
-  let previous = "";
-  try {
-    previous = await fs.readFile(publicPromptPath, "utf8");
-  } catch {
-    previous = "";
-  }
-
-  if (previous === rootPrompt) {
-    console.log("prompt.md already synced to public/prompt.md");
-    return;
-  }
-
-  await fs.writeFile(publicPromptPath, rootPrompt, "utf8");
-  console.log("synced prompt.md -> public/prompt.md");
 }
 
 main().catch((error) => {

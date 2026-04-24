@@ -25,7 +25,10 @@ const ALLOWED_MODEL_NAMES = new Set([
 const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL?.trim().replace(/\/+$/, "") || "https://api.openai.com/v1";
 const RESPONSES_ENDPOINT = `${OPENAI_BASE_URL}/responses`;
 const CHAT_COMPLETIONS_ENDPOINT = `${OPENAI_BASE_URL}/chat/completions`;
-const PROMPT_TEMPLATE_PATH = path.join(process.cwd(), "prompt.md");
+const PROMPT_TEMPLATE_PATHS = {
+  standard: path.join(process.cwd(), "prompt.md"),
+  detailed: path.join(process.cwd(), "prompt2.md"),
+} as const;
 const NOTES_DIR_PATH = path.join(process.cwd(), "笔记");
 
 const MAX_SOURCE_CHARS = 35_000;
@@ -59,6 +62,8 @@ type InferredMetadata = {
 type GenerateOptions = {
   generateInteractiveDemo: boolean;
 };
+
+type PromptPreset = keyof typeof PROMPT_TEMPLATE_PATHS;
 
 function toInputItem(role: AssistantRole, text: string): OpenAIInputItem {
   return {
@@ -970,8 +975,12 @@ function buildStyleContext(
   return clampText(chunks.join("\n\n---\n\n"), MAX_STYLE_CONTEXT_CHARS);
 }
 
-async function loadPromptTemplate(): Promise<string> {
-  const content = await fs.readFile(PROMPT_TEMPLATE_PATH, "utf8");
+function resolvePromptPreset(value: string): PromptPreset {
+  return value === "detailed" ? "detailed" : "standard";
+}
+
+async function loadPromptTemplate(preset: PromptPreset): Promise<string> {
+  const content = await fs.readFile(PROMPT_TEMPLATE_PATHS[preset], "utf8");
   const normalized = content.trim();
 
   if (!normalized) {
@@ -1170,6 +1179,7 @@ export async function POST(request: Request) {
 
     const extraInstruction = String(formData.get("extraInstruction") ?? "");
     const modelName = resolveModelName(String(formData.get("model") ?? ""));
+    const promptPreset = resolvePromptPreset(String(formData.get("promptPreset") ?? ""));
     const generateInteractiveDemo = String(formData.get("generateInteractiveDemo") ?? "").trim() === "true";
 
     let extractedSource = "";
@@ -1211,7 +1221,7 @@ export async function POST(request: Request) {
     const topicParts = splitTopic(resolvedMeta.topic, title);
     const targetFilePath = path.join(NOTES_DIR_PATH, `${slug}.mdx`);
 
-    const promptTemplate = await loadPromptTemplate();
+    const promptTemplate = await loadPromptTemplate(promptPreset);
     const styleContext = buildStyleContext(existingNotes);
 
     const messages: OpenAIInputItem[] = [
