@@ -1270,8 +1270,9 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
           </p>
 
         </section>
+      </div>
 
-        <section className="sticky top-[calc(3rem+0.75rem)] z-30 rounded-apple bg-card p-4 text-card-foreground shadow-card">
+      <section className="sticky top-[calc(3rem+0.75rem)] z-30 mb-6 rounded-apple bg-card p-4 text-card-foreground shadow-card">
           <div className="max-h-[42vh] overflow-y-auto pr-1">
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <div
@@ -1371,8 +1372,9 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
               ))}
             </div>
           </div>
-        </section>
+      </section>
 
+      <div className="mb-6">
         <section className="rounded-apple bg-card p-4 text-card-foreground shadow-card">
           <div className="grid gap-3 md:grid-cols-3">
             <label className="space-y-1 md:col-span-2">
