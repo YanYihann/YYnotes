@@ -38,7 +38,7 @@ type GenerationSourcePayload = {
   fileName: string;
 };
 
-type GeneratorMode = "direct" | "chatgpt";
+type GeneratorMode = "direct" | "chatgpt" | "autogpt";
 type PromptPreset = "standard" | "detailed";
 
 type ImportedNoteResult = {
@@ -1190,6 +1190,9 @@ export function WeekNoteGenerator() {
   const [copiedChatGptPrompt, setCopiedChatGptPrompt] = useState(false);
   const [chatGptMarkdown, setChatGptMarkdown] = useState("");
   const [savingChatGptMarkdown, setSavingChatGptMarkdown] = useState(false);
+  const [runningAutoChatGpt, setRunningAutoChatGpt] = useState(false);
+  const [autoChatGptStatus, setAutoChatGptStatus] = useState("");
+  const [autoChatGptWarnings, setAutoChatGptWarnings] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [result, setResult] = useState<GenerationResult | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -1300,6 +1303,35 @@ export function WeekNoteGenerator() {
     }
   }
 
+  async function buildChatGptPromptText(): Promise<string> {
+    if (!sourceFile) {
+      throw new Error("请先上传原始资料文件。");
+    }
+
+    const promptTemplate = await loadPromptTemplateFromSite(selectedPromptPreset);
+    const derived = deriveMetadataFromFileName(sourceFile.name);
+    const resolvedTitle = title.trim() || derived.title || "请根据上传资料自动生成标题";
+    const resolvedTopic = topic.trim() || derived.topic || "请根据上传资料自动生成主题";
+    const resolvedTags = parseTagsInput(tags).join("、") || "未指定，可根据资料补全";
+    return [
+      promptTemplate.trim(),
+      "",
+      "---",
+      "",
+      "以下是本次生成任务的补充上下文，请与系统要求一起严格执行：",
+      `- 目标标题：${resolvedTitle}`,
+      `- 目标主题：${resolvedTopic}`,
+      `- 目标标签：${resolvedTags}`,
+      `- 原始资料文件名：${sourceFile.name}`,
+      `- 需要交互 Demo：${generateInteractiveDemo ? "是" : "否"}`,
+      "- 我会在当前 ChatGPT 对话中上传同一份原始资料文件，请以该文件为主要内容来源。",
+      "- 请直接输出最终 Markdown / MDX 笔记，不要输出解释、分析、前言、后记或代码围栏。",
+      "- 输出内容需要可以直接粘贴回 YYNotes 保存。",
+      generateInteractiveDemo ? buildInteractiveDemoPromptBlockForChatGpt() : "",
+      extraInstruction.trim() ? `- 额外说明：${extraInstruction.trim()}` : "- 额外说明：无",
+    ].join("\n");
+  }
+
   async function onBuildChatGptPrompt() {
     if (!sourceFile) {
       setError("请先上传原始资料文件。");
@@ -1311,29 +1343,7 @@ export function WeekNoteGenerator() {
     setCopiedChatGptPrompt(false);
 
     try {
-      const promptTemplate = await loadPromptTemplateFromSite(selectedPromptPreset);
-      const derived = deriveMetadataFromFileName(sourceFile.name);
-      const resolvedTitle = title.trim() || derived.title || "请根据上传资料自动生成标题";
-      const resolvedTopic = topic.trim() || derived.topic || "请根据上传资料自动生成主题";
-      const resolvedTags = parseTagsInput(tags).join("、") || "未指定，可根据资料补全";
-      const prompt = [
-        promptTemplate.trim(),
-        "",
-        "---",
-        "",
-        "以下是本次生成任务的补充上下文，请与系统要求一起严格执行：",
-        `- 目标标题：${resolvedTitle}`,
-        `- 目标主题：${resolvedTopic}`,
-        `- 目标标签：${resolvedTags}`,
-        `- 原始资料文件名：${sourceFile.name}`,
-        `- 需要交互 Demo：${generateInteractiveDemo ? "是" : "否"}`,
-        "- 我会在当前 ChatGPT 对话中上传同一份原始资料文件，请以该文件为主要内容来源。",
-        "- 请直接输出最终 Markdown / MDX 笔记，不要输出解释、分析、前言、后记或代码围栏。",
-        "- 输出内容需要可以直接粘贴回 YYNotes 保存。",
-        generateInteractiveDemo ? buildInteractiveDemoPromptBlockForChatGpt() : "",
-        extraInstruction.trim() ? `- 额外说明：${extraInstruction.trim()}` : "- 额外说明：无",
-      ].join("\n");
-
+      const prompt = await buildChatGptPromptText();
       setChatGptPrompt(prompt);
     } catch (promptError) {
       setError(promptError instanceof Error ? promptError.message : "生成 ChatGPT Prompt 失败。");
@@ -1364,61 +1374,118 @@ export function WeekNoteGenerator() {
     window.open("https://chatgpt.com/", "_blank", "noopener,noreferrer");
   }
 
-  async function onSaveChatGptResult() {
+  async function saveImportedMarkdownContent(markdown: string): Promise<string> {
     const derived = deriveMetadataFromFileName(sourceFile?.name ?? "");
     const resolvedTitle = title.trim() || derived.title;
     const resolvedTopic = topic.trim() || derived.topic;
-    const resolvedMarkdown = chatGptMarkdown.trim();
+    const resolvedMarkdown = markdown.trim();
 
     if (!resolvedTitle) {
-      setError("请先填写或确认笔记标题。");
-      return;
+      throw new Error("请先填写或确认笔记标题。");
     }
 
     if (!resolvedTopic) {
-      setError("请先填写或确认笔记主题。");
-      return;
+      throw new Error("请先填写或确认笔记主题。");
     }
 
     if (!resolvedMarkdown) {
-      setError("请先粘贴 ChatGPT 生成的 Markdown / MDX。");
-      return;
+      throw new Error("请先提供 ChatGPT 生成的 Markdown / MDX。");
     }
 
     if (IS_CLOUD_MODE && !session?.token) {
-      setError("请先登录后再保存云端笔记。");
-      return;
+      throw new Error("请先登录后再保存云端笔记。");
     }
 
+    const saved = IS_CLOUD_MODE
+      ? await createImportedCloudNote({
+          title: resolvedTitle,
+          topic: resolvedTopic,
+          content: resolvedMarkdown,
+          authToken: session?.token || "",
+          generateInteractiveDemo,
+        })
+      : await createImportedLocalNote({
+          title: resolvedTitle,
+          topic: resolvedTopic,
+          content: resolvedMarkdown,
+          generateInteractiveDemo,
+        });
+
+    if (!saved.slug) {
+      throw new Error("保存成功，但未返回笔记链接。");
+    }
+
+    return saved.slug;
+  }
+
+  async function onSaveChatGptResult() {
     setSavingChatGptMarkdown(true);
     setError("");
 
     try {
-      const saved = IS_CLOUD_MODE
-        ? await createImportedCloudNote({
-            title: resolvedTitle,
-            topic: resolvedTopic,
-            content: resolvedMarkdown,
-            authToken: session?.token || "",
-            generateInteractiveDemo,
-          })
-        : await createImportedLocalNote({
-            title: resolvedTitle,
-            topic: resolvedTopic,
-            content: resolvedMarkdown,
-            generateInteractiveDemo,
-          });
-
-      if (!saved.slug) {
-        throw new Error("保存成功，但未返回笔记链接。");
-      }
-
-      router.push(buildNoteViewHref(saved.slug));
+      const slug = await saveImportedMarkdownContent(chatGptMarkdown);
+      router.push(buildNoteViewHref(slug));
       router.refresh();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "保存 ChatGPT 结果失败，请稍后重试。");
     } finally {
       setSavingChatGptMarkdown(false);
+    }
+  }
+
+  async function onRunAutoChatGpt() {
+    if (IS_CLOUD_MODE) {
+      setError("全自动 GPT 网页操控仅支持本机运行的 Next 服务，云端部署环境暂不支持。");
+      return;
+    }
+
+    if (!sourceFile) {
+      setError("请先上传原始资料文件。");
+      return;
+    }
+
+    setRunningAutoChatGpt(true);
+    setError("");
+    setAutoChatGptWarnings([]);
+    setAutoChatGptStatus("");
+
+    try {
+      setAutoChatGptStatus("正在生成自动化 Prompt...");
+      const prompt = await buildChatGptPromptText();
+      setChatGptPrompt(prompt);
+      setCopiedChatGptPrompt(false);
+
+      const formData = new FormData();
+      formData.set("prompt", prompt);
+      formData.set("sourceFile", sourceFile);
+
+      setAutoChatGptStatus("正在启动本机浏览器并操控 ChatGPT，首次使用时请在弹出的浏览器中完成登录...");
+      const response = await fetch("/api/chatgpt-web-automation", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = (await response.json().catch(() => null)) as
+        | { success?: boolean; markdown?: string; warnings?: string[]; error?: string }
+        | null;
+
+      if (!response.ok || !data?.success || !data.markdown) {
+        throw new Error(data?.error || "自动化执行失败。");
+      }
+
+      setChatGptMarkdown(data.markdown);
+      setAutoChatGptWarnings(Array.isArray(data.warnings) ? data.warnings : []);
+
+      setAutoChatGptStatus("ChatGPT 已返回结果，正在自动保存笔记...");
+      const slug = await saveImportedMarkdownContent(data.markdown);
+      setAutoChatGptStatus("已完成自动生成并保存，正在跳转到笔记页面...");
+      router.push(buildNoteViewHref(slug));
+      router.refresh();
+    } catch (automationError) {
+      setError(automationError instanceof Error ? automationError.message : "全自动 GPT 网页操控失败。");
+      setAutoChatGptStatus("");
+    } finally {
+      setRunningAutoChatGpt(false);
     }
   }
 
@@ -1457,6 +1524,16 @@ export function WeekNoteGenerator() {
           }`}
         >
           ChatGPT 辅助生成
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("autogpt")}
+          disabled={IS_CLOUD_MODE}
+          className={`inline-flex items-center rounded-capsule px-4 py-2 font-text text-[13px] transition focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-55 ${
+            mode === "autogpt" ? "bg-primary text-primary-foreground" : "border border-input bg-background text-foreground"
+          }`}
+        >
+          全自动 GPT 网页操控
         </button>
       </div>
 
@@ -1645,7 +1722,7 @@ export function WeekNoteGenerator() {
             </div>
           ) : null}
         </>
-      ) : (
+      ) : mode === "chatgpt" ? (
         <div className="space-y-4">
           <section className="rounded-apple border border-border bg-background p-4">
             <p className="font-text text-[13px] font-semibold tracking-[0.06em] text-muted-foreground">
@@ -1775,6 +1852,165 @@ export function WeekNoteGenerator() {
                 className="btn-apple-primary inline-flex items-center rounded-apple px-5 py-2 font-text text-[15px] transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
               >
                 {savingChatGptMarkdown ? "保存中..." : "保存为笔记"}
+              </button>
+
+              <Link
+                href="/notes"
+                className="btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition focus-visible:outline-none"
+              >
+                查看笔记列表
+              </Link>
+            </div>
+          </section>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <section className="rounded-apple border border-border bg-background p-4">
+            <p className="font-text text-[13px] font-semibold tracking-[0.06em] text-muted-foreground">
+              步骤 1：整理输入
+              <span className="ui-en ml-1">Prepare Inputs</span>
+            </p>
+
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <label className="space-y-2 md:col-span-2">
+                <SectionLabel>标题</SectionLabel>
+                <TextInput value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：死锁与资源分配图" />
+              </label>
+
+              <label className="space-y-2">
+                <SectionLabel>主题</SectionLabel>
+                <TextInput value={topic} onChange={(event) => setTopic(event.target.value)} placeholder="例如：操作系统 / Operating Systems" />
+              </label>
+
+              <label className="space-y-2">
+                <SectionLabel>标签（可选）</SectionLabel>
+                <TextInput value={tags} onChange={(event) => setTags(event.target.value)} placeholder="例如：死锁, 资源分配图, 同步" />
+              </label>
+
+              <label className="space-y-2 md:col-span-2">
+                <SectionLabel>原始资料文件</SectionLabel>
+                <TextInput
+                  type="file"
+                  accept=".txt,.md,.markdown,.doc,.docx,.ppt,.pptx,.pdf,.tex,.csv"
+                  onChange={(event) => handleSourceFileChange(event.target.files?.[0] ?? null)}
+                  className="file:mr-3 file:rounded-capsule file:border-0 file:bg-primary file:px-3 file:py-1 file:text-[12px] file:text-primary-foreground hover:file:bg-primary/90"
+                />
+              </label>
+
+              <label className="space-y-2 md:col-span-2">
+                <SectionLabel>额外说明（可选）</SectionLabel>
+                <TextArea
+                  value={extraInstruction}
+                  onChange={(event) => setExtraInstruction(event.target.value)}
+                  rows={3}
+                  placeholder="可填写特殊整理要求，如：更适合考试复习，保留关键例题。"
+                />
+              </label>
+
+              <label className="md:col-span-2 inline-flex items-start gap-3 rounded-apple border border-input bg-card px-3 py-3">
+                <input
+                  type="checkbox"
+                  checked={generateInteractiveDemo}
+                  onChange={(event) => setGenerateInteractiveDemo(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-input text-primary focus:ring-ring"
+                />
+                <span className="font-text text-[13px] leading-[1.45] text-muted-foreground">
+                  生成交互 demo（可选）
+                  <span className="ui-en ml-1">Automation mode will still append the interactive-demo prompt when this is checked.</span>
+                </span>
+              </label>
+            </div>
+          </section>
+
+          <section className="rounded-apple border border-border bg-background p-4">
+            <p className="font-text text-[13px] font-semibold tracking-[0.06em] text-muted-foreground">
+              步骤 2：启动本机自动化
+              <span className="ui-en ml-1">Run Local Browser Automation</span>
+            </p>
+
+            <div className="mt-3 rounded-apple border border-primary/25 bg-primary/10 px-3 py-3 font-text text-[13px] leading-[1.5] text-muted-foreground">
+              <p>这个模式会在你的本机启动浏览器，自动打开 ChatGPT、上传资料、提交 Prompt、抓取 Markdown 结果并直接保存回 YYNotes。</p>
+              <p className="mt-2">首次使用时，你可能需要在自动化启动的浏览器里手动登录 ChatGPT 一次；之后会复用同一个本地浏览器资料目录。</p>
+              <p className="mt-2">这个功能仅支持本机运行的 Next 服务，Cloudflare Pages / 静态部署环境不会启用。</p>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => void onRunAutoChatGpt()}
+                disabled={runningAutoChatGpt}
+                className="btn-apple-primary inline-flex items-center rounded-apple px-5 py-2 font-text text-[15px] transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
+              >
+                {runningAutoChatGpt ? "自动执行中..." : "启动全自动生成并保存"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void onBuildChatGptPrompt()}
+                disabled={buildingChatGptPrompt || runningAutoChatGpt}
+                className="btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
+              >
+                {buildingChatGptPrompt ? "生成 Prompt 中..." : "预览自动化 Prompt"}
+              </button>
+            </div>
+
+            {autoChatGptStatus ? (
+              <p className="mt-3 rounded-apple border border-border bg-card px-3 py-2 font-text text-[13px] leading-[1.45] text-muted-foreground">
+                {autoChatGptStatus}
+              </p>
+            ) : null}
+
+            {autoChatGptWarnings.length > 0 ? (
+              <div className="mt-3 rounded-apple border border-amber-400/35 bg-amber-500/10 px-3 py-3">
+                <p className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-amber-800 dark:text-amber-200">
+                  自动化提示
+                </p>
+                <ul className="mt-2 space-y-1 font-text text-[13px] leading-[1.45] text-amber-900/90 dark:text-amber-100">
+                  {autoChatGptWarnings.map((warning) => (
+                    <li key={warning}>- {warning}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </section>
+
+          <section className="rounded-apple border border-border bg-background p-4">
+            <p className="font-text text-[13px] font-semibold tracking-[0.06em] text-muted-foreground">
+              自动化 Prompt 预览
+              <span className="ui-en ml-1">Prompt Preview</span>
+            </p>
+
+            <TextArea
+              value={chatGptPrompt}
+              readOnly
+              rows={10}
+              placeholder="点击“预览自动化 Prompt”或直接启动自动化后，这里会出现最终发送给 ChatGPT 的 Prompt。"
+              className="mt-3 font-mono text-[12px] leading-[1.5]"
+            />
+          </section>
+
+          <section className="rounded-apple border border-border bg-background p-4">
+            <p className="font-text text-[13px] font-semibold tracking-[0.06em] text-muted-foreground">
+              自动抓取结果
+              <span className="ui-en ml-1">Captured Markdown</span>
+            </p>
+
+            <TextArea
+              value={chatGptMarkdown}
+              onChange={(event) => setChatGptMarkdown(event.target.value)}
+              rows={12}
+              placeholder="自动化成功后，这里会显示从 ChatGPT 网页抓取到的 Markdown / MDX；如果自动保存失败，你也可以直接手动点保存。"
+              className="mt-3 font-mono text-[12px] leading-[1.5]"
+            />
+
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => void onSaveChatGptResult()}
+                disabled={savingChatGptMarkdown || runningAutoChatGpt || !chatGptMarkdown.trim()}
+                className="btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
+              >
+                {savingChatGptMarkdown ? "保存中..." : "手动保存当前结果"}
               </button>
 
               <Link
