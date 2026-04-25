@@ -46,6 +46,9 @@
      - 中文在上，英文在下，按行对应排列。
      - 中文行必须写成**完整、自然、纯中文句子**，不要写成中英混合句。
      - 只有代码、公式、Python 术语、方法名、类名、异常名、API 名称、库名、路径、命令等技术内容必须保留原样，不要强行翻译或改写。
+     - 中文行中若必须保留英文，仅限于**反引号包裹的代码元素或技术标识本身**，例如：运算符 `in`、`not in`，表达式 `dictionary[key]`，异常名 `KeyError`，方法名 `items()`，类名、函数名、库名、命令等。
+     - 这些保留原样的英文技术内容，在中文行中必须使用 **Markdown 行内代码** 反引号包裹，也就是类似 Typora 中 `Ctrl+Shift+\`` 的效果，例如：`in`、`not in`、`dictionary[key]`、`KeyError`。
+     - 除反引号包裹的代码元素外，中文句子里的其他说明性英文都必须翻译成中文；像“key”“dictionary”“elements”“general format”“retrieve value”“returned”“raised”“operators”“test”“prevent”等都不能直接留在中文句子里。
      - 原文中的术语、定义、公式、符号、专有名词必须保持原样，不要擅自替换。
      - 若原文本身已包含中英文混合内容，也仍需整理成上下对应的双语形式。
      - 英文内容必须与中文内容逐行对应，不要合并成整段后再翻译。
@@ -55,7 +58,7 @@
        - 解释性正文、定义说明、过程描述、结论句，必须翻译成中文后放在上面，不能直接复制英文代替中文。
        - 中文行禁止直接重复英文原句。
        - 如果原文只有英文，也必须补出对应中文；不能因为“保留原文”而省略中文。
-       - 只有代码、公式、Python 术语、方法名、类名、异常名、API 名称、库名、路径、命令等技术内容允许保留原样。
+       - 只有反引号包裹的代码、公式、Python 术语、方法名、类名、异常名、API 名称、库名、路径、命令等技术内容允许保留原样。
      - **错误示例：**
        - `The iteration expression iterates over the elements of numbers`
        - `The iteration expression iterates over the elements of numbers`
@@ -64,11 +67,33 @@
        - `The iteration expression iterates over the elements of numbers.`
        - `每次迭代时，目标变量 item 会被赋值为当前元素。`
        - `Each time it iterates, the target variable item is assigned the value of an element.`
+     - **中文行中代码保留规则示例：**
+       - 错误：`使用 in 和 not in operators 来 test 一个 key 是否在 dictionary 中。`
+       - 正确：`使用 \`in\` 和 \`not in\` 运算符来测试某个键是否在字典中。`
+       - 错误：`如果 key 在 dictionary 中，associated value 会被 returned；否则会 raised KeyError exception。`
+       - 正确：`如果某个键在字典中，则会返回对应的值；否则会触发 \`KeyError\` 异常。`
+       - 错误：`从 dictionary 中 retrieve value 的 general format 是 dictionary[key]。`
+       - 正确：`从字典中取值的一般格式是 \`dictionary[key]\`。`
      - **输出前自检：**
        - 每一段正文是否都是“中文一行 + 英文一行”。
        - 中文行是否为完整中文句子，而不是英文重复或中英混写。
        - 是否只有代码、公式、术语等技术内容保留原样。
+       - 中文行中除反引号代码外，是否还残留了像“key”“dictionary”这类本应翻译成中文的英文。
+       - 中文行中保留的英文是否都属于代码元素或技术标识，且是否全部使用了反引号包裹。
        - 如果发现“英文重复两遍”“缺少中文”或“中文行不是完整中文句子”，必须重写该段。
+     - **输出形式强制规则：**
+       - 最终必须输出**原始 Markdown / MDX 源码**，不能输出渲染后的普通文本。
+       - 必须保留所有 Markdown 标记，例如 `#`、`##`、`###`、`-`、`1.`、`>`、表格分隔符、代码块标记等。
+       - 不要把最终答案写成已经渲染完成的富文本段落，不要省略 Markdown 语法。
+       - 为了便于复制，最终请把**完整笔记**放在一个 ```mdx 代码块中输出。
+       - 代码块外不要再添加解释、前言、后记、说明文字或分析内容。
+     - **输出形式示例：**
+       - ```mdx
+         ## 学习目标
+         
+         理解字典推导式的基本结构。  
+         Understand the basic structure of dictionary comprehensions.
+         ```
   
   6. **图片中的内容也属于原文内容**
   
@@ -126,6 +151,10 @@
   9. **正文中中英文对应行之间使用 Markdown 中的“行内换行”形式，也就是 `Shift+Enter` 的效果，而不是另起一个新段落。**
   
   10. 如果原文中有公式、符号、专业术语、专有名词，必须原样保留。
+  
+  10.1 **中文行中的代码元素、运算符、异常名、方法名等保留英文时，必须统一写成 Markdown 行内代码格式**，例如：`in`、`not in`、`dictionary[key]`、`KeyError`、`items()`。
+  
+  10.2 **除这些必须保留且已用反引号包裹的技术内容外，中文解释必须全部使用中文表达**，不要写成“key”“dictionary”“general format”“retrieve value”“returned”“raised”“prevent”这类中英混合句。
   
   11. 如果原文中本来就有中英文混合内容，全部照原样保留，不要翻译，不要统一改写。
   
