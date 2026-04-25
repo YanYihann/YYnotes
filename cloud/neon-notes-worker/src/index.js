@@ -1798,9 +1798,15 @@ function extractMarkdownFromAssistantResponse(content) {
     return "";
   }
 
-  const fencedMatch = normalized.match(/```(?:md|mdx|markdown)?\s*([\s\S]*?)\s*```/i);
-  if (fencedMatch && typeof fencedMatch[1] === "string" && fencedMatch[1].trim()) {
-    return fencedMatch[1].trim();
+  const wholeMarkdownFenceMatch = normalized.match(/^```(?:md|mdx|markdown)\s*\n([\s\S]*?)\n```$/i);
+  if (wholeMarkdownFenceMatch && typeof wholeMarkdownFenceMatch[1] === "string" && wholeMarkdownFenceMatch[1].trim()) {
+    return wholeMarkdownFenceMatch[1].trim();
+  }
+
+  const namedFenceMatches = Array.from(normalized.matchAll(/```(?:md|mdx|markdown)\s*\n([\s\S]*?)\n```/gi));
+  const lastNamedFence = namedFenceMatches[namedFenceMatches.length - 1];
+  if (lastNamedFence && typeof lastNamedFence[1] === "string" && lastNamedFence[1].trim()) {
+    return lastNamedFence[1].trim();
   }
 
   const frontmatterIndex = normalized.indexOf("---\n");
