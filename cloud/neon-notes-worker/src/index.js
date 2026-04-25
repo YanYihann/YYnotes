@@ -688,18 +688,88 @@ function buildDemoSection(demos, generatedDesigns = []) {
   ].join("\n\n").trim();
 }
 
+function removeExistingInteractiveDemoSection(body) {
+  const lines = String(body ?? "").split("\n");
+  const output = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const current = lines[index] ?? "";
+    const headingMatch = current.trim().match(/^(#{2,6})\s+(.+)$/);
+    if (!headingMatch) {
+      output.push(current);
+      index += 1;
+      continue;
+    }
+
+    const level = headingMatch[1].length;
+    const title = stripMarkdown(headingMatch[2]).toLowerCase();
+    const isInteractiveHeading =
+      title.includes("交互 demo") ||
+      title.includes("互动 demo") ||
+      title.includes("interactive demo") ||
+      /(?:^|\s)demo(?:\s|$)/i.test(title);
+
+    if (!isInteractiveHeading) {
+      output.push(current);
+      index += 1;
+      continue;
+    }
+
+    let end = index + 1;
+    const blockLines = [];
+    while (end < lines.length) {
+      const next = lines[end] ?? "";
+      const nextHeadingMatch = next.trim().match(/^(#{2,6})\s+(.+)$/);
+      if (nextHeadingMatch && nextHeadingMatch[1].length <= level) {
+        break;
+      }
+      blockLines.push(next);
+      end += 1;
+    }
+
+    const blockText = blockLines.join("\n");
+    const looksLikeGeneratedDemoText = [
+      "可调输入",
+      "可观察输出",
+      "关键状态变化",
+      "对比情形",
+      "学习者任务",
+      "Adjustable inputs",
+      "Observable outputs",
+      "Key state changes",
+      "Comparison case",
+      "Learner task",
+    ].filter((keyword) => blockText.includes(keyword)).length >= 2;
+
+    if (looksLikeGeneratedDemoText || title.includes("交互 demo") || title.includes("interactive demo")) {
+      index = end;
+      while (index < lines.length && !String(lines[index] ?? "").trim()) {
+        index += 1;
+      }
+      continue;
+    }
+
+    output.push(current, ...blockLines);
+    index = end;
+  }
+
+  return output.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 function insertDemoSectionBeforeSummary(body, demos, generatedDesigns = []) {
   if (!demos.length && !generatedDesigns.length) {
     return body;
   }
 
+  const sanitizedBody = removeExistingInteractiveDemoSection(body);
   const section = buildDemoSection(demos, generatedDesigns);
-  const match = String(body ?? "").match(/^#{2,3}\s+小结\s*$/m);
+  const match = String(sanitizedBody ?? "").match(/^#{2,3}\s+(?:小结(?:\s+.*)?|Summary(?:\s+.*)?)\s*$/mi);
   if (!match || match.index === undefined) {
-    return `${String(body ?? "").trim()}\n\n${section}`.trim();
+    return `${String(sanitizedBody ?? "").trim()}\n\n${section}`.trim();
   }
 
-  const source = String(body ?? "");
+  const source = String(sanitizedBody ?? "");
   return `${source.slice(0, match.index).trimEnd()}\n\n${section}\n\n${source.slice(match.index).trimStart()}`.trim();
 }
 
@@ -817,15 +887,11 @@ function selectInteractiveDemos({ title, topic, tags, sourceText, generatedConte
 
 function injectInteractiveDemosIntoNoteContent(source, demos, options = {}) {
   const sections = splitBilingualNoteSections(source);
-  if (!sections.hasStructuredSections) {
-    return source;
-  }
-
   const generatedDesigns = Array.isArray(options.generatedSpecs) && options.generatedSpecs.length
     ? options.generatedSpecs
     : demos.length
       ? []
-      : buildGeneratedDesignSpecs(options.title || "", options.topic || "", sections.zhBody);
+      : buildGeneratedDesignSpecs(options.title || "", options.topic || "", sections.hasStructuredSections ? sections.zhBody : source);
   const jumpDemos = [
     ...demos,
     ...generatedDesigns.map((spec) => ({
@@ -834,6 +900,11 @@ function injectInteractiveDemosIntoNoteContent(source, demos, options = {}) {
       keywords: [String(spec.titleZh || "").replace(/\s*交互设计$/, "")],
     })),
   ];
+  if (!sections.hasStructuredSections) {
+    const withLinks = insertDemoJumpLinks(source, jumpDemos);
+    return insertDemoSectionBeforeSummary(withLinks, demos, generatedDesigns);
+  }
+
   const zhWithLinks = insertDemoJumpLinks(sections.zhBody, jumpDemos);
   const zhFinal = insertDemoSectionBeforeSummary(zhWithLinks, demos, generatedDesigns);
 
@@ -1450,11 +1521,7 @@ function buildInteractiveDesignUserPrompt({ title, topic, tags, noteContent }) {
 
 function buildInteractiveDesignSpecsFromNote({ title, topic, source }) {
   const sections = splitBilingualNoteSections(source);
-  if (!sections.hasStructuredSections) {
-    return [];
-  }
-
-  return buildGeneratedDesignSpecs(title, topic, sections.zhBody);
+  return buildGeneratedDesignSpecs(title, topic, sections.hasStructuredSections ? sections.zhBody : source);
 }
 
 async function generateInteractiveDesignSpecsWithAI({ env, title, topic, tags, noteContent, modelName }) {
