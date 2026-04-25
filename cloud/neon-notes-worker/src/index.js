@@ -527,6 +527,18 @@ function stripMarkdownForDemoDesign(value) {
     .trim();
 }
 
+function stripMarkdown(value) {
+  return String(value ?? "")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^[-*+]\s+/gm, "")
+    .replace(/^\d+\.\s+/gm, "")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[(.*?)\]\(.*?\)/g, "$1")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .trim();
+}
+
 function toDemoKebabCase(value) {
   return String(value ?? "")
     .toLowerCase()
