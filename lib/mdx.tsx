@@ -9,6 +9,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import type { WeekNote } from "@/lib/content";
 import { splitBilingualNoteSections } from "@/lib/bilingual-note";
+import { normalizeInteractiveDemoMarkup } from "@/lib/interactive-demos";
 import allComponents from "@/components/mdx/mdx-components";
 
 const markdownComponents = {
@@ -372,7 +373,7 @@ function composeRenderedSource(source: string, showEnglish: boolean): string {
 }
 
 export function prepareNoteMarkdown(source: string, options: PrepareNoteMarkdownOptions = {}): string {
-  const normalized = normalizeMathDelimiters(normalizeNewlines(source).trim());
+  const normalized = normalizeInteractiveDemoMarkup(normalizeMathDelimiters(normalizeNewlines(source).trim()));
   const rendered = composeRenderedSource(normalized, options.showEnglish !== false);
   const fixedMixedDisplayMath = normalizeMixedContentDisplayMath(rendered);
   return dedupeAdjacentLines(fixedMixedDisplayMath).trim();

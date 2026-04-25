@@ -61,6 +61,11 @@ export function GeneratedInteractiveDesign({ encodedSpec, anchorId }: GeneratedI
 
   return (
     <section id={anchorId} className="my-6 rounded-apple border border-border bg-card px-5 py-5 shadow-card">
+      <div className="space-y-1">
+        <h3 className="font-display text-[28px] font-semibold tracking-tight text-foreground">{spec.titleZh}</h3>
+        <p className="ui-en font-text text-[13px] text-muted-foreground">{spec.titleEn}</p>
+      </div>
+
       <p className="font-text text-[15px] leading-[1.6] text-muted-foreground">
         {spec.summaryZh}
         <span className="ui-en ml-1">{spec.summaryEn}</span>

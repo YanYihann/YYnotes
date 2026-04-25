@@ -84,7 +84,21 @@ export const INTERACTIVE_DEMO_REGISTRY: InteractiveDemoDescriptor[] = [
     titleEn: "Integration Error Comparison",
     descriptionZh: "并排比较不同积分方法在误差和收敛趋势上的差异。",
     descriptionEn: "Compare multiple integration methods side by side and inspect their error trends.",
-    keywords: ["方法比较", "误差比较", "收敛趋势", "compare integration", "error trend", "comparison"],
+    keywords: [
+      "积分方法比较",
+      "积分误差比较",
+      "数值积分比较",
+      "积分方法误差",
+      "梯形公式",
+      "辛普森",
+      "龙贝格",
+      "integration method",
+      "numerical integration",
+      "quadrature",
+      "trapezoidal",
+      "simpson",
+      "romberg",
+    ],
   },
   {
     key: "romberg",
@@ -259,6 +273,431 @@ function buildDesignSpecs(title: string, topic: string, zhBody: string): Interac
 
 function encodeSpec(spec: InteractiveDesignSpec): string {
   return encodeURIComponent(JSON.stringify(spec));
+}
+
+function safeQuotedMatch(source: string, name: string): string {
+  const match = source.match(new RegExp(`${name}\\s*=\\s*"([^"]*)"`, "i"));
+  return match?.[1]?.trim() ?? "";
+}
+
+function extractBalancedProp(source: string, name: string): string {
+  const propIndex = source.search(new RegExp(`${name}\\s*=`, "i"));
+  if (propIndex < 0) {
+    return "";
+  }
+
+  let cursor = propIndex + name.length;
+  while (cursor < source.length && /\s|=/.test(source[cursor] ?? "")) {
+    cursor += 1;
+  }
+
+  if ((source[cursor] ?? "") === '"') {
+    let end = cursor + 1;
+    while (end < source.length) {
+      const current = source[end] ?? "";
+      if (current === '"' && source[end - 1] !== "\\") {
+        return source.slice(cursor + 1, end).trim();
+      }
+      end += 1;
+    }
+    return "";
+  }
+
+  if ((source[cursor] ?? "") !== "{") {
+    return "";
+  }
+
+  let depth = 0;
+  let inSingle = false;
+  let inDouble = false;
+  let index = cursor;
+
+  while (index < source.length) {
+    const current = source[index] ?? "";
+    const previous = source[index - 1] ?? "";
+
+    if (!inDouble && current === "'" && previous !== "\\") {
+      inSingle = !inSingle;
+      index += 1;
+      continue;
+    }
+
+    if (!inSingle && current === '"' && previous !== "\\") {
+      inDouble = !inDouble;
+      index += 1;
+      continue;
+    }
+
+    if (inSingle || inDouble) {
+      index += 1;
+      continue;
+    }
+
+    if (current === "{") {
+      depth += 1;
+    } else if (current === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(cursor + 1, index).trim();
+      }
+    }
+
+    index += 1;
+  }
+
+  return "";
+}
+
+function parseStringList(source: string): string[] {
+  const values: string[] = [];
+  const matcher = /"([^"]+)"|'([^']+)'/g;
+  let match = matcher.exec(source);
+  while (match) {
+    const value = (match[1] ?? match[2] ?? "").trim();
+    if (value) {
+      values.push(value);
+    }
+    match = matcher.exec(source);
+  }
+  return values;
+}
+
+function parseLabelValues(source: string): string[] {
+  const values: string[] = [];
+  const matcher = /\blabel(?:Zh|En)?\s*:\s*"([^"]+)"/g;
+  let match = matcher.exec(source);
+  while (match) {
+    const value = match[1]?.trim();
+    if (value) {
+      values.push(value);
+    }
+    match = matcher.exec(source);
+  }
+  return values;
+}
+
+function parseCompareCaseValues(source: string): string[] {
+  const cases: string[] = [];
+  const labelMatcher = /\blabel\s*:\s*"([^"]+)"/g;
+  let labelMatch = labelMatcher.exec(source);
+  while (labelMatch) {
+    const label = labelMatch[1]?.trim();
+    if (label) {
+      cases.push(label);
+    }
+    labelMatch = labelMatcher.exec(source);
+  }
+
+  const expectedMatcher = /\bexpected\s*:\s*"([^"]+)"/g;
+  let expectedMatch = expectedMatcher.exec(source);
+  while (expectedMatch) {
+    const expected = expectedMatch[1]?.trim();
+    if (expected) {
+      cases.push(expected);
+    }
+    expectedMatch = expectedMatcher.exec(source);
+  }
+
+  return cases;
+}
+
+function humanizeDemoComponentName(componentName: string): string {
+  return componentName
+    .replace(/Demo$/, "")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .trim();
+}
+
+function uniqueNonEmpty(values: Array<string | undefined>, limit = 4): string[] {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => String(value ?? "").trim())
+        .filter(Boolean),
+    ),
+  ).slice(0, limit);
+}
+
+function parseDemoControlsFromInputs(source: string): InteractiveDesignControl[] {
+  if (!source.trim()) {
+    return [];
+  }
+
+  const controls: InteractiveDesignControl[] = [];
+  const objectMatcher = /\{([\s\S]*?)\}/g;
+  let objectMatch = objectMatcher.exec(source);
+
+  while (objectMatch) {
+    const entry = objectMatch[1] ?? "";
+    const id = safeQuotedMatch(entry, "name") || safeQuotedMatch(entry, "id") || `control-${controls.length + 1}`;
+    const label = safeQuotedMatch(entry, "labelZh") || safeQuotedMatch(entry, "label") || id;
+    const type = safeQuotedMatch(entry, "type").toLowerCase();
+
+    if (type === "select") {
+      const optionsSource = entry.match(/\boptions\s*:\s*\[([\s\S]*?)\]/)?.[1] ?? "";
+      const options = parseStringList(optionsSource);
+      controls.push({
+        id,
+        type: "select",
+        labelZh: label,
+        labelEn: label,
+        optionsZh: options.length ? options : [label],
+        optionsEn: options.length ? options : [label],
+        initialIndex: 0,
+      });
+    } else if (type === "slider") {
+      const min = Number(entry.match(/\bmin\s*:\s*(-?\d+(?:\.\d+)?)/)?.[1] ?? "0");
+      const max = Number(entry.match(/\bmax\s*:\s*(-?\d+(?:\.\d+)?)/)?.[1] ?? "10");
+      const step = Number(entry.match(/\bstep\s*:\s*(-?\d+(?:\.\d+)?)/)?.[1] ?? "1");
+      const initialValue = Number(entry.match(/\bdefaultValue\s*:\s*(-?\d+(?:\.\d+)?)/)?.[1] ?? String(min));
+      controls.push({
+        id,
+        type: "slider",
+        labelZh: label,
+        labelEn: label,
+        min,
+        max: max > min ? max : min + 1,
+        step,
+        initialValue,
+      });
+    } else if (type === "checkbox") {
+      controls.push({
+        id,
+        type: "toggle",
+        labelZh: label,
+        labelEn: label,
+        initialValue: /defaultValue\s*:\s*true/.test(entry),
+      });
+    }
+
+    objectMatch = objectMatcher.exec(source);
+  }
+
+  return controls.slice(0, 3);
+}
+
+function buildSpecFromDemoComponent(componentName: string, propSource: string): InteractiveDesignSpec | null {
+  const title = safeQuotedMatch(propSource, "title") || humanizeDemoComponentName(componentName);
+  if (!title) {
+    return null;
+  }
+
+  const description = safeQuotedMatch(propSource, "description");
+  const learnerTask = safeQuotedMatch(propSource, "learnerTask");
+  const inputsSource = extractBalancedProp(propSource, "inputs");
+  const outputsSource = extractBalancedProp(propSource, "outputs");
+  const buttonsSource = extractBalancedProp(propSource, "buttons");
+  const compareCasesSource = extractBalancedProp(propSource, "compareCases");
+
+  const inputLabels = parseLabelValues(inputsSource);
+  const outputLabels = parseLabelValues(outputsSource);
+  const buttonLabels = parseLabelValues(buttonsSource);
+  const compareCases = parseCompareCaseValues(compareCasesSource);
+  let controls = parseDemoControlsFromInputs(inputsSource);
+
+  if (!controls.length && inputLabels.length) {
+    controls = [
+      {
+        id: "focus",
+        type: "select",
+        labelZh: "观察重点",
+        labelEn: "Focus",
+        optionsZh: inputLabels.slice(0, 4),
+        optionsEn: inputLabels.slice(0, 4),
+        initialIndex: 0,
+      },
+      {
+        id: "hints",
+        type: "toggle",
+        labelZh: "显示操作提示",
+        labelEn: "Show Hints",
+        initialValue: true,
+      },
+    ];
+  }
+
+  return {
+    key: `generated-${toKebabCase(title) || toKebabCase(componentName) || "demo"}`,
+    anchorId: `generated-interactive-demo-${toKebabCase(title) || toKebabCase(componentName) || "demo"}`,
+    titleZh: title,
+    titleEn: humanizeDemoComponentName(componentName),
+    summaryZh: description || `围绕“${title}”直接操作输入项并观察结果变化。`,
+    summaryEn: description || `Interact with ${humanizeDemoComponentName(componentName)} and observe how outputs change.`,
+    observationsZh: uniqueNonEmpty(
+      [
+        ...outputLabels.map((label) => `重点观察：${label}`),
+        ...compareCases.map((item) => `对比情形：${item}`),
+      ],
+      4,
+    ),
+    observationsEn: uniqueNonEmpty(
+      [
+        ...outputLabels.map((label) => `Observe: ${label}`),
+        ...compareCases.map((item) => `Compare: ${item}`),
+      ],
+      4,
+    ),
+    tasksZh: uniqueNonEmpty(
+      [
+        learnerTask,
+        ...buttonLabels.map((label) => `尝试点击“${label}”并记录结果变化。`),
+        ...inputLabels.map((label) => `修改“${label}”后比较输出差异。`),
+      ],
+      4,
+    ),
+    tasksEn: uniqueNonEmpty(
+      [
+        learnerTask,
+        ...buttonLabels.map((label) => `Try "${label}" and record how the result changes.`),
+        ...inputLabels.map((label) => `Change "${label}" and compare the outputs.`),
+      ],
+      4,
+    ),
+    controls,
+  };
+}
+
+function findNextDemoComponentBlock(source: string, startIndex: number): {
+  start: number;
+  end: number;
+  componentName: string;
+  propSource: string;
+} | null {
+  const matcher = /<([A-Z][A-Za-z0-9]*Demo)\b/g;
+  matcher.lastIndex = startIndex;
+  const match = matcher.exec(source);
+  if (!match || match.index === undefined) {
+    return null;
+  }
+
+  const componentName = match[1];
+  let index = matcher.lastIndex;
+  let braceDepth = 0;
+  let inSingle = false;
+  let inDouble = false;
+
+  while (index < source.length) {
+    const current = source[index] ?? "";
+    const previous = source[index - 1] ?? "";
+
+    if (!inDouble && current === "'" && previous !== "\\") {
+      inSingle = !inSingle;
+      index += 1;
+      continue;
+    }
+
+    if (!inSingle && current === '"' && previous !== "\\") {
+      inDouble = !inDouble;
+      index += 1;
+      continue;
+    }
+
+    if (inSingle || inDouble) {
+      index += 1;
+      continue;
+    }
+
+    if (current === "{") {
+      braceDepth += 1;
+      index += 1;
+      continue;
+    }
+
+    if (current === "}") {
+      braceDepth = Math.max(0, braceDepth - 1);
+      index += 1;
+      continue;
+    }
+
+    if (current === "/" && source[index + 1] === ">" && braceDepth === 0) {
+      return {
+        start: match.index,
+        end: index + 2,
+        componentName,
+        propSource: source.slice(matcher.lastIndex, index).trim(),
+      };
+    }
+
+    index += 1;
+  }
+
+  return null;
+}
+
+function replaceDemoComponentBlocks(source: string): string {
+  let cursor = 0;
+  let output = "";
+
+  while (cursor < source.length) {
+    const block = findNextDemoComponentBlock(source, cursor);
+    if (!block) {
+      output += source.slice(cursor);
+      break;
+    }
+
+    output += source.slice(cursor, block.start);
+    const spec = buildSpecFromDemoComponent(block.componentName, block.propSource);
+    if (!spec) {
+      output += source.slice(block.start, block.end);
+      cursor = block.end;
+      continue;
+    }
+
+    const previousNonEmptyLine = output
+      .split("\n")
+      .reverse()
+      .find((line) => line.trim());
+    const placeholder = `<div id="${spec.anchorId}" class="interactive-demo-design" data-demo-spec="${encodeSpec(spec)}"></div>`;
+    output += previousNonEmptyLine && /^#{2,6}\s+/.test(previousNonEmptyLine.trim()) ? placeholder : `### ${spec.titleZh}\n\n${placeholder}`;
+    cursor = block.end;
+  }
+
+  return output.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function demoScoreAgainstSource(demo: InteractiveDemoDescriptor, source: string): number {
+  const haystack = normalizeText(source);
+  const normalizedKeywords = demo.keywords.map((keyword) => normalizeText(keyword)).filter(Boolean);
+  return normalizedKeywords.reduce((total, keyword) => {
+    const matches = haystack.match(new RegExp(escapeRegExp(keyword), "g"));
+    return total + (matches?.length ?? 0);
+  }, 0);
+}
+
+function removeIrrelevantEmbeddedDemoBlocks(source: string): string {
+  const contextSource = source.replace(/^##\s+交互\s+Demo[\s\S]*$/im, "").trim();
+  const lines = source.split("\n");
+  const output: string[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
+    const demoKey = line.match(/class="interactive-demo-embed"[^>]*data-demo-key="([^"]+)"/)?.[1];
+    if (!demoKey) {
+      output.push(line);
+      continue;
+    }
+
+    const demo = INTERACTIVE_DEMO_REGISTRY.find((item) => item.key === demoKey);
+    const score = demo ? demoScoreAgainstSource(demo, contextSource) : 0;
+    if (score > 0) {
+      output.push(line);
+      continue;
+    }
+
+    while (output.length && !output[output.length - 1]?.trim()) {
+      output.pop();
+    }
+    if (output.length && /^#{3,4}\s+/.test(output[output.length - 1]?.trim() ?? "")) {
+      output.pop();
+    }
+  }
+
+  return output.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+export function normalizeInteractiveDemoMarkup(source: string): string {
+  const converted = replaceDemoComponentBlocks(source);
+  return removeIrrelevantEmbeddedDemoBlocks(converted);
 }
 
 function buildJumpLinkLabel(anchorId: string): string {
