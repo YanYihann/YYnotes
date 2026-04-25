@@ -406,7 +406,8 @@ async function readNoteFromFile(filePath: string): Promise<WeekNote | null> {
   const parsed = matter(raw);
   const frontmatter = parsed.data as Frontmatter;
   const topTitles = extractTopLevelBilingualTitles(parsed.content);
-  const source = stripLeadingTopHeadings(parsed.content);
+  const strippedSource = stripLeadingTopHeadings(parsed.content);
+  const source = strippedSource || parsed.content.trimStart();
   const sections = splitBilingualNoteSections(source);
   const headingsSource = sections.hasStructuredSections ? sections.zhBody : source;
   const headings = extractHeadings(headingsSource);

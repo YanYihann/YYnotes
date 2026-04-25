@@ -341,10 +341,10 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
   const { session } = useAuth();
   const authToken = session?.token ?? "";
   const [noteSource, setNoteSource] = useState(note.noteContent);
-  const renderedSource = useMemo(
-    () => prepareNoteMarkdown(noteSource, { showEnglish }),
-    [noteSource, showEnglish],
-  );
+  const renderedSource = useMemo(() => {
+    const prepared = prepareNoteMarkdown(noteSource, { showEnglish });
+    return prepared || noteSource.trim();
+  }, [noteSource, showEnglish]);
   const canSyncHighlights = Boolean(CLOUD_API_BASE && authToken && note.slug);
   const noteContentRef = useRef<HTMLDivElement | null>(null);
   const [highlights, setHighlights] = useState<NoteHighlight[]>([]);

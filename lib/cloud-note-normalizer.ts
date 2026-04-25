@@ -458,7 +458,8 @@ export function normalizeCloudNote(note: CloudNoteRecord | null): NormalizedClou
   }
 
   const { body, data } = parseFrontmatterAndBody(String(note.mdx_content ?? ""));
-  const source = stripLeadingTopHeadings(body);
+  const strippedSource = stripLeadingTopHeadings(body);
+  const source = strippedSource || body.trimStart();
   const sections = splitBilingualNoteSections(source);
   const headingsSource = sections.hasStructuredSections ? sections.zhBody : source;
   const headings = extractHeadings(headingsSource);
