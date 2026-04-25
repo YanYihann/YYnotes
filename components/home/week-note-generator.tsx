@@ -113,13 +113,18 @@ function deriveMetadataFromFileName(fileName: string): { title: string; topic: s
 
 function buildInteractiveDemoPromptBlockForChatGpt(): string {
   return [
-    "Interactive Demo Addendum:",
-    "- This note will later be used inside YYNotes to generate or place interactive demos.",
-    "- Make interactive concepts explicit and easy to locate in the main content.",
-    "- For concepts that can become demos, clearly state controllable inputs, observable outputs, state changes, comparison cases, and learner tasks.",
-    "- Use concrete subsection wording for key concepts, variables, conditions, and step-by-step processes.",
-    "- If interactive demo content is required in the final note, place it after Main Content and before Summary.",
-    "- Do not output implementation code, JSON, or internal tool instructions in the final note.",
+    "交互 Demo 附加要求：",
+    "- 你当前勾选了“生成交互 demo”。请在正常生成整篇笔记的同时，为后续在 YYNotes 中渲染交互 Demo 准备清晰、可定位的内容。",
+    "- 你要输出的仍然是最终 Markdown / MDX 笔记，不要输出实现代码、JSON、JSX/TSX、React 组件、HTML 占位元素、脚本、工具说明或内部备注。",
+    "- 在主要内容中，遇到适合做交互演示的重点概念时，请明确写出：可调输入、可观察输出、关键状态变化、对比情形、学习者任务。",
+    "- 写法必须具体，变量名、条件、步骤、判断标准都要写清楚，不要只写空泛结论。",
+    "- 如果某个概念适合交互展示，请在对应内容处自然说明“可结合下方交互 Demo 观察/操作/比较”。",
+    "- 交互 Demo 相关内容在最终笔记中的位置应为：主要内容之后，小结之前。",
+    "- 请按下面这种风格来写：",
+    "- 示例小节标题：`### 牛顿法迭代过程`",
+    "- 示例正文表达：`可调输入：初始值 x0、终止阈值、最大迭代次数。可观察输出：每一步迭代值、误差变化、是否收敛。对比情形：不同初始值下的收敛速度差异。学习任务：比较 x0=1 与 x0=3 时的迭代路径。`",
+    "- 不要这样写：`牛顿法很重要，可以通过交互方式理解。`",
+    "- 也就是说，不要只提示“可以做交互”，而要把可交互的对象、参数、现象和任务写具体。",
   ].join("\\n");
 }
 
