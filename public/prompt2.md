@@ -50,6 +50,25 @@
      - 若原文本身已包含中英文混合内容，也仍需整理成上下对应的双语形式。
      - 英文内容必须与中文内容逐行对应，不要合并成整段后再翻译。
      - 除双语对应外，仍需保持原文信息完整，不得删减。
+     - **强制双语正文规则：**
+       - 正文必须严格按“两行一组”输出：第一行为完整、自然、纯中文句子；第二行为与上一行严格对应的英文原句或英文表达。
+       - 解释性正文、定义说明、过程描述、结论句，必须翻译成中文后放在上面，不能直接复制英文代替中文。
+       - 中文行禁止直接重复英文原句。
+       - 如果原文只有英文，也必须补出对应中文；不能因为“保留原文”而省略中文。
+       - 只有代码、公式、Python 术语、方法名、类名、异常名、API 名称、库名、路径、命令等技术内容允许保留原样。
+     - **错误示例：**
+       - `The iteration expression iterates over the elements of numbers`
+       - `The iteration expression iterates over the elements of numbers`
+     - **正确示例：**
+       - `迭代表达式会遍历 numbers 中的各个元素。`
+       - `The iteration expression iterates over the elements of numbers.`
+       - `每次迭代时，目标变量 item 会被赋值为当前元素。`
+       - `Each time it iterates, the target variable item is assigned the value of an element.`
+     - **输出前自检：**
+       - 每一段正文是否都是“中文一行 + 英文一行”。
+       - 中文行是否为完整中文句子，而不是英文重复或中英混写。
+       - 是否只有代码、公式、术语等技术内容保留原样。
+       - 如果发现“英文重复两遍”“缺少中文”或“中文行不是完整中文句子”，必须重写该段。
   
   6. **图片中的内容也属于原文内容**
   
