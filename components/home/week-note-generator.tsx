@@ -436,6 +436,7 @@ async function createImportedLocalNote(params: {
   title: string;
   topic: string;
   content: string;
+  generateInteractiveDemo: boolean;
 }): Promise<ImportedNoteResult> {
   const response = await fetch("/api/notes", {
     method: "POST",
@@ -458,6 +459,7 @@ async function createImportedCloudNote(params: {
   topic: string;
   content: string;
   authToken: string;
+  generateInteractiveDemo: boolean;
 }): Promise<ImportedNoteResult> {
   const apiBase = normalizeApiBase(CLOUD_API_BASE);
   const response = await fetch(`${apiBase}/notes`, {
@@ -470,6 +472,7 @@ async function createImportedCloudNote(params: {
       title: params.title,
       topic: params.topic,
       content: params.content,
+      generateInteractiveDemo: params.generateInteractiveDemo,
     }),
   });
 
@@ -736,11 +739,13 @@ export function WeekNoteGenerator() {
             topic: resolvedTopic,
             content: resolvedMarkdown,
             authToken: session?.token || "",
+            generateInteractiveDemo,
           })
         : await createImportedLocalNote({
             title: resolvedTitle,
             topic: resolvedTopic,
             content: resolvedMarkdown,
+            generateInteractiveDemo,
           });
 
       if (!saved.slug) {

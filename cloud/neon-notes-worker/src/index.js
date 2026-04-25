@@ -2935,6 +2935,7 @@ export default {
 
         const title = String(body.title ?? "").trim().slice(0, 80);
         const topicInput = String(body.topic ?? "").trim().slice(0, 64);
+        const generateInteractiveDemo = Boolean(body.generateInteractiveDemo);
         const rawContent = extractMarkdownFromAssistantResponse(String(body.content ?? ""));
         const noteBody = stripLeadingFrontmatter(rawContent);
 
@@ -2958,12 +2959,27 @@ export default {
             AND (slug = ${baseSlug} OR slug LIKE ${`${baseSlug}-%`})
         `;
         const slug = resolveUniqueSlug(baseSlug, matchingSlugs.map((row) => row.slug));
-        const imported = buildImportedNoteMdx({
+        const importedBase = buildImportedNoteMdx({
           slug,
           title,
           topic: topicInput,
           body: noteBody,
         });
+        const demos = generateInteractiveDemo
+          ? selectInteractiveDemos({
+              title,
+              topic: importedBase.topicParts.topic,
+              tags: [],
+              sourceText: noteBody,
+              generatedContent: importedBase.mdxContent,
+            })
+          : [];
+        const importedContent = generateInteractiveDemo
+          ? injectInteractiveDemosIntoNoteContent(importedBase.mdxContent, demos, {
+              title,
+              topic: importedBase.topicParts.topic,
+            })
+          : importedBase.mdxContent;
 
         await sql`
           INSERT INTO notes (user_id, slug, title, topic, topic_zh, topic_en, tags, mdx_content, source_text, updated_at)
@@ -2971,11 +2987,11 @@ export default {
             ${userId},
             ${slug},
             ${title},
-            ${imported.topicParts.topic},
-            ${imported.topicParts.topicZh},
-            ${imported.topicParts.topicEn},
+            ${importedBase.topicParts.topic},
+            ${importedBase.topicParts.topicZh},
+            ${importedBase.topicParts.topicEn},
             ${JSON.stringify([])},
-            ${imported.mdxContent},
+            ${importedContent},
             ${noteBody},
             NOW()
           )
@@ -2988,13 +3004,13 @@ export default {
             fileName: `${slug}.mdx`,
             note: {
               slug,
-              weekLabelZh: imported.topicParts.topicZh,
-              weekLabelEn: imported.topicParts.topicEn,
+              weekLabelZh: importedBase.topicParts.topicZh,
+              weekLabelEn: importedBase.topicParts.topicEn,
               zhTitle: title,
               enTitle: title,
-              descriptionZh: imported.description,
-              descriptionEn: imported.description,
-              topicZh: imported.topicParts.topicZh,
+              descriptionZh: importedBase.description,
+              descriptionEn: importedBase.description,
+              topicZh: importedBase.topicParts.topicZh,
             },
           },
           201,

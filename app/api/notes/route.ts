@@ -3,6 +3,7 @@ import path from "node:path";
 import matter from "gray-matter";
 import { NextResponse } from "next/server";
 import { getTrashedWeekBySlug, getTrashedWeekNotes, getWeekBySlug, getWeekNotes } from "@/lib/content";
+import { injectInteractiveDemosIntoNoteContent, selectInteractiveDemos } from "@/lib/interactive-demos";
 
 const NOTES_DIR_PATH = path.resolve(path.join(process.cwd(), "\u7B14\u8BB0"));
 const TRASH_DIR_PATH = path.resolve(path.join(process.cwd(), "\u7B14\u8BB0\u56DE\u6536\u7AD9"));
@@ -167,6 +168,7 @@ async function createImportedNote(params: {
   title: string;
   topic: string;
   content: string;
+  generateInteractiveDemo?: boolean;
 }) {
   const normalizedTitle = normalizeEditableText(params.title, 80);
   const normalizedTopic = normalizeEditableText(params.topic, 64);
@@ -185,9 +187,23 @@ async function createImportedNote(params: {
   }
 
   const parsed = matter(normalizedContent);
-  const cleanedBody = normalizeEditableContent(parsed.content);
+  let cleanedBody = normalizeEditableContent(parsed.content);
   if (!cleanedBody) {
     throw new Error("Markdown content cannot be empty.");
+  }
+
+  if (params.generateInteractiveDemo) {
+    const demos = selectInteractiveDemos({
+      title: normalizedTitle,
+      topic: normalizedTopic,
+      tags: [],
+      sourceText: cleanedBody,
+      generatedContent: cleanedBody,
+    });
+    cleanedBody = injectInteractiveDemosIntoNoteContent(cleanedBody, demos, {
+      title: normalizedTitle,
+      topic: normalizedTopic,
+    });
   }
 
   const [existingNotes, trashedNotes] = await Promise.all([getWeekNotes(), getTrashedWeekNotes()]);
@@ -279,7 +295,12 @@ export async function POST(request: Request) {
       });
     }
 
-    const body = (await request.json().catch(() => null)) as { title?: unknown; topic?: unknown; content?: unknown } | null;
+    const body = (await request.json().catch(() => null)) as {
+      title?: unknown;
+      topic?: unknown;
+      content?: unknown;
+      generateInteractiveDemo?: unknown;
+    } | null;
     if (!body || typeof body !== "object") {
       return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
     }
@@ -288,6 +309,7 @@ export async function POST(request: Request) {
       title: String(body.title ?? ""),
       topic: String(body.topic ?? ""),
       content: String(body.content ?? ""),
+      generateInteractiveDemo: Boolean(body.generateInteractiveDemo),
     });
 
     return NextResponse.json({ success: true, ...created }, { status: 201 });
