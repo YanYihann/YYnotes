@@ -803,32 +803,20 @@ function normalizeBilingualSectionMarkerTitle(title) {
   return String(title ?? "")
     .toLowerCase()
     .replace(/[`*_~]/g, "")
-    .replace(/[()（）[\]{}<>\-—–/\\|.,，。:：!?！？\s]/g, "")
+    .replace(/[()（）[\]{}<>\-—–_/\\|.,，。:：!?！？\s]/g, "")
     .trim();
 }
 
 function isChineseSectionMarker(title) {
   const normalized = normalizeBilingualSectionMarkerTitle(title);
-  return (
-    normalized === "中文版笔记" ||
-    normalized === "中文笔记" ||
-    normalized === "中文版" ||
-    normalized === "chineseversion" ||
-    normalized === "chinesenotes" ||
-    normalized === "chinesenote"
-  );
+  const markers = ["中文版笔记", "中文笔记", "中文版", "chineseversion", "chinesenotes", "chinesenote"];
+  return markers.some((marker) => normalized === marker || normalized.includes(marker));
 }
 
 function isEnglishSectionMarker(title) {
   const normalized = normalizeBilingualSectionMarkerTitle(title);
-  return (
-    normalized === "englishversion" ||
-    normalized === "englishnotes" ||
-    normalized === "englishnote" ||
-    normalized === "英文版笔记" ||
-    normalized === "英文笔记" ||
-    normalized === "英文版"
-  );
+  const markers = ["englishversion", "englishnotes", "englishnote", "英文版笔记", "英文笔记", "英文版"];
+  return markers.some((marker) => normalized === marker || normalized.includes(marker));
 }
 
 function extractHeadingTitle(line) {
@@ -857,7 +845,9 @@ function splitBilingualNoteSections(source) {
     }
   }
 
-  const hasStructuredSections = zhMarkerLine >= 0 && enMarkerLine > zhMarkerLine;
+  const hasExplicitSections = zhMarkerLine >= 0 && enMarkerLine > zhMarkerLine;
+  const hasImplicitChineseSection = zhMarkerLine === -1 && enMarkerLine > 0;
+  const hasStructuredSections = hasExplicitSections || hasImplicitChineseSection;
   if (!hasStructuredSections) {
     return {
       hasStructuredSections: false,
@@ -868,7 +858,12 @@ function splitBilingualNoteSections(source) {
     };
   }
 
-  const zhBody = lines.slice(zhMarkerLine + 1, enMarkerLine).join("\n").trim();
+  const zhStartLine = hasExplicitSections ? zhMarkerLine + 1 : 0;
+  const zhBody = lines
+    .slice(zhStartLine, enMarkerLine)
+    .join("\n")
+    .replace(/^\s*(?:---|\*\*\*)\s*\n+/, "")
+    .trim();
   const enBody = lines.slice(enMarkerLine + 1).join("\n").trim();
 
   if (!zhBody || !enBody) {

@@ -14,32 +14,36 @@ function normalizeSectionMarkerTitle(title: string): string {
   return title
     .toLowerCase()
     .replace(/[`*_~]/g, "")
-    .replace(/[：:()（）\[\]{}<>\-—–_/\\|.,，。!?！？\s]/g, "")
+    .replace(/[()（）[\]{}<>\-—–_/\\|.,，。:：!?！？\s]/g, "")
     .trim();
+}
+
+function matchesAnyMarker(normalized: string, markers: string[]): boolean {
+  return markers.some((marker) => normalized === marker || normalized.includes(marker));
 }
 
 function isChineseSectionMarker(title: string): boolean {
   const normalized = normalizeSectionMarkerTitle(title);
-  return (
-    normalized === "中文版笔记" ||
-    normalized === "中文笔记" ||
-    normalized === "中文版" ||
-    normalized === "chineseversion" ||
-    normalized === "chinesenotes" ||
-    normalized === "chinesenote"
-  );
+  return matchesAnyMarker(normalized, [
+    "中文版笔记",
+    "中文笔记",
+    "中文版",
+    "chineseversion",
+    "chinesenotes",
+    "chinesenote",
+  ]);
 }
 
 function isEnglishSectionMarker(title: string): boolean {
   const normalized = normalizeSectionMarkerTitle(title);
-  return (
-    normalized === "englishversion" ||
-    normalized === "englishnotes" ||
-    normalized === "englishnote" ||
-    normalized === "英文版笔记" ||
-    normalized === "英文笔记" ||
-    normalized === "英文版"
-  );
+  return matchesAnyMarker(normalized, [
+    "englishversion",
+    "englishnotes",
+    "englishnote",
+    "英文版笔记",
+    "英文笔记",
+    "英文版",
+  ]);
 }
 
 function extractHeadingTitle(line: string): string | null {
@@ -48,6 +52,10 @@ function extractHeadingTitle(line: string): string | null {
     return null;
   }
   return match[1].trim();
+}
+
+function trimLeadingSectionDivider(source: string): string {
+  return source.replace(/^\s*(?:---|\*\*\*)\s*\n+/, "").trim();
 }
 
 export function splitBilingualNoteSections(source: string): BilingualNoteSections {
@@ -71,7 +79,9 @@ export function splitBilingualNoteSections(source: string): BilingualNoteSection
     }
   }
 
-  const hasStructuredSections = zhMarkerLine >= 0 && enMarkerLine > zhMarkerLine;
+  const hasExplicitSections = zhMarkerLine >= 0 && enMarkerLine > zhMarkerLine;
+  const hasImplicitChineseSection = zhMarkerLine === -1 && enMarkerLine > 0;
+  const hasStructuredSections = hasExplicitSections || hasImplicitChineseSection;
 
   if (!hasStructuredSections) {
     return {
@@ -83,10 +93,8 @@ export function splitBilingualNoteSections(source: string): BilingualNoteSection
     };
   }
 
-  const zhBody = lines
-    .slice(zhMarkerLine + 1, enMarkerLine)
-    .join("\n")
-    .trim();
+  const zhStartLine = hasExplicitSections ? zhMarkerLine + 1 : 0;
+  const zhBody = trimLeadingSectionDivider(lines.slice(zhStartLine, enMarkerLine).join("\n"));
   const enBody = lines
     .slice(enMarkerLine + 1)
     .join("\n")
