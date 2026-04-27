@@ -16,3 +16,9 @@
 {"logTime": "0427/143654", {"lineNo":0,"logLevel":2,"message":"Migrate_Schedule: Migrate_Schedule","source":"Workspace Migration","timestamp":"2026-04-27T14:36:54.081Z"}}
 {"logTime": "0427/143654", {"lineNo":0,"logLevel":2,"message":"MaybeOrchestrateMigration: ~MaybeOrchestrateMigration","source":"Workspace Migration","timestamp":"2026-04-27T14:36:54.081Z"}}
 {"logTime": "0427/143929", {"lineNo":0,"logLevel":2,"message":"WorkspaceManager: count of workspaces on close: 0","source":"Fluid Local Collaborator","timestamp":"2026-04-27T14:39:29.330Z"}}
+{"logTime": "0427/144046", {"lineNo":0,"logLevel":2,"message":"MaybeOrchestrateMigration: MaybeOrchestrateMigration","source":"Workspace Migration","timestamp":"2026-04-27T14:40:46.548Z"}}
+{"logTime": "0427/144046", {"lineNo":0,"logLevel":2,"message":"Migrate_FeatureCheck: Migrate_FeatureCheck","source":"Workspace Migration","timestamp":"2026-04-27T14:40:46.548Z"}}
+{"logTime": "0427/144046", {"lineNo":0,"logLevel":2,"message":"Migrate_MaybeHavePrefs: Migrate_MaybeHavePrefs","source":"Workspace Migration","timestamp":"2026-04-27T14:40:46.548Z"}}
+{"logTime": "0427/144046", {"lineNo":0,"logLevel":2,"message":"Migrate_Schedule: Migrate_Schedule","source":"Workspace Migration","timestamp":"2026-04-27T14:40:46.548Z"}}
+{"logTime": "0427/144046", {"lineNo":0,"logLevel":2,"message":"MaybeOrchestrateMigration: ~MaybeOrchestrateMigration","source":"Workspace Migration","timestamp":"2026-04-27T14:40:46.549Z"}}
+{"logTime": "0427/144125", {"lineNo":0,"logLevel":2,"message":"WorkspaceManager: count of workspaces on close: 0","source":"Fluid Local Collaborator","timestamp":"2026-04-27T14:41:25.068Z"}}
