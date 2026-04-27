@@ -63,6 +63,42 @@ function parseAllowedOrigins(value) {
   return { wildcard: false, origins: Array.from(new Set(normalized)) };
 }
 
+function isLocalDevelopmentOrigin(origin) {
+  if (!origin) {
+    return false;
+  }
+
+  try {
+    const url = new URL(origin);
+    if (!["http:", "https:"].includes(url.protocol)) {
+      return false;
+    }
+
+    const hostname = url.hostname.toLowerCase();
+    if (hostname === "localhost" || hostname === "[::1]" || hostname === "::1") {
+      return true;
+    }
+
+    if (/^127(?:\.\d{1,3}){3}$/.test(hostname)) {
+      return true;
+    }
+
+    const ipv4 = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (!ipv4) {
+      return false;
+    }
+
+    const [a, b, c, d] = ipv4.slice(1).map((part) => Number(part));
+    if ([a, b, c, d].some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+      return false;
+    }
+
+    return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+  } catch {
+    return false;
+  }
+}
+
 function getOrigin(requestOrigin, allowedOrigin) {
   const { wildcard, origins } = parseAllowedOrigins(allowedOrigin);
 
@@ -77,7 +113,11 @@ function getOrigin(requestOrigin, allowedOrigin) {
   }
 
   const normalizedRequest = normalizeOriginValue(requestOrigin);
-  return origins.includes(normalizedRequest) ? normalizedRequest : fallbackOrigin;
+  if (origins.includes(normalizedRequest) || isLocalDevelopmentOrigin(normalizedRequest)) {
+    return normalizedRequest;
+  }
+
+  return fallbackOrigin;
 }
 
 const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
@@ -1880,6 +1920,10 @@ function stripLeadingFrontmatter(content) {
   return normalized.slice(end + 5).trim();
 }
 
+function hasCompleteFrontmatterBlock(value) {
+  return /^---\n[\s\S]*?\n---\n/.test(String(value ?? ""));
+}
+
 function extractMarkdownFromAssistantResponse(content) {
   const normalized = normalizeNewlines(String(content ?? "")).trim();
   if (!normalized) {
@@ -1894,7 +1938,7 @@ function extractMarkdownFromAssistantResponse(content) {
   const frontmatterIndex = normalized.indexOf("---\n");
   if (frontmatterIndex > 0) {
     const possibleFrontmatter = normalized.slice(frontmatterIndex).trim();
-    if (possibleFrontmatter.startsWith("---\n")) {
+    if (hasCompleteFrontmatterBlock(possibleFrontmatter)) {
       return possibleFrontmatter;
     }
   }

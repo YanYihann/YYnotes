@@ -59,6 +59,10 @@ function normalizeEditableContent(value: unknown): string {
     .trim();
 }
 
+function hasCompleteFrontmatterBlock(value: string): boolean {
+  return /^---\n[\s\S]*?\n---\n/.test(value);
+}
+
 function extractMarkdownFromAssistantResponse(value: string): string {
   const normalized = normalizeEditableContent(value);
   if (!normalized) {
@@ -73,7 +77,7 @@ function extractMarkdownFromAssistantResponse(value: string): string {
   const frontmatterIndex = normalized.indexOf("---\n");
   if (frontmatterIndex > 0) {
     const possibleFrontmatter = normalized.slice(frontmatterIndex).trim();
-    if (possibleFrontmatter.startsWith("---\n")) {
+    if (hasCompleteFrontmatterBlock(possibleFrontmatter)) {
       return possibleFrontmatter;
     }
   }
