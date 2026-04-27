@@ -1434,8 +1434,8 @@ export function WeekNoteGenerator() {
   }
 
   async function onRunAutoChatGpt() {
-    if (IS_CLOUD_MODE) {
-      setError("全自动 GPT 网页操控仅支持本机运行的 Next 服务，云端部署环境暂不支持。");
+    if (IS_CLOUD_MODE && !session?.token) {
+      setError("请先登录后再使用全自动 GPT 网页操控保存云端笔记。");
       return;
     }
 
@@ -1528,8 +1528,7 @@ export function WeekNoteGenerator() {
         <button
           type="button"
           onClick={() => setMode("autogpt")}
-          disabled={IS_CLOUD_MODE}
-          className={`inline-flex items-center rounded-capsule px-4 py-2 font-text text-[13px] transition focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-55 ${
+          className={`inline-flex items-center rounded-capsule px-4 py-2 font-text text-[13px] transition focus-visible:outline-none ${
             mode === "autogpt" ? "bg-primary text-primary-foreground" : "border border-input bg-background text-foreground"
           }`}
         >
@@ -1931,17 +1930,17 @@ export function WeekNoteGenerator() {
             <div className="mt-3 rounded-apple border border-primary/25 bg-primary/10 px-3 py-3 font-text text-[13px] leading-[1.5] text-muted-foreground">
               <p>这个模式会在你的本机启动浏览器，自动打开 ChatGPT、上传资料、提交 Prompt、抓取 Markdown 结果并直接保存回 YYNotes。</p>
               <p className="mt-2">首次使用时，你可能需要在自动化启动的浏览器里手动登录 ChatGPT 一次；之后会复用同一个本地浏览器资料目录。</p>
-              <p className="mt-2">这个功能仅支持本机运行的 Next 服务，Cloudflare Pages / 静态部署环境不会启用。</p>
+              <p className="mt-2">云端模式下会保存到当前登录账号的 Neon 数据库；浏览器操控仍需要本机运行的 Next 服务来执行。</p>
             </div>
 
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <button
                 type="button"
                 onClick={() => void onRunAutoChatGpt()}
-                disabled={runningAutoChatGpt}
+                disabled={runningAutoChatGpt || (IS_CLOUD_MODE && !session?.token)}
                 className="btn-apple-primary inline-flex items-center rounded-apple px-5 py-2 font-text text-[15px] transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
               >
-                {runningAutoChatGpt ? "自动执行中..." : "启动全自动生成并保存"}
+                {runningAutoChatGpt ? "自动执行中..." : IS_CLOUD_MODE && !session?.token ? "请先登录" : "启动全自动生成并保存"}
               </button>
 
               <button
