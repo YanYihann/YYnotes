@@ -12,6 +12,7 @@ import {
   TryThisDemoBlock,
   WarningBlock,
 } from "@/components/mdx/blocks";
+import { GeneratedComponentEmbed } from "@/components/demos/mdx/generated-component-embed";
 import { GeneratedInteractiveDesign } from "@/components/demos/mdx/generated-interactive-design";
 import { InteractiveDemoEmbed } from "@/components/demos/mdx/interactive-demo-embed";
 import { cn } from "@/lib/utils";
@@ -332,12 +333,28 @@ function Img(props: ComponentPropsWithoutRef<"img">) {
 
 function Div(props: ComponentPropsWithoutRef<"div">) {
   const className = typeof props.className === "string" ? props.className : "";
-  const dataAttributes = props as ComponentPropsWithoutRef<"div"> & { "data-demo-key"?: string; "data-demo-spec"?: string };
+  const dataAttributes = props as ComponentPropsWithoutRef<"div"> & {
+    "data-demo-key"?: string;
+    "data-demo-spec"?: string;
+    "data-demo-component"?: string;
+  };
   const demoKey = typeof dataAttributes["data-demo-key"] === "string" ? dataAttributes["data-demo-key"] : "";
   const demoSpec = typeof dataAttributes["data-demo-spec"] === "string" ? dataAttributes["data-demo-spec"] : "";
+  const demoComponent =
+    typeof dataAttributes["data-demo-component"] === "string" ? dataAttributes["data-demo-component"] : "";
 
   if (className.includes("interactive-demo-embed") && demoKey) {
     return <InteractiveDemoEmbed demoKey={demoKey} anchorId={typeof props.id === "string" ? props.id : undefined} />;
+  }
+
+  if (className.includes("interactive-demo-generated") && demoComponent && demoSpec) {
+    return (
+      <GeneratedComponentEmbed
+        componentName={demoComponent}
+        encodedSpec={demoSpec}
+        anchorId={typeof props.id === "string" ? props.id : undefined}
+      />
+    );
   }
 
   if (className.includes("interactive-demo-design") && demoSpec) {

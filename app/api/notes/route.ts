@@ -3,11 +3,28 @@ import path from "node:path";
 import matter from "gray-matter";
 import { NextResponse } from "next/server";
 import { getTrashedWeekBySlug, getTrashedWeekNotes, getWeekBySlug, getWeekNotes } from "@/lib/content";
+import { extractDynamicDemoSpecsFromContent, normalizeDynamicDemoMarkup } from "@/lib/dynamic-demo-components";
+import { materializeGeneratedDemoFiles } from "@/lib/generated-demo-files";
 import { injectInteractiveDemosIntoNoteContent, selectInteractiveDemos } from "@/lib/interactive-demos";
 
 const NOTES_DIR_PATH = path.resolve(path.join(process.cwd(), "\u7B14\u8BB0"));
 const TRASH_DIR_PATH = path.resolve(path.join(process.cwd(), "\u7B14\u8BB0\u56DE\u6536\u7AD9"));
 const DEFAULT_DESCRIPTION_ZH = "\u5BFC\u5165\u7684 Markdown \u7B14\u8BB0\u3002";
+
+async function materializeLocalDynamicDemos(source: string): Promise<string> {
+  const specs = extractDynamicDemoSpecsFromContent(source);
+  if (!specs.length) {
+    return source;
+  }
+
+  try {
+    await materializeGeneratedDemoFiles(specs);
+  } catch (error) {
+    console.error("Failed to materialize generated demo files:", error);
+  }
+
+  return normalizeDynamicDemoMarkup(source);
+}
 
 function ensureInsideDir(targetPath: string, rootDir: string): boolean {
   const normalizedTarget = path.resolve(targetPath);
@@ -212,6 +229,8 @@ async function createImportedNote(params: {
     });
   }
 
+  cleanedBody = await materializeLocalDynamicDemos(cleanedBody);
+
   const [existingNotes, trashedNotes] = await Promise.all([getWeekNotes(), getTrashedWeekNotes()]);
   const slug = resolveUniqueSlug(
     slugifyTitle(normalizedTitle),
@@ -379,7 +398,7 @@ export async function PATCH(request: Request) {
       frontmatter.topicEn = nextTopic;
     }
 
-    const nextBody = hasContent && nextContent ? `${nextContent.trimEnd()}\n` : parsed.content;
+    const nextBody = hasContent && nextContent ? `${(await materializeLocalDynamicDemos(nextContent)).trimEnd()}\n` : parsed.content;
     const nextSource = matter.stringify(nextBody, frontmatter);
     await fs.writeFile(note.filePath, nextSource, "utf8");
 

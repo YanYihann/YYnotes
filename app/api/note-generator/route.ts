@@ -7,6 +7,8 @@ import { NextResponse } from "next/server";
 import { getWeekNotes } from "@/lib/content";
 import { splitBilingualNoteSections } from "@/lib/bilingual-note";
 import { extractResponseText } from "@/lib/ai/note-assistant";
+import { extractDynamicDemoSpecsFromContent, normalizeDynamicDemoMarkup } from "@/lib/dynamic-demo-components";
+import { materializeGeneratedDemoFiles } from "@/lib/generated-demo-files";
 import {
   buildInteractiveDesignSpecsFromNote,
   injectInteractiveDemosIntoNoteContent,
@@ -64,6 +66,21 @@ type GenerateOptions = {
 };
 
 type PromptPreset = keyof typeof PROMPT_TEMPLATE_PATHS;
+
+async function materializeLocalDynamicDemos(source: string): Promise<string> {
+  const specs = extractDynamicDemoSpecsFromContent(source);
+  if (!specs.length) {
+    return source;
+  }
+
+  try {
+    await materializeGeneratedDemoFiles(specs);
+  } catch (error) {
+    console.error("Failed to materialize generated demo files:", error);
+  }
+
+  return normalizeDynamicDemoMarkup(source);
+}
 
 function toInputItem(role: AssistantRole, text: string): OpenAIInputItem {
   return {
@@ -1990,13 +2007,14 @@ export async function POST(request: Request) {
           interactiveDesignSpecs,
         })
       : baseNormalizedMdx;
+    const finalizedMdx = await materializeLocalDynamicDemos(normalizedMdx);
 
     await fs.mkdir(NOTES_DIR_PATH, { recursive: true });
-    await fs.writeFile(targetFilePath, normalizedMdx, "utf8");
+    await fs.writeFile(targetFilePath, finalizedMdx, "utf8");
 
     const createdNotes = await getWeekNotes();
     const created = createdNotes.find((note) => note.slug === slug);
-    const preview = normalizedMdx.split(/\r?\n/).slice(0, 28).join("\n");
+    const preview = finalizedMdx.split(/\r?\n/).slice(0, 28).join("\n");
 
     return NextResponse.json({
       success: true,
