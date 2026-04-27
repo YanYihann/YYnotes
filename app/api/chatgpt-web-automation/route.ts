@@ -8,10 +8,13 @@ import type { BrowserContext, Page } from "playwright";
 export const runtime = "nodejs";
 
 const CHATGPT_URL = "https://chatgpt.com/";
-const USER_DATA_DIR = path.join(process.cwd(), ".automation", "chatgpt-profile");
+const EDGE_USER_DATA_DIR = path.join(process.cwd(), ".automation", "chatgpt-edge-profile");
+const CHROME_USER_DATA_DIR = path.join(process.cwd(), ".automation", "chatgpt-profile");
+const PLAYWRIGHT_USER_DATA_DIR = path.join(process.cwd(), ".automation", "chatgpt-playwright-profile");
 const TEMP_UPLOAD_DIR = path.join(os.tmpdir(), "yynotes-chatgpt-upload");
 const LOGIN_WAIT_TIMEOUT_MS = 10 * 60 * 1000;
 const RESPONSE_WAIT_TIMEOUT_MS = 10 * 60 * 1000;
+const BROWSER_VIEWPORT = { width: 1440, height: 960 };
 
 function normalizeMultilineText(value: unknown): string {
   return String(value ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
@@ -275,18 +278,31 @@ export async function POST(request: Request) {
     const warnings: string[] = [];
 
     try {
-      context = await chromium.launchPersistentContext(USER_DATA_DIR, {
+      context = await chromium.launchPersistentContext(EDGE_USER_DATA_DIR, {
         headless: false,
-        channel: "chrome",
-        viewport: { width: 1440, height: 960 },
+        channel: "msedge",
+        viewport: BROWSER_VIEWPORT,
       });
     } catch {
-      warnings.push("未检测到本机 Chrome，已尝试使用 Playwright 默认浏览器。若后续失败，请执行 npx playwright install chromium。");
-      context = await chromium.launchPersistentContext(USER_DATA_DIR, {
-        headless: false,
-        viewport: { width: 1440, height: 960 },
-      });
+      warnings.push("未检测到本机 Edge，已尝试使用 Chrome。");
     }
+
+    if (!context) {
+      try {
+        context = await chromium.launchPersistentContext(CHROME_USER_DATA_DIR, {
+          headless: false,
+          channel: "chrome",
+          viewport: BROWSER_VIEWPORT,
+        });
+      } catch {
+        warnings.push("未检测到本机 Chrome，已尝试使用 Playwright 默认浏览器。若后续失败，请执行 npx playwright install chromium。");
+      }
+    }
+
+    context ??= await chromium.launchPersistentContext(PLAYWRIGHT_USER_DATA_DIR, {
+      headless: false,
+      viewport: BROWSER_VIEWPORT,
+    });
 
     const page = context.pages()[0] ?? (await context.newPage());
     await page.goto(CHATGPT_URL, { waitUntil: "domcontentloaded" });

@@ -89,6 +89,8 @@ type TextNodeEntry = {
   end: number;
 };
 
+const LOCAL_HIGHLIGHT_STORE_PREFIX = "yynotes:note-highlights:v1:";
+
 function normalizeApiBase(input: string): string {
   return input.replace(/\/+$/, "");
 }
@@ -124,6 +126,45 @@ function toNoteHighlight(input: unknown): NoteHighlight | null {
 
 function sortHighlights(rows: NoteHighlight[]): NoteHighlight[] {
   return [...rows].sort((a, b) => a.startOffset - b.startOffset || a.endOffset - b.endOffset || a.id - b.id);
+}
+
+function buildLocalHighlightStoreKey(slug: string): string {
+  return `${LOCAL_HIGHLIGHT_STORE_PREFIX}${encodeURIComponent(slug)}`;
+}
+
+function readLocalHighlights(slug: string): NoteHighlight[] {
+  if (typeof window === "undefined" || !slug) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(buildLocalHighlightStoreKey(slug)) || "[]") as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return sortHighlights(
+      parsed
+        .map((item) => toNoteHighlight({ ...(item as Record<string, unknown>), noteSlug: slug }))
+        .filter((item): item is NoteHighlight => item !== null),
+    );
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalHighlights(slug: string, rows: NoteHighlight[]) {
+  if (typeof window === "undefined" || !slug) {
+    return;
+  }
+
+  const sorted = sortHighlights(rows);
+  if (!sorted.length) {
+    window.localStorage.removeItem(buildLocalHighlightStoreKey(slug));
+    return;
+  }
+
+  window.localStorage.setItem(buildLocalHighlightStoreKey(slug), JSON.stringify(sorted));
 }
 
 function collectTextNodes(root: HTMLElement): TextNodeEntry[] {
@@ -345,7 +386,7 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
     const prepared = prepareNoteMarkdown(noteSource, { showEnglish });
     return prepared || noteSource.trim();
   }, [noteSource, showEnglish]);
-  const canSyncHighlights = Boolean(CLOUD_API_BASE && authToken && note.slug);
+  const canSyncHighlights = Boolean(note.slug && (storageMode === "local" || (CLOUD_API_BASE && authToken)));
   const noteContentRef = useRef<HTMLDivElement | null>(null);
   const [highlights, setHighlights] = useState<NoteHighlight[]>([]);
   const [selection, setSelection] = useState<HighlightSelection | null>(null);
@@ -424,6 +465,13 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
       return;
     }
 
+    if (storageMode === "local") {
+      setLoadingHighlights(false);
+      setHighlightError("");
+      setHighlights(readLocalHighlights(note.slug));
+      return;
+    }
+
     setLoadingHighlights(true);
     setHighlightError("");
     try {
@@ -449,7 +497,7 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
     } finally {
       setLoadingHighlights(false);
     }
-  }, [authToken, canSyncHighlights, note.slug]);
+  }, [authToken, canSyncHighlights, note.slug, storageMode]);
 
   const clearSelection = useCallback(() => {
     setSelection(null);
@@ -471,6 +519,25 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
     setSavingHighlight(true);
     setHighlightError("");
     try {
+      if (storageMode === "local") {
+        const timestamp = new Date().toISOString();
+        const parsed: NoteHighlight = {
+          id: Math.max(0, ...highlights.map((item) => item.id)) + 1,
+          noteSlug: note.slug,
+          startOffset: selection.startOffset,
+          endOffset: selection.endOffset,
+          selectedText: selection.selectedText,
+          color: "yellow",
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        };
+        const nextHighlights = sortHighlights([...highlights, parsed]);
+        writeLocalHighlights(note.slug, nextHighlights);
+        setHighlights(nextHighlights);
+        clearSelection();
+        return;
+      }
+
       const response = await fetch(buildCloudApiUrl(`/notes/${encodeURIComponent(note.slug)}/highlights`), {
         method: "POST",
         headers: {
@@ -497,7 +564,7 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
     } finally {
       setSavingHighlight(false);
     }
-  }, [authToken, canSyncHighlights, clearSelection, highlights, note.slug, savingHighlight, selection]);
+  }, [authToken, canSyncHighlights, clearSelection, highlights, note.slug, savingHighlight, selection, storageMode]);
 
   const clearHighlights = useCallback(async () => {
     if (!canSyncHighlights || savingHighlight) {
@@ -507,6 +574,13 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
     setSavingHighlight(true);
     setHighlightError("");
     try {
+      if (storageMode === "local") {
+        writeLocalHighlights(note.slug, []);
+        setHighlights([]);
+        clearSelection();
+        return;
+      }
+
       const response = await fetch(buildCloudApiUrl(`/notes/${encodeURIComponent(note.slug)}/highlights`), {
         method: "DELETE",
         headers: {
@@ -525,7 +599,7 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
     } finally {
       setSavingHighlight(false);
     }
-  }, [authToken, canSyncHighlights, clearSelection, note.slug, savingHighlight]);
+  }, [authToken, canSyncHighlights, clearSelection, note.slug, savingHighlight, storageMode]);
 
   const deleteSingleHighlight = useCallback(
     async (highlightId: number) => {
@@ -536,6 +610,14 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
       setSavingHighlight(true);
       setHighlightError("");
       try {
+        if (storageMode === "local") {
+          const nextHighlights = highlights.filter((item) => item.id !== highlightId);
+          writeLocalHighlights(note.slug, nextHighlights);
+          setHighlights(nextHighlights);
+          setFloatingDeletePosition({ visible: false, top: 0, left: 0, highlightId: null });
+          return;
+        }
+
         const response = await fetch(
           buildCloudApiUrl(`/notes/${encodeURIComponent(note.slug)}/highlights/${highlightId}`),
           {
@@ -558,7 +640,7 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
         setSavingHighlight(false);
       }
     },
-    [authToken, canSyncHighlights, note.slug, savingHighlight],
+    [authToken, canSyncHighlights, highlights, note.slug, savingHighlight, storageMode],
   );
 
   useEffect(() => {
