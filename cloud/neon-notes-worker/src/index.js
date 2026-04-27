@@ -1891,12 +1891,6 @@ function extractMarkdownFromAssistantResponse(content) {
     return wholeMarkdownFenceMatch[1].trim();
   }
 
-  const namedFenceMatches = Array.from(normalized.matchAll(/```(?:md|mdx|markdown)\s*\n([\s\S]*?)\n```/gi));
-  const lastNamedFence = namedFenceMatches[namedFenceMatches.length - 1];
-  if (lastNamedFence && typeof lastNamedFence[1] === "string" && lastNamedFence[1].trim()) {
-    return lastNamedFence[1].trim();
-  }
-
   const frontmatterIndex = normalized.indexOf("---\n");
   if (frontmatterIndex > 0) {
     const possibleFrontmatter = normalized.slice(frontmatterIndex).trim();
