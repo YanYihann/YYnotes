@@ -15,6 +15,12 @@ const TEMP_UPLOAD_DIR = path.join(os.tmpdir(), "yynotes-chatgpt-upload");
 const LOGIN_WAIT_TIMEOUT_MS = 10 * 60 * 1000;
 const RESPONSE_WAIT_TIMEOUT_MS = 10 * 60 * 1000;
 const BROWSER_VIEWPORT = { width: 1440, height: 960 };
+const COMPOSER_SELECTORS = [
+  "#prompt-textarea",
+  "textarea[placeholder]",
+  "div[contenteditable='true'][id*='prompt']",
+  "div[contenteditable='true'][data-testid*='composer']",
+] as const;
 
 function normalizeMultilineText(value: unknown): string {
   return String(value ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
@@ -43,19 +49,60 @@ async function ensureFileOnDisk(file: File): Promise<string> {
   return filePath;
 }
 
-async function waitForComposer(page: Page): Promise<void> {
-  const selectors = [
-    "#prompt-textarea",
-    "textarea[placeholder]",
-    "div[contenteditable='true'][id*='prompt']",
-    "div[contenteditable='true'][data-testid*='composer']",
+async function hasVisibleComposer(page: Page, timeout = 500): Promise<boolean> {
+  for (const selector of COMPOSER_SELECTORS) {
+    try {
+      const locator = page.locator(selector).first();
+      if ((await locator.count()) > 0) {
+        await locator.waitFor({ state: "visible", timeout });
+        return true;
+      }
+    } catch {
+      // Keep checking the next selector.
+    }
+  }
+
+  return false;
+}
+
+async function openChatGptLoginFirst(page: Page): Promise<void> {
+  await page.bringToFront().catch(() => undefined);
+  await page.goto(CHATGPT_URL, { waitUntil: "domcontentloaded" });
+
+  if (await hasVisibleComposer(page, 3_000)) {
+    return;
+  }
+
+  const loginCandidates = [
+    page.getByRole("link", { name: /Log in|Sign in|登录|登入/i }).first(),
+    page.getByRole("button", { name: /Log in|Sign in|登录|登入/i }).first(),
+    page.locator('a[href*="/auth/login"]').first(),
+    page.locator('a[href*="/login"]').first(),
   ];
 
+  for (const candidate of loginCandidates) {
+    try {
+      if ((await candidate.count()) < 1) {
+        continue;
+      }
+
+      await candidate.click({ timeout: 2_000 });
+      await page.waitForLoadState("domcontentloaded", { timeout: 10_000 }).catch(() => undefined);
+      return;
+    } catch {
+      // Try the next login entry.
+    }
+  }
+
+  await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded" });
+}
+
+async function waitForComposer(page: Page): Promise<void> {
   const deadline = Date.now() + LOGIN_WAIT_TIMEOUT_MS;
   let lastError: unknown = null;
 
   while (Date.now() < deadline) {
-    for (const selector of selectors) {
+    for (const selector of COMPOSER_SELECTORS) {
       try {
         const locator = page.locator(selector);
         if ((await locator.count()) > 0) {
@@ -159,14 +206,7 @@ async function uploadSourceFile(page: Page, filePath: string): Promise<void> {
 }
 
 async function submitPrompt(page: Page, prompt: string): Promise<void> {
-  const composerSelectors = [
-    "#prompt-textarea",
-    "textarea[placeholder]",
-    "div[contenteditable='true'][id*='prompt']",
-    "div[contenteditable='true'][data-testid*='composer']",
-  ];
-
-  for (const selector of composerSelectors) {
+  for (const selector of COMPOSER_SELECTORS) {
     const locator = page.locator(selector).first();
     if ((await locator.count()) < 1) {
       continue;
@@ -305,7 +345,7 @@ export async function POST(request: Request) {
     });
 
     const page = context.pages()[0] ?? (await context.newPage());
-    await page.goto(CHATGPT_URL, { waitUntil: "domcontentloaded" });
+    await openChatGptLoginFirst(page);
     await waitForComposer(page);
 
     const selectedModel = await trySelectPreferredModel(page);
