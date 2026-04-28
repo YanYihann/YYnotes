@@ -1996,6 +1996,74 @@ function buildImportedNoteMdx({ slug, title, topic, body }) {
   };
 }
 
+function formatYamlScalar(value) {
+  return JSON.stringify(String(value ?? ""));
+}
+
+function formatYamlValue(value) {
+  if (Array.isArray(value)) {
+    return value.length ? ["", ...value.map((item) => `  - ${formatYamlScalar(item)}`)].join("\n") : "[]";
+  }
+
+  return formatYamlScalar(value);
+}
+
+function upsertMdxFrontmatter(content, updates) {
+  const normalized = normalizeNewlines(String(content ?? "")).trim();
+  const updateEntries = Object.entries(updates).filter(([, value]) => value !== undefined);
+  if (!updateEntries.length) {
+    return normalized;
+  }
+
+  const updateMap = new Map(updateEntries.map(([key, value]) => [key, formatYamlValue(value)]));
+  const frontmatterMatch = normalized.match(/^---\n([\s\S]*?)\n---\n?/);
+
+  if (!frontmatterMatch) {
+    const frontmatter = [
+      "---",
+      ...updateEntries.map(([key, value]) => `${key}: ${formatYamlValue(value)}`),
+      "---",
+      "",
+    ].join("\n");
+    return `${frontmatter}${normalized}`.trimEnd();
+  }
+
+  const seen = new Set();
+  const nextFrontmatterLines = [];
+  const frontmatterLines = String(frontmatterMatch[1] ?? "").split("\n");
+
+  for (let index = 0; index < frontmatterLines.length; index += 1) {
+    const line = frontmatterLines[index];
+    const keyMatch = line.match(/^([A-Za-z0-9_]+):/);
+    if (!keyMatch) {
+      nextFrontmatterLines.push(line);
+      continue;
+    }
+
+    const key = keyMatch[1];
+    if (!updateMap.has(key)) {
+      nextFrontmatterLines.push(line);
+      continue;
+    }
+
+    seen.add(key);
+    nextFrontmatterLines.push(`${key}: ${updateMap.get(key)}`);
+
+    while (index + 1 < frontmatterLines.length && /^\s+-\s+/.test(frontmatterLines[index + 1])) {
+      index += 1;
+    }
+  }
+
+  for (const [key, formattedValue] of updateMap.entries()) {
+    if (!seen.has(key)) {
+      nextFrontmatterLines.push(`${key}: ${formattedValue}`);
+    }
+  }
+
+  const body = normalized.slice(frontmatterMatch[0].length).trimStart();
+  return ["---", ...nextFrontmatterLines, "---", "", body].join("\n").trimEnd();
+}
+
 function buildSystemPrompt(promptTemplate) {
   return [
     String(promptTemplate ?? "").trim(),
@@ -3902,6 +3970,16 @@ export default {
           return jsonResponse({ error: "mdxContent cannot be empty." }, 400, corsOrigin);
         }
 
+        const syncedMdxContent = upsertMdxFrontmatter(nextMdxContent, {
+          title: nextTitle,
+          zhTitle: nextTitle,
+          enTitle: nextTitle,
+          topic: topicParts.topic,
+          topicZh: topicParts.topicZh,
+          topicEn: topicParts.topicEn,
+          tags: nextTags,
+        });
+
         await sql`
           UPDATE notes
           SET
@@ -3911,7 +3989,7 @@ export default {
             topic_en = ${topicParts.topicEn},
             tags = ${JSON.stringify(nextTags)},
             folder_id = ${nextFolderId},
-            mdx_content = ${nextMdxContent},
+            mdx_content = ${syncedMdxContent},
             updated_at = NOW()
           WHERE user_id = ${userId} AND slug = ${slug}
         `;

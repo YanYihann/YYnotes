@@ -390,11 +390,11 @@ export async function PATCH(request: Request) {
     const frontmatter = { ...(parsed.data as Record<string, unknown>) };
 
     frontmatter.title = nextTitle;
+    frontmatter.zhTitle = nextTitle;
+    frontmatter.enTitle = nextTitle;
     frontmatter.topic = nextTopic;
     frontmatter.topicZh = nextTopic;
-    if (typeof frontmatter.topicEn !== "string" || !frontmatter.topicEn.trim()) {
-      frontmatter.topicEn = nextTopic;
-    }
+    frontmatter.topicEn = nextTopic;
 
     const nextBody = hasContent && nextContent ? `${(await materializeLocalDynamicDemos(nextContent)).trimEnd()}\n` : parsed.content;
     const nextSource = matter.stringify(nextBody, frontmatter);
