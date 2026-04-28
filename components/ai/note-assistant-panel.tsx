@@ -96,59 +96,113 @@ function serializeHistory(messages: AssistantMessage[]): AssistantMessage[] {
 const ASSISTANT_MATH_HINT_PATTERN =
   /\\[a-zA-Z]+|[=^_]|[≤≥≈]|(?:\d|[a-zA-Z])\s*[+\-*/]\s*(?:\d|[a-zA-Z])/;
 
-const BARE_LATEX_RUN_PATTERN =
-  /(^|[\s:：，,；;])((?=[A-Za-z0-9_\\{}()[\],.+\-*/=^&\s]*?(?:\\[a-zA-Z]+|[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9]+|\^|_[A-Za-z0-9]+))[A-Za-z0-9_\\{}()[\],.+\-*/=^&\s]+)(?=$|[\u4e00-\u9fff，。；：、,.!?|])/g;
+const ASSISTANT_MATH_RUN_CHAR_PATTERN = /[A-Za-z0-9\\{}()[\],.;+\-*/=^_&<>≤≥≈πΠα-ωΑ-Ω\s]/;
+const ASSISTANT_CJK_OR_SENTENCE_PATTERN = /[\u4e00-\u9fff，。；：、！？]/;
+const ASSISTANT_LATEX_BLOCK_PATTERN = /\\begin\{(?:aligned|align|equation|cases|matrix|pmatrix|bmatrix|array)\}[\s\S]*?\\end\{(?:aligned|align|equation|cases|matrix|pmatrix|bmatrix|array)\}/g;
+const ASSISTANT_PROTECTED_SPAN_PATTERN = /(`+[^`]*`+|\${1,2}[^$]*?\${1,2})/g;
 
 function looksLikeAssistantMath(value: string): boolean {
   return ASSISTANT_MATH_HINT_PATTERN.test(value.trim());
 }
 
-function splitByDollarMath(value: string): Array<{ text: string; math: boolean }> {
-  const parts: Array<{ text: string; math: boolean }> = [];
+function shouldWrapAssistantMath(value: string): boolean {
+  const run = value.trim();
+  if (!looksLikeAssistantMath(run)) {
+    return false;
+  }
+
+  if (/\\[a-zA-Z]+|\^|_|[≤≥≈]/.test(run)) {
+    return true;
+  }
+
+  if (/[=+\-*/]/.test(run)) {
+    const plainWords = run.match(/[A-Za-z]{2,}/g) ?? [];
+    return plainWords.length <= 3;
+  }
+
+  return false;
+}
+
+function splitByAssistantProtectedSpans(value: string): Array<{ text: string; protected: boolean }> {
+  const parts: Array<{ text: string; protected: boolean }> = [];
   let cursor = 0;
-  const dollarMathPattern = /\$[^$\n]+\$/g;
   let match: RegExpExecArray | null;
 
-  while ((match = dollarMathPattern.exec(value)) !== null) {
+  ASSISTANT_PROTECTED_SPAN_PATTERN.lastIndex = 0;
+  while ((match = ASSISTANT_PROTECTED_SPAN_PATTERN.exec(value)) !== null) {
     if (match.index > cursor) {
-      parts.push({ text: value.slice(cursor, match.index), math: false });
+      parts.push({ text: value.slice(cursor, match.index), protected: false });
     }
-    parts.push({ text: match[0], math: true });
+    parts.push({ text: match[0], protected: true });
     cursor = match.index + match[0].length;
   }
 
   if (cursor < value.length) {
-    parts.push({ text: value.slice(cursor), math: false });
+    parts.push({ text: value.slice(cursor), protected: false });
   }
 
-  return parts.length ? parts : [{ text: value, math: false }];
+  return parts.length ? parts : [{ text: value, protected: false }];
+}
+
+function wrapAssistantMathCandidate(value: string): string {
+  const leading = value.match(/^\s*/)?.[0] ?? "";
+  const trailing = value.match(/\s*$/)?.[0] ?? "";
+  const run = value.trim();
+
+  if (!run || !shouldWrapAssistantMath(run)) {
+    return value;
+  }
+
+  return `${leading}$${run}$${trailing}`;
+}
+
+function repairAssistantOrphanDollars(value: string): string {
+  return value
+    .replace(/\$(\s*=\s*)\$/g, "$1")
+    .replace(
+      /(^|[\s:：，,；;])([^$\u4e00-\u9fff，。；：、！？]*?(?:\\[a-zA-Z]+|\^|_|=)[^$\u4e00-\u9fff，。；：、！？]*?)\${2,}(?=$|[\s\u4e00-\u9fff，。；：、,.!?])/g,
+      (match, prefix: string, rawRun: string) => {
+        const wrapped = wrapAssistantMathCandidate(rawRun);
+        return wrapped === rawRun ? match : `${prefix}${wrapped}`;
+      },
+    );
 }
 
 function wrapBareLatexRuns(value: string): string {
-  const repaired = value.replace(/\$(\s*=\s*)\$/g, "$1");
+  const repaired = repairAssistantOrphanDollars(value);
 
-  return splitByDollarMath(repaired)
+  return splitByAssistantProtectedSpans(repaired)
     .map((part) => {
-      if (part.math) {
+      if (part.protected) {
         return part.text;
       }
 
-      return part.text
-        .replace(/\\begin\{aligned\}([\s\S]*?)\\end\{aligned\}/g, (_match, inner: string) => {
-          const normalized = `\\begin{aligned}${inner}\\end{aligned}`;
-          return ` $${normalized}$ `;
-        })
-        .replace(BARE_LATEX_RUN_PATTERN, (match, prefix: string, rawRun: string) => {
-          const leading = rawRun.match(/^\s*/)?.[0] ?? "";
-          const trailing = rawRun.match(/\s*$/)?.[0] ?? "";
-          const run = rawRun.trim();
+      const output = part.text.replace(ASSISTANT_LATEX_BLOCK_PATTERN, (match) => ` $${match.trim()}$ `);
+      let cursor = 0;
+      let normalized = "";
 
-          if (!run || !looksLikeAssistantMath(run)) {
-            return match;
-          }
+      while (cursor < output.length) {
+        const char = output[cursor];
+        if (!ASSISTANT_MATH_RUN_CHAR_PATTERN.test(char) || ASSISTANT_CJK_OR_SENTENCE_PATTERN.test(char)) {
+          normalized += char;
+          cursor += 1;
+          continue;
+        }
 
-          return `${prefix}${leading}$${run}$${trailing}`;
-        });
+        let end = cursor + 1;
+        while (
+          end < output.length &&
+          ASSISTANT_MATH_RUN_CHAR_PATTERN.test(output[end]) &&
+          !ASSISTANT_CJK_OR_SENTENCE_PATTERN.test(output[end])
+        ) {
+          end += 1;
+        }
+
+        normalized += wrapAssistantMathCandidate(output.slice(cursor, end));
+        cursor = end;
+      }
+
+      return normalized;
     })
     .join("");
 }

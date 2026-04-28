@@ -85,6 +85,8 @@ export function buildAssistantSystemPrompt(): string {
     "Keep explanations educational, structured, and concise enough for study use.",
     "When user asks Chinese, answer Chinese. When user asks English, answer English. When user asks bilingual, answer with Chinese first and English below.",
     "When possible, reference formulas, methods, assumptions, and common mistakes from the note.",
+    "All mathematical notation must be valid Markdown math for remark-math and KaTeX: use `$...$` for inline formulas and `$$...$$` for display formulas.",
+    "Never output raw TeX commands outside math delimiters. Do not use bare `\\frac`, `\\sum`, `\\operatorname`, `\\left`, `\\right`, `\\begin{aligned}`, or trailing unmatched `$`/`$$` in prose or table cells.",
     "Do not present yourself as a general unrelated chatbot.",
   ].join("\n");
 }
@@ -120,7 +122,7 @@ export function buildAssistantUserPrompt(payload: NoteAssistantRequest): string 
   parts.push(question);
 
   parts.push(
-    "\nResponse requirements: prioritize this note context, explain steps clearly, and keep terminology consistent with this note's subject.",
+    "\nResponse requirements: prioritize this note context, explain steps clearly, keep terminology consistent with this note's subject, and wrap every formula in `$...$` or `$$...$$` so it renders in KaTeX.",
   );
 
   return parts.join("\n");
