@@ -339,6 +339,28 @@ h3:hover .anchor-link {
   margin: 0.24rem 0;
 }
 
+.assistant-prose table {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin: 0.55rem 0;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+.assistant-prose th,
+.assistant-prose td {
+  border: 1px solid hsl(var(--border));
+  padding: 0.35rem 0.5rem;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.assistant-prose th {
+  background: hsl(var(--muted));
+  font-weight: 600;
+}
+
 .assistant-prose hr {
   margin: 0.7rem 0;
   border-color: hsl(var(--border));

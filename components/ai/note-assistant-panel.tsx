@@ -93,6 +93,21 @@ function serializeHistory(messages: AssistantMessage[]): AssistantMessage[] {
   return clean.slice(clean.length - maxMessages);
 }
 
+const ASSISTANT_MATH_HINT_PATTERN =
+  /\\[a-zA-Z]+|[=^_]|[≤≥≈]|(?:\d|[a-zA-Z])\s*[+\-*/]\s*(?:\d|[a-zA-Z])/;
+
+function looksLikeAssistantMath(value: string): boolean {
+  return ASSISTANT_MATH_HINT_PATTERN.test(value.trim());
+}
+
+function normalizeAssistantInlineMath(line: string): string {
+  return line
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_match, inner: string) => `$${inner.trim()}$`)
+    .replace(/\(([^()\n]+)\)/g, (match, inner: string) =>
+      looksLikeAssistantMath(inner) ? `$${inner.trim()}$` : match,
+    );
+}
+
 function normalizeAssistantMarkdown(text: string): string {
   const lines = text
     .replace(/\r\n?/g, "\n")
@@ -106,14 +121,14 @@ function normalizeAssistantMarkdown(text: string): string {
     if (parenthesizedMatch) {
       const inner = parenthesizedMatch[1].trim();
       // Many model outputs wrap a full equation line with "(" and ")" instead of "$$...$$".
-      if (/(\\frac|\\sqrt|\\sum|\\int|\\lim|\\cdot|\\times|\\approx|\\le|\\ge|\^|_)/.test(inner)) {
+      if (looksLikeAssistantMath(inner)) {
         return `$$\n${inner}\n$$`;
       }
     }
     if (/^\$[^$\n]+\$$/.test(trimmed)) {
       return `$$\n${trimmed.slice(1, -1).trim()}\n$$`;
     }
-    return line;
+    return normalizeAssistantInlineMath(line);
   });
 
   return transformed.join("\n");
