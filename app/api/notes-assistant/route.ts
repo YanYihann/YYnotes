@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import {
   buildAssistantSystemPrompt,
   buildAssistantUserPrompt,
-  extractResponseText,
   sanitizeAssistantPayload,
   type NoteAssistantRequest,
 } from "@/lib/ai/note-assistant";
@@ -14,7 +13,6 @@ const ALLOWED_MODEL_NAMES = new Set([
   "gpt-4.1-mini",
 ]);
 const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL?.trim().replace(/\/+$/, "") || "https://api.openai.com/v1";
-const RESPONSES_ENDPOINT = `${OPENAI_BASE_URL}/responses`;
 const CHAT_COMPLETIONS_ENDPOINT = `${OPENAI_BASE_URL}/chat/completions`;
 
 type AssistantRole = "system" | "user" | "assistant";
@@ -22,14 +20,6 @@ type AssistantRole = "system" | "user" | "assistant";
 type OpenAIInputItem = {
   role: AssistantRole;
   content: Array<{ type: "input_text"; text: string }>;
-};
-
-type ProviderAttempt = {
-  ok: boolean;
-  answer?: string;
-  status?: number;
-  message?: string;
-  provider: "responses" | "chat_completions";
 };
 
 function toInputItem(role: OpenAIInputItem["role"], text: string): OpenAIInputItem {
@@ -77,7 +67,23 @@ function flattenMessages(input: OpenAIInputItem[]): Array<{ role: AssistantRole;
   }));
 }
 
-function extractChatCompletionsText(payload: unknown): string {
+async function createChatCompletionsStream(input: OpenAIInputItem[], modelName: string, signal: AbortSignal): Promise<Response> {
+  return fetch(CHAT_COMPLETIONS_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: modelName,
+      messages: flattenMessages(input),
+      stream: true,
+    }),
+    signal,
+  });
+}
+
+function extractChatCompletionsDelta(payload: unknown): string {
   if (!payload || typeof payload !== "object") {
     return "";
   }
@@ -87,118 +93,100 @@ function extractChatCompletionsText(payload: unknown): string {
     return "";
   }
 
-  const message = (choices[0] as { message?: unknown }).message;
-  if (!message || typeof message !== "object") {
+  const delta = (choices[0] as { delta?: unknown }).delta;
+  if (!delta || typeof delta !== "object") {
     return "";
   }
 
-  const content = (message as { content?: unknown }).content;
+  const content = (delta as { content?: unknown }).content;
   if (typeof content === "string") {
-    return content.trim();
+    return content;
   }
 
   if (!Array.isArray(content)) {
     return "";
   }
 
-  const text = content
+  return content
     .map((item) => {
       if (!item || typeof item !== "object") {
         return "";
       }
-
-      const maybeText = (item as { text?: unknown }).text;
-      return typeof maybeText === "string" ? maybeText : "";
+      const text = (item as { text?: unknown }).text;
+      return typeof text === "string" ? text : "";
     })
-    .filter(Boolean)
-    .join("\n\n")
-    .trim();
-
-  return text;
+    .join("");
 }
 
-async function attemptResponses(input: OpenAIInputItem[], modelName: string, signal: AbortSignal): Promise<ProviderAttempt> {
-  const response = await fetch(RESPONSES_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: modelName,
-      input,
-    }),
-    signal,
-  });
-
-  const json = (await response.json().catch(() => null)) as unknown;
-
-  if (!response.ok) {
-    return {
-      ok: false,
-      status: response.status,
-      message: extractProviderMessage(json),
-      provider: "responses",
-    };
-  }
-
-  const answer = extractResponseText(json);
-  if (!answer) {
-    return {
-      ok: false,
-      status: response.status,
-      message: "Responses API returned success but no readable text.",
-      provider: "responses",
-    };
-  }
-
-  return {
-    ok: true,
-    answer,
-    provider: "responses",
-  };
+function sseData(payload: unknown): string {
+  return `data: ${JSON.stringify(payload)}\n\n`;
 }
 
-async function attemptChatCompletions(input: OpenAIInputItem[], modelName: string, signal: AbortSignal): Promise<ProviderAttempt> {
-  const response = await fetch(CHAT_COMPLETIONS_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+function streamChatResponse(providerResponse: Response, abortController: AbortController): Response {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const reader = providerResponse.body?.getReader();
+      if (!reader) {
+        controller.enqueue(encoder.encode(sseData({ error: "AI provider stream is not readable." })));
+        controller.close();
+        return;
+      }
+
+      let buffer = "";
+
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) {
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const chunks = buffer.split(/\r?\n\r?\n/);
+          buffer = chunks.pop() ?? "";
+
+          for (const chunk of chunks) {
+            const lines = chunk.split(/\r?\n/).filter((line) => line.startsWith("data:"));
+            for (const line of lines) {
+              const data = line.slice(5).trimStart();
+              if (!data || data === "[DONE]") {
+                continue;
+              }
+
+              const json = JSON.parse(data) as unknown;
+              const delta = extractChatCompletionsDelta(json);
+              if (delta) {
+                controller.enqueue(encoder.encode(sseData({ delta })));
+              }
+            }
+          }
+        }
+
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "AI provider stream failed.";
+        controller.enqueue(encoder.encode(sseData({ error: message })));
+        controller.close();
+      } finally {
+        abortController.abort();
+      }
     },
-    body: JSON.stringify({
-      model: modelName,
-      messages: flattenMessages(input),
-    }),
-    signal,
+    cancel() {
+      abortController.abort();
+    },
   });
 
-  const json = (await response.json().catch(() => null)) as unknown;
-
-  if (!response.ok) {
-    return {
-      ok: false,
-      status: response.status,
-      message: extractProviderMessage(json),
-      provider: "chat_completions",
-    };
-  }
-
-  const answer = extractChatCompletionsText(json);
-  if (!answer) {
-    return {
-      ok: false,
-      status: response.status,
-      message: "Chat Completions API returned success but no readable text.",
-      provider: "chat_completions",
-    };
-  }
-
-  return {
-    ok: true,
-    answer,
-    provider: "chat_completions",
-  };
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+    },
+  });
 }
 
 export async function POST(request: Request) {
@@ -229,27 +217,18 @@ export async function POST(request: Request) {
     const abortController = new AbortController();
     const timeout = setTimeout(() => abortController.abort(), 45_000);
 
-    const responsesAttempt = await attemptResponses(messages, modelName, abortController.signal);
-    if (responsesAttempt.ok) {
+    const chatResponse = await createChatCompletionsStream(messages, modelName, abortController.signal);
+
+    if (chatResponse.ok) {
       clearTimeout(timeout);
-      return NextResponse.json({ answer: responsesAttempt.answer });
+      return streamChatResponse(chatResponse, abortController);
     }
 
-    const chatAttempt = await attemptChatCompletions(messages, modelName, abortController.signal);
     clearTimeout(timeout);
-
-    if (chatAttempt.ok) {
-      return NextResponse.json({ answer: chatAttempt.answer });
-    }
-
-    const fallbackError = [
-      `responses: HTTP ${responsesAttempt.status ?? "?"} - ${responsesAttempt.message ?? "unknown error"}`,
-      `chat_completions: HTTP ${chatAttempt.status ?? "?"} - ${chatAttempt.message ?? "unknown error"}`,
-    ].join(" | ");
-
+    const json = (await chatResponse.json().catch(() => null)) as unknown;
     return NextResponse.json(
       {
-        error: `AI provider returned an error. ${fallbackError}`,
+        error: `AI provider returned an error. chat_completions: HTTP ${chatResponse.status} - ${extractProviderMessage(json)}`,
       },
       { status: 502 },
     );

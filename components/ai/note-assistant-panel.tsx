@@ -318,6 +318,8 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
   const desktopMessagesRef = useRef<HTMLDivElement>(null);
   const mobileMessagesRef = useRef<HTMLDivElement>(null);
   const fullscreenMessagesRef = useRef<HTMLDivElement>(null);
+  const streamBufferRef = useRef("");
+  const streamFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const noteRecords = useMemo(() => savedRecords.filter((record) => record.noteSlug === noteContext.slug), [savedRecords, noteContext.slug]);
 
@@ -414,6 +416,49 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
     }
   }, [historyOpen, noteRecords, savedRecords, selectedRecordId]);
 
+  const flushAssistantStream = useCallback(() => {
+    if (streamFlushTimerRef.current) {
+      clearTimeout(streamFlushTimerRef.current);
+      streamFlushTimerRef.current = null;
+    }
+
+    const delta = streamBufferRef.current;
+    if (!delta) {
+      return;
+    }
+
+    streamBufferRef.current = "";
+    setMessages((current) => {
+      const next = [...current];
+      const last = next[next.length - 1];
+      if (last?.role === "assistant") {
+        next[next.length - 1] = { ...last, content: `${last.content}${delta}` };
+        return next;
+      }
+      return [...next, { role: "assistant", content: delta }];
+    });
+  }, []);
+
+  const queueAssistantDelta = useCallback(
+    (delta: string) => {
+      streamBufferRef.current += delta;
+      if (streamFlushTimerRef.current) {
+        return;
+      }
+      streamFlushTimerRef.current = setTimeout(flushAssistantStream, 80);
+    },
+    [flushAssistantStream],
+  );
+
+  useEffect(
+    () => () => {
+      if (streamFlushTimerRef.current) {
+        clearTimeout(streamFlushTimerRef.current);
+      }
+    },
+    [],
+  );
+
   const requestAssistant = useCallback(
     async (question: string, quickAction?: string): Promise<boolean> => {
       const normalizedQuestion = question.trim();
@@ -424,8 +469,9 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
       setError("");
       const nextUserMessage: AssistantMessage = { role: "user", content: normalizedQuestion };
       const nextMessages = [...messages, nextUserMessage];
-      setMessages(nextMessages);
+      setMessages([...nextMessages, { role: "assistant", content: "" }]);
       setLoading(true);
+      let streamedAnswer = "";
 
       try {
         const payload: NoteAssistantRequest = {
@@ -439,9 +485,23 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
           },
         };
 
-        const response = await askNoteAssistant(payload);
-        const answer = response.answer;
-        setMessages((current) => [...current, { role: "assistant", content: answer }]);
+        const response = await askNoteAssistant(payload, {
+          onDelta: (delta) => {
+            streamedAnswer += delta;
+            queueAssistantDelta(delta);
+          },
+        });
+        flushAssistantStream();
+        const answer = response.answer || streamedAnswer;
+        setMessages((current) => {
+          const next = [...current];
+          const last = next[next.length - 1];
+          if (last?.role === "assistant") {
+            next[next.length - 1] = { ...last, content: answer };
+            return next;
+          }
+          return [...next, { role: "assistant", content: answer }];
+        });
 
         const record: SavedQuestionRecord = {
           id: createRecordId(),
@@ -462,12 +522,20 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
       } catch (requestError) {
         const message = requestError instanceof Error ? requestError.message : "请求失败，请稍后重试。";
         setError(message);
+        flushAssistantStream();
+        setMessages((current) => {
+          const last = current[current.length - 1];
+          if (last?.role !== "assistant" || last.content.trim()) {
+            return current;
+          }
+          return current.slice(0, -1);
+        });
         return false;
       } finally {
         setLoading(false);
       }
     },
-    [loading, messages, noteContext, selectedModel, selectedText],
+    [flushAssistantStream, loading, messages, noteContext, queueAssistantDelta, selectedModel, selectedText],
   );
 
   const submitPrompt = useCallback(
