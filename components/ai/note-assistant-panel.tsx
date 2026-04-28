@@ -9,7 +9,7 @@ import { useLanguage } from "@/components/language-provider";
 import { askNoteAssistant } from "@/lib/ai/client";
 import type { AssistantMessage, NoteAssistantRequest } from "@/lib/ai/note-assistant";
 import { PromptBox, type PromptAttachment, type PromptSubmitPayload } from "@/components/ui/chatgpt-prompt-input";
-import { ASSISTANT_MODEL_OPTIONS } from "@/components/ui/animated-ai-input";
+import { ASSISTANT_MODEL_OPTIONS, DEFAULT_ASSISTANT_MODEL } from "@/components/ui/animated-ai-input";
 
 type NoteAssistantPanelProps = {
   noteContext: {
@@ -241,7 +241,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
   const [savedRecords, setSavedRecords] = useState<SavedQuestionRecord[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [fontSizePx, setFontSizePx] = useState(DEFAULT_FONT_SIZE);
-  const [selectedModel, setSelectedModel] = useState("gpt-5.4-nano-2026-03-17");
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_ASSISTANT_MODEL);
 
   const desktopMessagesRef = useRef<HTMLDivElement>(null);
   const mobileMessagesRef = useRef<HTMLDivElement>(null);

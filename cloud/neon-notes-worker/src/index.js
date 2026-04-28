@@ -14,7 +14,8 @@ const MAX_HIGHLIGHT_TEXT_CHARS = 1_200;
 const MAX_HIGHLIGHTS_PER_NOTE = 1_500;
 const SUPPORTED_TEXT_EXTENSIONS = new Set(["txt", "md", "markdown", "tex", "csv", "rst"]);
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
-const ALLOWED_ASSISTANT_MODELS = new Set(["gpt-5.4-nano-2026-03-17", "gpt-4.1-mini"]);
+const DEFAULT_ASSISTANT_MODEL = "deepseek-v4-flash";
+const ALLOWED_ASSISTANT_MODELS = new Set([DEFAULT_ASSISTANT_MODEL, "gpt-5.4-nano-2026-03-17", "gpt-4.1-mini"]);
 const ALLOWED_NOTE_GENERATION_MODELS = new Set(["qwen3.6-flash", "gpt-4.1-mini"]);
 const SUPPORTED_HIGHLIGHT_COLORS = new Set(["yellow"]);
 let highlightSchemaEnsured = false;
@@ -2973,7 +2974,9 @@ async function generateAssistantAnswer(env, payload) {
   const openaiBaseUrl = normalizeApiBase(env.OPENAI_BASE_URL);
   const responsesEndpoint = `${openaiBaseUrl}/responses`;
   const chatCompletionsEndpoint = `${openaiBaseUrl}/chat/completions`;
-  const modelName = resolveModelName(env, payload.model, ALLOWED_ASSISTANT_MODELS);
+  const modelName = payload.model && ALLOWED_ASSISTANT_MODELS.has(payload.model)
+    ? payload.model
+    : String(env.OPENAI_ASSISTANT_MODEL ?? "").trim() || DEFAULT_ASSISTANT_MODEL;
 
   const input = [
     {

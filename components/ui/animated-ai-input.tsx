@@ -157,6 +157,7 @@ const ANTHROPIC_ICON = (
 );
 
 const MODEL_ICONS: Record<string, ReactNode> = {
+  "deepseek-v4-flash": <Bot className="h-4 w-4 text-[#2563eb]" />,
   "gpt-5.4-nano-2026-03-17": OPENAI_ICON,
   "gpt-4.1-mini": OPENAI_ICON,
   "gpt-4.1": OPENAI_ICON,
@@ -166,7 +167,14 @@ const MODEL_ICONS: Record<string, ReactNode> = {
   "Claude 3.5 Sonnet": ANTHROPIC_ICON,
 };
 
+export const DEFAULT_ASSISTANT_MODEL = "deepseek-v4-flash";
+
 export const ASSISTANT_MODEL_OPTIONS: AIModelOption[] = [
+  {
+    id: DEFAULT_ASSISTANT_MODEL,
+    label: "DeepSeek V4 Flash",
+    description: "Default fast study assistant",
+  },
   {
     id: "gpt-5.4-nano-2026-03-17",
     label: "GPT-5.4 Nano",

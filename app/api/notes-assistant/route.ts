@@ -7,8 +7,9 @@ import {
   type NoteAssistantRequest,
 } from "@/lib/ai/note-assistant";
 
-const DEFAULT_MODEL_NAME = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+const DEFAULT_MODEL_NAME = process.env.OPENAI_ASSISTANT_MODEL || "deepseek-v4-flash";
 const ALLOWED_MODEL_NAMES = new Set([
+  "deepseek-v4-flash",
   "gpt-5.4-nano-2026-03-17",
   "gpt-4.1-mini",
 ]);
