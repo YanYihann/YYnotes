@@ -3096,7 +3096,6 @@ function buildAssistantUserPrompt(payload) {
 
 async function generateAssistantAnswer(env, payload) {
   const openaiBaseUrl = normalizeApiBase(env.OPENAI_BASE_URL);
-  const responsesEndpoint = `${openaiBaseUrl}/responses`;
   const chatCompletionsEndpoint = `${openaiBaseUrl}/chat/completions`;
   const modelName = payload.model && ALLOWED_ASSISTANT_MODELS.has(payload.model)
     ? payload.model
@@ -3117,30 +3116,6 @@ async function generateAssistantAnswer(env, payload) {
     },
   ];
 
-  const response = await fetch(responsesEndpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: modelName,
-      input,
-    }),
-  });
-
-  const json = await response.json().catch(() => null);
-  if (response.ok) {
-    const text = extractResponsesText(json);
-    if (text) {
-      return text;
-    }
-  }
-
-  const responsesError = response.ok
-    ? "Responses API returned success but no readable text."
-    : `responses: HTTP ${response.status} - ${extractProviderMessage(json)}`;
-
   const chatResponse = await fetch(chatCompletionsEndpoint, {
     method: "POST",
     headers: {
@@ -3156,15 +3131,149 @@ async function generateAssistantAnswer(env, payload) {
   const chatJson = await chatResponse.json().catch(() => null);
   if (!chatResponse.ok) {
     const chatError = `chat_completions: HTTP ${chatResponse.status} - ${extractProviderMessage(chatJson)}`;
-    throw new Error(`AI provider returned an error. ${responsesError} | ${chatError}`);
+    throw new Error(`AI provider returned an error. ${chatError}`);
   }
 
   const chatText = extractChatCompletionsText(chatJson);
   if (!chatText) {
-    throw new Error(`AI provider returned no readable text. ${responsesError} | chat_completions: empty text response.`);
+    throw new Error("AI provider returned no readable text. chat_completions: empty text response.");
   }
 
   return chatText;
+}
+
+function extractChatCompletionsDelta(payload) {
+  if (!payload || typeof payload !== "object") {
+    return "";
+  }
+
+  const choices = payload.choices;
+  if (!Array.isArray(choices) || choices.length === 0) {
+    return "";
+  }
+
+  const delta = choices[0]?.delta;
+  if (!delta || typeof delta !== "object") {
+    return "";
+  }
+
+  const content = delta.content;
+  if (typeof content === "string") {
+    return content;
+  }
+
+  if (!Array.isArray(content)) {
+    return "";
+  }
+
+  return content.map((item) => (item && typeof item.text === "string" ? item.text : "")).join("");
+}
+
+function sseData(payload) {
+  return `data: ${JSON.stringify(payload)}\n\n`;
+}
+
+async function createAssistantStream(env, payload, corsOrigin) {
+  const openaiBaseUrl = normalizeApiBase(env.OPENAI_BASE_URL);
+  const chatCompletionsEndpoint = `${openaiBaseUrl}/chat/completions`;
+  const modelName = payload.model && ALLOWED_ASSISTANT_MODELS.has(payload.model)
+    ? payload.model
+    : String(env.OPENAI_ASSISTANT_MODEL ?? "").trim() || DEFAULT_ASSISTANT_MODEL;
+
+  const input = [
+    {
+      role: "system",
+      content: [{ type: "input_text", text: buildAssistantSystemPrompt() }],
+    },
+    ...payload.history.map((item) => ({
+      role: item.role === "assistant" ? "assistant" : "user",
+      content: [{ type: "input_text", text: item.content }],
+    })),
+    {
+      role: "user",
+      content: [{ type: "input_text", text: buildAssistantUserPrompt(payload) }],
+    },
+  ];
+
+  const response = await fetch(chatCompletionsEndpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: modelName,
+      messages: flattenInputMessages(input),
+      stream: true,
+    }),
+  });
+
+  if (!response.ok) {
+    const json = await response.json().catch(() => null);
+    const chatError = `chat_completions: HTTP ${response.status} - ${extractProviderMessage(json)}`;
+    throw new Error(`AI provider returned an error. ${chatError}`);
+  }
+
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const reader = response.body?.getReader();
+      if (!reader) {
+        controller.enqueue(encoder.encode(sseData({ error: "AI provider stream is not readable." })));
+        controller.close();
+        return;
+      }
+
+      let buffer = "";
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) {
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const chunks = buffer.split(/\r?\n\r?\n/);
+          buffer = chunks.pop() ?? "";
+
+          for (const chunk of chunks) {
+            const lines = chunk.split(/\r?\n/).filter((line) => line.startsWith("data:"));
+            for (const line of lines) {
+              const data = line.slice(5).trimStart();
+              if (!data || data === "[DONE]") {
+                continue;
+              }
+
+              const json = JSON.parse(data);
+              const delta = extractChatCompletionsDelta(json);
+              if (delta) {
+                controller.enqueue(encoder.encode(sseData({ delta })));
+              }
+            }
+          }
+        }
+
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "AI provider stream failed.";
+        controller.enqueue(encoder.encode(sseData({ error: message })));
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      "Access-Control-Allow-Origin": corsOrigin,
+      "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Vary": "Origin",
+    },
+  });
 }
 
 async function generateMdx({ env, title, topic, tags, sourceText, extraInstruction, promptTemplate, modelName, generateInteractiveDemo }) {
@@ -3609,6 +3718,10 @@ export default {
         const payload = sanitizeAssistantPayload(rawPayload);
         if (!payload.question) {
           return jsonResponse({ error: "Question is required." }, 400, corsOrigin);
+        }
+
+        if ((request.headers.get("Accept") || "").includes("text/event-stream")) {
+          return createAssistantStream(env, payload, corsOrigin);
         }
 
         const answer = await generateAssistantAnswer(env, payload);
