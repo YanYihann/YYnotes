@@ -10,6 +10,7 @@ import {
   type FocusEvent,
   type ReactNode,
 } from "react";
+import katex from "katex";
 import { NoteMarkdown } from "@/components/notes/note-markdown";
 import { cn } from "@/lib/utils";
 
@@ -44,6 +45,16 @@ type EditableBlock = {
 type ImageMarkdown = {
   alt: string;
   src: string;
+};
+
+type InlineSegmentKind = "plain" | "math" | "font";
+
+type InlineSegment = {
+  id: string;
+  kind: InlineSegmentKind;
+  raw: string;
+  text: string;
+  color?: string;
 };
 
 const ANNOTATION_PLACEHOLDER = "在这里写注释，或直接粘贴图片。";
@@ -441,6 +452,235 @@ function renderEditableText(text: string): ReactNode {
   return text || "\u00a0";
 }
 
+function parseInlineSegments(raw: string, baseId = "inline"): InlineSegment[] {
+  const source = normalizeNewlines(raw);
+  const tokenPattern = /(\$[^$\n]+\$|<font\b[^>]*>[\s\S]*?<\/font>)/gi;
+  const segments: InlineSegment[] = [];
+  let cursor = 0;
+  let segmentIndex = 0;
+  let match: RegExpExecArray | null;
+
+  const nextId = () => `${baseId}-inline-${segmentIndex++}`;
+
+  const pushPlain = (value: string) => {
+    if (!value) {
+      return;
+    }
+    segments.push({
+      id: nextId(),
+      kind: "plain",
+      raw: value,
+      text: value,
+    });
+  };
+
+  while ((match = tokenPattern.exec(source)) !== null) {
+    pushPlain(source.slice(cursor, match.index));
+    const rawToken = match[0];
+    const mathMatch = rawToken.match(/^\$([^$\n]+)\$$/);
+    if (mathMatch) {
+      segments.push({
+        id: nextId(),
+        kind: "math",
+        raw: rawToken,
+        text: mathMatch[1],
+      });
+    } else {
+      const fontMatch = rawToken.match(/^<font\b([^>]*)>([\s\S]*?)<\/font>$/i);
+      const attrs = fontMatch?.[1] ?? "";
+      const color = attrs.match(/\bcolor=(["'])(.*?)\1/i)?.[2] ?? attrs.match(/\bcolor=([^\s>]+)/i)?.[1];
+      segments.push({
+        id: nextId(),
+        kind: "font",
+        raw: rawToken,
+        text: fontMatch?.[2] ?? rawToken,
+        color,
+      });
+    }
+    cursor = match.index + rawToken.length;
+  }
+
+  pushPlain(source.slice(cursor));
+  return segments.length ? segments : [{ id: nextId(), kind: "plain", raw: source, text: source }];
+}
+
+function htmlToPlainText(value: string): string {
+  if (typeof window === "undefined") {
+    return value.replace(/<[^>]+>/g, "");
+  }
+  const template = document.createElement("template");
+  template.innerHTML = value;
+  return template.content.textContent ?? "";
+}
+
+function renderInlineMath(latex: string): string {
+  try {
+    return katex.renderToString(latex, {
+      displayMode: false,
+      throwOnError: false,
+      strict: "ignore",
+    });
+  } catch {
+    return latex;
+  }
+}
+
+function normalizeInlinePreviewText(value: string): string {
+  return htmlToPlainText(value).replace(/\s+/g, " ").trim();
+}
+
+function findInlineTokenIdFromPreviewClick(target: EventTarget | null, segments: InlineSegment[]): string | null {
+  if (!(target instanceof Element)) {
+    return null;
+  }
+
+  const fontElement = target.closest("font");
+  if (fontElement) {
+    const clickedText = normalizeInlinePreviewText(fontElement.textContent ?? "");
+    return (
+      segments.find(
+        (segment) => segment.kind === "font" && normalizeInlinePreviewText(segment.text) === clickedText,
+      )?.id ?? null
+    );
+  }
+
+  const katexElement = target.closest(".katex");
+  if (katexElement) {
+    const latex = katexElement.querySelector("annotation[encoding='application/x-tex']")?.textContent?.trim();
+    return segments.find((segment) => segment.kind === "math" && segment.text.trim() === latex)?.id ?? null;
+  }
+
+  return null;
+}
+
+function renderInlineSegment(
+  segment: InlineSegment,
+  params: {
+    active: boolean;
+    activeInlineId: string | null;
+    onActivateInline: (inlineId: string) => void;
+    onPaste: (event: ClipboardEvent<HTMLElement>) => void;
+  },
+) {
+  const isInlineActive = params.active && params.activeInlineId === segment.id;
+  const commonProps = {
+    "data-inline-segment": "true",
+    "data-inline-kind": segment.kind,
+    "data-inline-raw": segment.raw,
+    "data-inline-color": segment.color ?? "",
+    "data-inline-active": isInlineActive ? "true" : "false",
+    onPaste: params.onPaste,
+  };
+
+  if (segment.kind === "plain") {
+    return (
+      <span
+        key={segment.id}
+        {...commonProps}
+        contentEditable={params.active}
+        suppressContentEditableWarning
+        className={cn(params.active && "rounded-[4px] outline-none focus-visible:ring-2 focus-visible:ring-primary/35")}
+      >
+        {renderEditableText(segment.text)}
+      </span>
+    );
+  }
+
+  if (isInlineActive) {
+    return (
+      <span
+        key={segment.id}
+        {...commonProps}
+        contentEditable
+        suppressContentEditableWarning
+        className="rounded-[4px] bg-primary/[0.08] px-1 font-mono text-[0.92em] text-foreground outline-none ring-1 ring-primary/25 focus-visible:ring-2 focus-visible:ring-primary/35"
+      >
+        {segment.raw}
+      </span>
+    );
+  }
+
+  if (segment.kind === "font") {
+    return (
+      <span
+        key={segment.id}
+        {...commonProps}
+        role="button"
+        tabIndex={0}
+        onClick={(event) => {
+          event.stopPropagation();
+          params.onActivateInline(segment.id);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            params.onActivateInline(segment.id);
+          }
+        }}
+        className="rounded-[4px] px-0.5 outline-none transition hover:bg-primary/[0.08] focus-visible:ring-2 focus-visible:ring-primary/35"
+        style={segment.color ? { color: segment.color } : undefined}
+      >
+        {htmlToPlainText(segment.text)}
+      </span>
+    );
+  }
+
+  return (
+    <span
+      key={segment.id}
+      {...commonProps}
+      role="button"
+      tabIndex={0}
+      onClick={(event) => {
+        event.stopPropagation();
+        params.onActivateInline(segment.id);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          params.onActivateInline(segment.id);
+        }
+      }}
+      className="inline-block rounded-[4px] px-0.5 align-baseline outline-none transition hover:bg-primary/[0.08] focus-visible:ring-2 focus-visible:ring-primary/35"
+    >
+      <span dangerouslySetInnerHTML={{ __html: renderInlineMath(segment.text) }} />
+    </span>
+  );
+}
+
+function serializeInlineEditor(element: HTMLElement): string {
+  const parts = Array.from(element.querySelectorAll<HTMLElement>("[data-inline-segment]"));
+  if (!parts.length) {
+    return normalizeNewlines(element.innerText ?? "").trimEnd();
+  }
+
+  return parts
+    .map((part) => {
+      const kind = part.dataset.inlineKind as InlineSegmentKind | undefined;
+      const text = normalizeNewlines(part.innerText ?? "");
+      if (kind === "plain") {
+        return text;
+      }
+      if ((kind === "math" || kind === "font") && part.dataset.inlineActive !== "true") {
+        return part.dataset.inlineRaw ?? text;
+      }
+      if (text.trim().startsWith("$") || /^<font\b/i.test(text.trim())) {
+        return text.trim();
+      }
+      if (kind === "math") {
+        return `$${text.trim().replace(/^\$|\$$/g, "")}$`;
+      }
+      if (kind === "font") {
+        const raw = part.dataset.inlineRaw ?? "";
+        const openTag = raw.match(/^<font\b[^>]*>/i)?.[0] ?? `<font color='${part.dataset.inlineColor || "#8B0000"}'>`;
+        return `${openTag}${text}</font>`;
+      }
+      return part.dataset.inlineRaw ?? text;
+    })
+    .join("")
+    .trimEnd();
+}
+
 function blockToMarkdown(block: EditableBlock, element: HTMLElement | null): string {
   if (block.kind === "image") {
     const img = element?.querySelector("img");
@@ -454,7 +694,10 @@ function blockToMarkdown(block: EditableBlock, element: HTMLElement | null): str
     return normalizeNewlines(element?.innerText ?? block.raw).trimEnd();
   }
 
-  const text = normalizeNewlines(element?.innerText ?? block.text ?? block.lines?.join("\n") ?? "").trimEnd();
+  const text =
+    element?.dataset.inlineEditor === "true"
+      ? serializeInlineEditor(element)
+      : normalizeNewlines(element?.innerText ?? block.text ?? block.lines?.join("\n") ?? "").trimEnd();
 
   if (block.kind === "heading") {
     const level = Math.max(1, Math.min(block.level ?? 2, 6));
@@ -501,7 +744,11 @@ function syncBlocksFromDom(blocks: EditableBlock[], refs: Map<string, HTMLElemen
       return { ...block, raw };
     }
 
-    const text = normalizeNewlines(refs.get(block.id)?.innerText ?? block.text ?? block.lines?.join("\n") ?? "").trimEnd();
+    const element = refs.get(block.id) ?? null;
+    const text =
+      element?.dataset.inlineEditor === "true"
+        ? serializeInlineEditor(element)
+        : normalizeNewlines(element?.innerText ?? block.text ?? block.lines?.join("\n") ?? "").trimEnd();
     if (block.kind === "list" || block.kind === "blockquote") {
       return { ...block, lines: text.split("\n") };
     }
@@ -539,14 +786,18 @@ function EditableBlockView({
   block,
   setRef,
   active,
+  activeInlineId,
   onActivate,
+  onActivateInline,
   onFocus,
   onPaste,
 }: {
   block: EditableBlock;
   setRef: (id: string, node: HTMLElement | null) => void;
   active: boolean;
+  activeInlineId: string | null;
   onActivate: (id: string) => void;
+  onActivateInline: (blockId: string, inlineId: string | null) => void;
   onFocus: (id: string) => void;
   onPaste: (event: ClipboardEvent<HTMLElement>, id: string) => void;
 }) {
@@ -680,20 +931,60 @@ function EditableBlockView({
     );
   }
 
+  const paragraphSource = block.text ?? block.raw;
+  const segments = parseInlineSegments(paragraphSource, block.id);
+
+  if (!active) {
+    return (
+      <div
+        data-editor-block-id={block.id}
+        role="button"
+        tabIndex={0}
+        onClick={(event) => {
+          const inlineId = findInlineTokenIdFromPreviewClick(event.target, segments);
+          onActivate(block.id);
+          onActivateInline(block.id, inlineId);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onActivate(block.id);
+            onActivateInline(block.id, null);
+          }
+        }}
+        className="my-5 rounded-apple px-2 py-1 transition hover:bg-primary/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+      >
+        <NoteMarkdown source={paragraphSource} />
+      </div>
+    );
+  }
+
   return (
     <p
       ref={(node) => setRef(block.id, node)}
-      contentEditable
-      suppressContentEditableWarning
       data-editor-block-id={block.id}
+      data-inline-editor="true"
       onFocus={() => onFocus(block.id)}
-      onPaste={(event) => onPaste(event, block.id)}
+      onClick={(event) => {
+        const target = event.target as HTMLElement | null;
+        const inlineToken = target?.closest("[data-inline-kind='math'], [data-inline-kind='font']");
+        if (!inlineToken) {
+          onActivateInline(block.id, null);
+        }
+      }}
       className={cn(
         editableClass,
         "my-5 whitespace-pre-wrap font-text text-[17px] leading-[1.7] tracking-tightBody text-muted-foreground",
       )}
     >
-      {renderEditableText(block.text ?? "")}
+      {segments.map((segment) =>
+        renderInlineSegment(segment, {
+          active,
+          activeInlineId,
+          onActivateInline: (inlineId) => onActivateInline(block.id, inlineId),
+          onPaste: (event) => onPaste(event, block.id),
+        }),
+      )}
     </p>
   );
 }
@@ -715,12 +1006,14 @@ export function NoteEditorPanel({
     parsedBlocks.length ? parsedBlocks : [createEmptyParagraphBlock()],
   );
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
+  const [activeInlineId, setActiveInlineId] = useState<string | null>(null);
   const [annotationInsertionIndex, setAnnotationInsertionIndex] = useState(parsedBlocks.length);
   const [error, setError] = useState("");
 
   useEffect(() => {
     setFullBlocks(parsedBlocks.length ? parsedBlocks : [createEmptyParagraphBlock()]);
     setActiveBlockId(null);
+    setActiveInlineId(null);
     activeBlockIdRef.current = null;
     setAnnotationInsertionIndex(parsedBlocks.length);
     setError("");
@@ -742,6 +1035,13 @@ export function NoteEditorPanel({
     setFullBlocks((current) => syncBlocksFromDom(current, fullBlockRefs.current));
     activeBlockIdRef.current = id;
     setActiveBlockId(id);
+    setActiveInlineId(null);
+  }, []);
+
+  const activateInline = useCallback((blockId: string, inlineId: string | null) => {
+    activeBlockIdRef.current = blockId;
+    setActiveBlockId(blockId);
+    setActiveInlineId(inlineId);
   }, []);
 
   const insertImagesAfterBlock = useCallback((blockId: string | null, images: ImageMarkdown[]) => {
@@ -925,6 +1225,29 @@ export function NoteEditorPanel({
         </div>
       </header>
 
+      <div className="sticky top-4 z-20 mb-4 flex flex-wrap items-center gap-3 rounded-apple border border-border bg-card/95 px-3 py-2 shadow-card backdrop-blur">
+        <button
+          type="button"
+          onClick={() => void save()}
+          disabled={saving}
+          className="btn-apple-primary inline-flex items-center rounded-apple px-5 py-2 font-text text-[14px] transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
+        >
+          {saving ? "保存中..." : mode === "annotation" ? "保存注释" : "保存全文"}
+          <span className="ui-en ml-1">
+            {saving ? "Saving..." : mode === "annotation" ? "Save Annotation" : "Save Full Note"}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={saving}
+          className="btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
+        >
+          取消
+          <span className="ui-en ml-1">Cancel</span>
+        </button>
+      </div>
+
       {mode === "annotation" ? (
         <div className="note-prose drake-theme rounded-apple border border-border bg-card px-4 py-5">
           {parsedBlocks.length === 0 ? (
@@ -986,7 +1309,9 @@ export function NoteEditorPanel({
                 block={block}
                 setRef={setFullBlockRef}
                 active={activeBlockId === block.id}
+                activeInlineId={activeInlineId}
                 onActivate={activateFullBlock}
+                onActivateInline={activateInline}
                 onFocus={(id) => {
                   activeBlockIdRef.current = id;
                   setActiveBlockId(id);
