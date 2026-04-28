@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { useLanguage } from "@/components/language-provider";
@@ -377,7 +376,6 @@ function NoteNavLink({ link }: { link: NoteViewNavLink }) {
 }
 
 export function NoteView({ note, headings, nav, storageMode = "local" }: NoteViewProps) {
-  const router = useRouter();
   const { showEnglish } = useLanguage();
   const { session } = useAuth();
   const authToken = session?.token ?? "";
@@ -447,7 +445,6 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
         setNoteSource(nextSource);
         setEditorOpen(false);
         setEditorMode(null);
-        router.refresh();
       } catch (error) {
         const message = error instanceof Error ? error.message : "保存笔记失败。";
         setEditError(message);
@@ -456,7 +453,7 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
         setSavingNote(false);
       }
     },
-    [authToken, note.slug, router, storageMode],
+    [authToken, note.slug, storageMode],
   );
 
   const fetchHighlights = useCallback(async () => {

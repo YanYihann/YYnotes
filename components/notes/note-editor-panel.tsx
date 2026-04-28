@@ -681,6 +681,25 @@ function serializeInlineEditor(element: HTMLElement): string {
     .trimEnd();
 }
 
+function serializeListItems(element: HTMLElement | null, block: EditableBlock): string[] {
+  const items = Array.from(element?.querySelectorAll<HTMLElement>("li") ?? []);
+  if (!items.length) {
+    return normalizeNewlines(element?.innerText ?? block.lines?.join("\n") ?? "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }
+
+  return items
+    .map((item) =>
+      item.dataset.inlineEditor === "true"
+        ? serializeInlineEditor(item)
+        : normalizeNewlines(item.innerText ?? "").trimEnd(),
+    )
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
 function blockToMarkdown(block: EditableBlock, element: HTMLElement | null): string {
   if (block.kind === "image") {
     const img = element?.querySelector("img");
@@ -692,6 +711,11 @@ function blockToMarkdown(block: EditableBlock, element: HTMLElement | null): str
 
   if (block.kind === "code" || block.kind === "math" || block.kind === "table") {
     return normalizeNewlines(element?.innerText ?? block.raw).trimEnd();
+  }
+
+  if (block.kind === "list") {
+    const lines = serializeListItems(element, block);
+    return lines.map((line, index) => (block.ordered ? `${index + 1}. ${line}` : `- ${line}`)).join("\n");
   }
 
   const text =
@@ -707,14 +731,6 @@ function blockToMarkdown(block: EditableBlock, element: HTMLElement | null): str
   if (block.kind === "blockquote") {
     const lines = text.split("\n");
     return lines.map((line) => (line.trim() ? `> ${line.trimEnd()}` : ">")).join("\n");
-  }
-
-  if (block.kind === "list") {
-    const lines = text
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
-    return lines.map((line, index) => (block.ordered ? `${index + 1}. ${line}` : `- ${line}`)).join("\n");
   }
 
   return text.trim();
@@ -749,7 +765,10 @@ function syncBlocksFromDom(blocks: EditableBlock[], refs: Map<string, HTMLElemen
       element?.dataset.inlineEditor === "true"
         ? serializeInlineEditor(element)
         : normalizeNewlines(element?.innerText ?? block.text ?? block.lines?.join("\n") ?? "").trimEnd();
-    if (block.kind === "list" || block.kind === "blockquote") {
+    if (block.kind === "list") {
+      return { ...block, lines: serializeListItems(element, block) };
+    }
+    if (block.kind === "blockquote") {
       return { ...block, lines: text.split("\n") };
     }
     return { ...block, text };
@@ -849,22 +868,66 @@ function EditableBlockView({
 
   if (block.kind === "list") {
     const ListTag = block.ordered ? "ol" : "ul";
+    const lines = block.lines?.length ? block.lines : [""];
+    const listSegments = lines.flatMap((line, index) => parseInlineSegments(line, `${block.id}-item-${index}`));
+
+    if (!active) {
+      return (
+        <div
+          data-editor-block-id={block.id}
+          role="button"
+          tabIndex={0}
+          onClick={(event) => {
+            const inlineId = findInlineTokenIdFromPreviewClick(event.target, listSegments);
+            onActivate(block.id);
+            onActivateInline(block.id, inlineId);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onActivate(block.id);
+              onActivateInline(block.id, null);
+            }
+          }}
+          className="my-5 rounded-apple px-2 py-1 transition hover:bg-primary/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+        >
+          <NoteMarkdown source={block.raw} />
+        </div>
+      );
+    }
+
     return (
       <ListTag
         ref={(node) => setRef(block.id, node)}
-        contentEditable
-        suppressContentEditableWarning
         data-editor-block-id={block.id}
         onFocus={() => onFocus(block.id)}
-        onPaste={(event) => onPaste(event, block.id)}
         className={cn(
           editableClass,
           "my-5 space-y-2 pl-8 font-text text-[17px] leading-[1.6] text-muted-foreground",
           block.ordered ? "list-decimal" : "list-disc",
         )}
       >
-        {(block.lines?.length ? block.lines : [""]).map((line, index) => (
-          <li key={`${block.id}-${index}`}>{renderEditableText(line)}</li>
+        {lines.map((line, index) => (
+          <li
+            key={`${block.id}-${index}`}
+            data-inline-editor="true"
+            onClick={(event) => {
+              const target = event.target as HTMLElement | null;
+              const inlineToken = target?.closest("[data-inline-kind='math'], [data-inline-kind='font']");
+              if (!inlineToken) {
+                onActivateInline(block.id, null);
+              }
+            }}
+          >
+            {parseInlineSegments(line, `${block.id}-item-${index}`).map((segment) =>
+              renderInlineSegment(segment, {
+                active,
+                activeInlineId,
+                onActivateInline: (inlineId) => onActivateInline(block.id, inlineId),
+                onPaste: (event) => onPaste(event, block.id),
+              }),
+            )}
+          </li>
         ))}
       </ListTag>
     );
@@ -1027,10 +1090,6 @@ export function NoteEditorPanel({
     fullBlockRefs.current.delete(id);
   }, []);
 
-  const syncFullBlocks = useCallback(() => {
-    setFullBlocks((current) => syncBlocksFromDom(current, fullBlockRefs.current));
-  }, []);
-
   const activateFullBlock = useCallback((id: string) => {
     setFullBlocks((current) => syncBlocksFromDom(current, fullBlockRefs.current));
     activeBlockIdRef.current = id;
@@ -1042,6 +1101,22 @@ export function NoteEditorPanel({
     activeBlockIdRef.current = blockId;
     setActiveBlockId(blockId);
     setActiveInlineId(inlineId);
+  }, []);
+
+  const addFullParagraph = useCallback(() => {
+    const nextBlock: EditableBlock = {
+      id: createBlockId(),
+      kind: "paragraph",
+      raw: "",
+      start: 0,
+      end: 0,
+      text: "新的段落",
+    };
+
+    setFullBlocks((current) => [...syncBlocksFromDom(current, fullBlockRefs.current), nextBlock]);
+    activeBlockIdRef.current = nextBlock.id;
+    setActiveBlockId(nextBlock.id);
+    setActiveInlineId(null);
   }, []);
 
   const insertImagesAfterBlock = useCallback((blockId: string | null, images: ImageMarkdown[]) => {
@@ -1225,7 +1300,7 @@ export function NoteEditorPanel({
         </div>
       </header>
 
-      <div className="sticky top-4 z-20 mb-4 flex flex-wrap items-center gap-3 rounded-apple border border-border bg-card/95 px-3 py-2 shadow-card backdrop-blur">
+      <div className="sticky top-20 z-20 mb-4 flex flex-wrap items-center gap-3 rounded-apple border border-border bg-card/95 px-3 py-2 shadow-card backdrop-blur">
         <button
           type="button"
           onClick={() => void save()}
@@ -1246,6 +1321,17 @@ export function NoteEditorPanel({
           取消
           <span className="ui-en ml-1">Cancel</span>
         </button>
+        {mode === "full" ? (
+          <button
+            type="button"
+            onClick={addFullParagraph}
+            disabled={saving}
+            className="rounded-capsule border border-border px-3 py-1.5 font-text text-[13px] text-muted-foreground transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            添加段落
+            <span className="ui-en ml-1">Add paragraph</span>
+          </button>
+        ) : null}
       </div>
 
       {mode === "annotation" ? (
@@ -1329,27 +1415,6 @@ export function NoteEditorPanel({
               开始输入笔记内容...
             </p>
           )}
-          <button
-            type="button"
-            onClick={() => {
-              syncFullBlocks();
-              setFullBlocks((current) => [
-                ...syncBlocksFromDom(current, fullBlockRefs.current),
-                {
-                  id: createBlockId(),
-                  kind: "paragraph",
-                  raw: "",
-                  start: 0,
-                  end: 0,
-                  text: "新的段落",
-                },
-              ]);
-            }}
-            className="mt-4 rounded-capsule border border-border px-3 py-1 font-text text-[12px] text-muted-foreground transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            添加段落
-            <span className="ui-en ml-1">Add paragraph</span>
-          </button>
         </div>
       )}
 
