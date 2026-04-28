@@ -6,10 +6,21 @@ import { getTrashedWeekBySlug, getTrashedWeekNotes, getWeekBySlug, getWeekNotes 
 import { extractDynamicDemoSpecsFromContent, normalizeDynamicDemoMarkup } from "@/lib/dynamic-demo-components";
 import { materializeGeneratedDemoFiles } from "@/lib/generated-demo-files";
 import { injectInteractiveDemosIntoNoteContent, selectInteractiveDemos } from "@/lib/interactive-demos";
+import { extractResponseText } from "@/lib/ai/note-assistant";
 
 const NOTES_DIR_PATH = path.resolve(path.join(process.cwd(), "\u7B14\u8BB0"));
 const TRASH_DIR_PATH = path.resolve(path.join(process.cwd(), "\u7B14\u8BB0\u56DE\u6536\u7AD9"));
 const DEFAULT_DESCRIPTION_ZH = "\u5BFC\u5165\u7684 Markdown \u7B14\u8BB0\u3002";
+const IMPORT_METADATA_MODEL = "deepseek-v4-flash";
+const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL?.trim().replace(/\/+$/, "") || "https://api.openai.com/v1";
+const MAX_IMPORT_METADATA_SOURCE_CHARS = 8_000;
+
+type ImportedCardMetadata = {
+  topicZh?: string;
+  topicEn?: string;
+  descriptionZh?: string;
+  descriptionEn?: string;
+};
 
 async function materializeLocalDynamicDemos(source: string): Promise<string> {
   const specs = extractDynamicDemoSpecsFromContent(source);
@@ -134,6 +145,152 @@ function extractDescriptionFromBody(markdown: string): string {
     .slice(0, 140) || DEFAULT_DESCRIPTION_ZH;
 }
 
+function clampImportMetadataSource(value: string): string {
+  const normalized = normalizeEditableContent(value);
+  return normalized.length > MAX_IMPORT_METADATA_SOURCE_CHARS
+    ? `${normalized.slice(0, MAX_IMPORT_METADATA_SOURCE_CHARS)}\n...[truncated]`
+    : normalized;
+}
+
+function extractChatCompletionText(payload: unknown): string {
+  const choices = (payload as { choices?: unknown } | null)?.choices;
+  if (!Array.isArray(choices) || choices.length < 1) {
+    return "";
+  }
+
+  const content = (choices[0] as { message?: { content?: unknown } } | null)?.message?.content;
+  if (typeof content === "string") {
+    return content.trim();
+  }
+
+  if (!Array.isArray(content)) {
+    return "";
+  }
+
+  return content
+    .map((item) => (typeof (item as { text?: unknown } | null)?.text === "string" ? String((item as { text: string }).text) : ""))
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
+}
+
+function parseImportedCardMetadata(raw: string): ImportedCardMetadata {
+  const cleaned = raw
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/```$/i, "")
+    .trim();
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  const jsonText = firstBrace >= 0 && lastBrace > firstBrace ? cleaned.slice(firstBrace, lastBrace + 1) : cleaned;
+
+  try {
+    const parsed = JSON.parse(jsonText) as Record<string, unknown>;
+    const topicZh = String(parsed.topicZh ?? parsed.topic ?? "").replace(/\s+/g, " ").trim().slice(0, 64);
+    const topicEn = String(parsed.topicEn ?? "").replace(/\s+/g, " ").trim().slice(0, 64);
+    const descriptionZh = String(parsed.subtitleZh ?? parsed.descriptionZh ?? parsed.subtitle ?? "").replace(/\s+/g, " ").trim().slice(0, 140);
+    const descriptionEn = String(parsed.subtitleEn ?? parsed.descriptionEn ?? "").replace(/\s+/g, " ").trim().slice(0, 180);
+
+    return {
+      topicZh: topicZh || undefined,
+      topicEn: topicEn || undefined,
+      descriptionZh: descriptionZh || undefined,
+      descriptionEn: descriptionEn || undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+async function inferImportedCardMetadata(params: {
+  title: string;
+  topicInput: string;
+  fileName: string;
+  markdown: string;
+}): Promise<ImportedCardMetadata> {
+  if (!process.env.OPENAI_API_KEY) {
+    return {};
+  }
+
+  const systemPrompt = [
+    "You generate metadata for imported Markdown note cards.",
+    "Return JSON only. Do not return markdown or explanations.",
+    'Schema: {"topicZh":"...","topicEn":"...","subtitleZh":"...","subtitleEn":"..."}',
+    "Rules:",
+    "- Do not rewrite the card title.",
+    "- topicZh must be a concise Chinese knowledge domain, no more than 16 Chinese characters.",
+    "- topicEn must be the aligned English topic, no more than 5 words.",
+    "- subtitleZh must summarize what this note helps the student learn, no more than 48 Chinese characters.",
+    "- subtitleEn must be the aligned English subtitle, no more than 90 English characters.",
+  ].join("\n");
+  const userPrompt = [
+    `Fixed card title: ${params.title}`,
+    `Imported file name: ${params.fileName || params.title}`,
+    params.topicInput ? `User-provided topic hint: ${params.topicInput}` : "User-provided topic hint: none",
+    "",
+    "Markdown note content:",
+    clampImportMetadataSource(params.markdown),
+  ].join("\n");
+  const messages = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: userPrompt },
+  ];
+  const input = messages.map((message) => ({
+    role: message.role,
+    content: [{ type: "input_text", text: message.content }],
+  }));
+  const abortController = new AbortController();
+  const timeout = setTimeout(() => abortController.abort(), 25_000);
+
+  try {
+    const responsesResponse = await fetch(`${OPENAI_BASE_URL}/responses`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: IMPORT_METADATA_MODEL,
+        input,
+      }),
+      signal: abortController.signal,
+    });
+    const responsesJson = await responsesResponse.json().catch(() => null);
+    if (responsesResponse.ok) {
+      const text = extractResponseText(responsesJson);
+      if (text) {
+        const parsed = parseImportedCardMetadata(text);
+        if (parsed.topicZh || parsed.descriptionZh) {
+          return parsed;
+        }
+      }
+    }
+
+    const chatResponse = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: IMPORT_METADATA_MODEL,
+        messages,
+      }),
+      signal: abortController.signal,
+    });
+    const chatJson = await chatResponse.json().catch(() => null);
+    if (!chatResponse.ok) {
+      return {};
+    }
+
+    return parseImportedCardMetadata(extractChatCompletionText(chatJson));
+  } catch {
+    return {};
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function buildNoteListPayload(notes: Awaited<ReturnType<typeof getWeekNotes>>, trashed: boolean) {
   return notes.map((note) => ({
     slug: note.slug,
@@ -187,20 +344,17 @@ async function moveNoteBetweenDirs(params: {
 
 async function createImportedNote(params: {
   title: string;
-  topic: string;
+  topic?: string;
+  fileName?: string;
   content: string;
   generateInteractiveDemo?: boolean;
 }) {
   const normalizedTitle = normalizeEditableText(params.title, 80);
-  const normalizedTopic = normalizeEditableText(params.topic, 64);
+  const normalizedTopicInput = normalizeEditableText(params.topic, 64);
   const normalizedContent = extractMarkdownFromAssistantResponse(String(params.content ?? ""));
 
   if (!normalizedTitle) {
     throw new Error("Title is required.");
-  }
-
-  if (!normalizedTopic) {
-    throw new Error("Topic is required.");
   }
 
   if (!normalizedContent) {
@@ -212,6 +366,15 @@ async function createImportedNote(params: {
   if (!cleanedBody) {
     throw new Error("Markdown content cannot be empty.");
   }
+
+  const inferredMetadata = await inferImportedCardMetadata({
+    title: normalizedTitle,
+    topicInput: normalizedTopicInput,
+    fileName: String(params.fileName ?? ""),
+    markdown: cleanedBody,
+  });
+  const normalizedTopic = normalizedTopicInput || normalizeEditableText(inferredMetadata.topicZh, 64) || normalizedTitle;
+  const normalizedTopicEn = normalizeEditableText(inferredMetadata.topicEn, 64) || normalizedTopic;
 
   if (params.generateInteractiveDemo) {
     const demos = selectInteractiveDemos({
@@ -234,7 +397,8 @@ async function createImportedNote(params: {
     slugifyTitle(normalizedTitle),
     [...existingNotes, ...trashedNotes].map((note) => note.slug),
   );
-  const description = extractDescriptionFromBody(cleanedBody);
+  const description = normalizeEditableText(inferredMetadata.descriptionZh, 140) || extractDescriptionFromBody(cleanedBody);
+  const descriptionEn = normalizeEditableText(inferredMetadata.descriptionEn, 180) || description;
   const highestOrder = Math.max(
     0,
     ...existingNotes.map((note) => (Number.isFinite(note.order) ? note.order : 0)),
@@ -247,10 +411,10 @@ async function createImportedNote(params: {
     enTitle: normalizedTitle,
     description,
     descriptionZh: description,
-    descriptionEn: description,
+    descriptionEn,
     topic: normalizedTopic,
     topicZh: normalizedTopic,
-    topicEn: normalizedTopic,
+    topicEn: normalizedTopicEn,
     tags: [],
     order: highestOrder + 1,
   });
@@ -264,11 +428,11 @@ async function createImportedNote(params: {
     note: {
       slug,
       weekLabelZh: normalizedTopic,
-      weekLabelEn: normalizedTopic,
+      weekLabelEn: normalizedTopicEn,
       zhTitle: normalizedTitle,
       enTitle: normalizedTitle,
       descriptionZh: description,
-      descriptionEn: description,
+      descriptionEn,
       topicZh: normalizedTopic,
       order: highestOrder + 1,
     },
@@ -321,6 +485,7 @@ export async function POST(request: Request) {
     const body = (await request.json().catch(() => null)) as {
       title?: unknown;
       topic?: unknown;
+      fileName?: unknown;
       content?: unknown;
       generateInteractiveDemo?: unknown;
     } | null;
@@ -331,6 +496,7 @@ export async function POST(request: Request) {
     const created = await createImportedNote({
       title: String(body.title ?? ""),
       topic: String(body.topic ?? ""),
+      fileName: String(body.fileName ?? ""),
       content: String(body.content ?? ""),
       generateInteractiveDemo: Boolean(body.generateInteractiveDemo),
     });

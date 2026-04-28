@@ -15,6 +15,7 @@ const MAX_HIGHLIGHTS_PER_NOTE = 1_500;
 const SUPPORTED_TEXT_EXTENSIONS = new Set(["txt", "md", "markdown", "tex", "csv", "rst"]);
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_ASSISTANT_MODEL = "deepseek-v4-flash";
+const DEFAULT_IMPORT_METADATA_MODEL = "deepseek-v4-flash";
 const ALLOWED_ASSISTANT_MODELS = new Set([DEFAULT_ASSISTANT_MODEL, "gpt-5.4-nano-2026-03-17", "gpt-4.1-mini"]);
 const ALLOWED_NOTE_GENERATION_MODELS = new Set(["qwen3.6-flash", "gpt-4.1-mini"]);
 const SUPPORTED_HIGHLIGHT_COLORS = new Set(["yellow"]);
@@ -1972,15 +1973,137 @@ function extractImportedDescription(markdown) {
   );
 }
 
-function buildImportedNoteMdx({ slug, title, topic, body }) {
-  const topicParts = splitTopic(topic, title);
-  const description = extractImportedDescription(body);
+function parseImportedCardMetadata(raw) {
+  const cleaned = stripCodeFence(raw).trim();
+  if (!cleaned) {
+    return {};
+  }
+
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  const jsonText = firstBrace >= 0 && lastBrace > firstBrace ? cleaned.slice(firstBrace, lastBrace + 1) : cleaned;
+
+  try {
+    const parsed = JSON.parse(jsonText);
+    return {
+      topicZh: String(parsed?.topicZh ?? parsed?.topic ?? "").replace(/\s+/g, " ").trim().slice(0, 64) || undefined,
+      topicEn: String(parsed?.topicEn ?? "").replace(/\s+/g, " ").trim().slice(0, 64) || undefined,
+      descriptionZh:
+        String(parsed?.subtitleZh ?? parsed?.descriptionZh ?? parsed?.subtitle ?? "")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 140) || undefined,
+      descriptionEn:
+        String(parsed?.subtitleEn ?? parsed?.descriptionEn ?? "")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 180) || undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+async function inferImportedCardMetadata({ env, title, topicInput, fileName, markdown }) {
+  if (!env.OPENAI_API_KEY) {
+    return {};
+  }
+
+  const openaiBaseUrl = normalizeApiBase(env.OPENAI_BASE_URL);
+  const input = [
+    {
+      role: "system",
+      content: [
+        {
+          type: "input_text",
+          text: [
+            "You generate metadata for imported Markdown note cards.",
+            "Return JSON only. Do not return markdown or explanations.",
+            'Schema: {"topicZh":"...","topicEn":"...","subtitleZh":"...","subtitleEn":"..."}',
+            "Rules:",
+            "- Do not rewrite the card title.",
+            "- topicZh must be a concise Chinese knowledge domain, no more than 16 Chinese characters.",
+            "- topicEn must be the aligned English topic, no more than 5 words.",
+            "- subtitleZh must summarize what this note helps the student learn, no more than 48 Chinese characters.",
+            "- subtitleEn must be the aligned English subtitle, no more than 90 English characters.",
+          ].join("\n"),
+        },
+      ],
+    },
+    {
+      role: "user",
+      content: [
+        {
+          type: "input_text",
+          text: [
+            `Fixed card title: ${title}`,
+            `Imported file name: ${fileName || title}`,
+            topicInput ? `User-provided topic hint: ${topicInput}` : "User-provided topic hint: none",
+            "",
+            "Markdown note content:",
+            clampText(markdown, MAX_METADATA_SOURCE_CHARS),
+          ].join("\n"),
+        },
+      ],
+    },
+  ];
+
+  const responsesResponse = await fetch(`${openaiBaseUrl}/responses`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: DEFAULT_IMPORT_METADATA_MODEL,
+      input,
+    }),
+  });
+  const responsesJson = await responsesResponse.json().catch(() => null);
+  if (responsesResponse.ok) {
+    const text = extractResponsesText(responsesJson);
+    if (text) {
+      const parsed = parseImportedCardMetadata(text);
+      if (parsed.topicZh || parsed.descriptionZh) {
+        return parsed;
+      }
+    }
+  }
+
+  const chatResponse = await fetch(`${openaiBaseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: DEFAULT_IMPORT_METADATA_MODEL,
+      messages: flattenInputMessages(input),
+    }),
+  });
+  const chatJson = await chatResponse.json().catch(() => null);
+  if (!chatResponse.ok) {
+    return {};
+  }
+
+  return parseImportedCardMetadata(extractChatCompletionsText(chatJson));
+}
+
+function buildImportedNoteMdx({ slug, title, topic, topicEn, body, description, descriptionEn }) {
+  const topicParts = topicEn
+    ? {
+        topicZh: topic,
+        topicEn,
+        topic: `${topic} / ${topicEn}`,
+      }
+    : splitTopic(topic, title);
+  const resolvedDescription = description || extractImportedDescription(body);
   const frontmatter = [
     "---",
     `title: ${JSON.stringify(title)}`,
-    `description: ${JSON.stringify(description)}`,
-    `descriptionZh: ${JSON.stringify(description)}`,
-    `descriptionEn: ${JSON.stringify(description)}`,
+    `description: ${JSON.stringify(resolvedDescription)}`,
+    `descriptionZh: ${JSON.stringify(resolvedDescription)}`,
+    `descriptionEn: ${JSON.stringify(descriptionEn || resolvedDescription)}`,
     `slug: ${JSON.stringify(slug)}`,
     `topic: ${JSON.stringify(topicParts.topic)}`,
     `topicZh: ${JSON.stringify(topicParts.topicZh)}`,
@@ -1992,7 +2115,8 @@ function buildImportedNoteMdx({ slug, title, topic, body }) {
 
   return {
     topicParts,
-    description,
+    description: resolvedDescription,
+    descriptionEn: descriptionEn || resolvedDescription,
     mdxContent: `${frontmatter}\n\n${String(body ?? "").trimEnd()}\n`,
   };
 }
@@ -3799,16 +3923,13 @@ export default {
 
         const title = String(body.title ?? "").trim().slice(0, 80);
         const topicInput = String(body.topic ?? "").trim().slice(0, 64);
+        const fileName = String(body.fileName ?? "").trim().slice(0, 240);
         const generateInteractiveDemo = Boolean(body.generateInteractiveDemo);
         const rawContent = extractMarkdownFromAssistantResponse(String(body.content ?? ""));
         const noteBody = stripLeadingFrontmatter(rawContent);
 
         if (!title) {
           return jsonResponse({ error: "Title is required." }, 400, corsOrigin);
-        }
-
-        if (!topicInput) {
-          return jsonResponse({ error: "Topic is required." }, 400, corsOrigin);
         }
 
         if (!noteBody) {
@@ -3823,10 +3944,26 @@ export default {
             AND (slug = ${baseSlug} OR slug LIKE ${`${baseSlug}-%`})
         `;
         const slug = resolveUniqueSlug(baseSlug, matchingSlugs.map((row) => row.slug));
+        let importedMetadata = {};
+        try {
+          importedMetadata = await inferImportedCardMetadata({
+            env,
+            title,
+            topicInput,
+            fileName,
+            markdown: noteBody,
+          });
+        } catch {
+          importedMetadata = {};
+        }
+        const resolvedTopic = topicInput || importedMetadata.topicZh || title;
         const importedBase = buildImportedNoteMdx({
           slug,
           title,
-          topic: topicInput,
+          topic: resolvedTopic,
+          topicEn: importedMetadata.topicEn,
+          description: importedMetadata.descriptionZh,
+          descriptionEn: importedMetadata.descriptionEn,
           body: noteBody,
         });
         const demos = generateInteractiveDemo
@@ -3873,7 +4010,7 @@ export default {
               zhTitle: title,
               enTitle: title,
               descriptionZh: importedBase.description,
-              descriptionEn: importedBase.description,
+              descriptionEn: importedBase.descriptionEn,
               topicZh: importedBase.topicParts.topicZh,
             },
           },

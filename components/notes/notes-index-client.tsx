@@ -1066,7 +1066,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
     const derived = deriveImportMetadataFromFileName(file.name);
     setImportTitle(derived.title);
-    setImportTopic(derived.topic);
+    setImportTopic("");
   }
 
   async function handleImportMarkdownNote(event: React.FormEvent<HTMLFormElement>) {
@@ -1076,21 +1076,17 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
       return;
     }
 
-    const nextTitle = sanitizeEditableText(importTitle, 80);
-    const nextTopic = sanitizeEditableText(importTopic, 64);
-
     if (!importFile) {
       setError("请先选择一个 Markdown 文件。");
       return;
     }
 
+    const derived = deriveImportMetadataFromFileName(importFile.name);
+    const nextTitle = sanitizeEditableText(importTitle || derived.title, 80);
+    const nextTopic = sanitizeEditableText(importTopic, 64);
+
     if (!nextTitle) {
       setError("请输入笔记标题。");
-      return;
-    }
-
-    if (!nextTopic) {
-      setError("请输入笔记主题。");
       return;
     }
 
@@ -1122,6 +1118,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
           body: JSON.stringify({
             title: nextTitle,
             topic: nextTopic,
+            fileName: importFile.name,
             content,
           }),
         });
@@ -1134,6 +1131,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
           body: JSON.stringify({
             title: nextTitle,
             topic: nextTopic,
+            fileName: importFile.name,
             content,
           }),
         });
