@@ -96,16 +96,73 @@ function serializeHistory(messages: AssistantMessage[]): AssistantMessage[] {
 const ASSISTANT_MATH_HINT_PATTERN =
   /\\[a-zA-Z]+|[=^_]|[≤≥≈]|(?:\d|[a-zA-Z])\s*[+\-*/]\s*(?:\d|[a-zA-Z])/;
 
+const BARE_LATEX_RUN_PATTERN =
+  /(^|[\s:：，,；;])((?=[A-Za-z0-9_\\{}()[\],.+\-*/=^&\s]*?(?:\\[a-zA-Z]+|[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9]+|\^|_[A-Za-z0-9]+))[A-Za-z0-9_\\{}()[\],.+\-*/=^&\s]+)(?=$|[\u4e00-\u9fff，。；：、,.!?|])/g;
+
 function looksLikeAssistantMath(value: string): boolean {
   return ASSISTANT_MATH_HINT_PATTERN.test(value.trim());
 }
 
+function splitByDollarMath(value: string): Array<{ text: string; math: boolean }> {
+  const parts: Array<{ text: string; math: boolean }> = [];
+  let cursor = 0;
+  const dollarMathPattern = /\$[^$\n]+\$/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = dollarMathPattern.exec(value)) !== null) {
+    if (match.index > cursor) {
+      parts.push({ text: value.slice(cursor, match.index), math: false });
+    }
+    parts.push({ text: match[0], math: true });
+    cursor = match.index + match[0].length;
+  }
+
+  if (cursor < value.length) {
+    parts.push({ text: value.slice(cursor), math: false });
+  }
+
+  return parts.length ? parts : [{ text: value, math: false }];
+}
+
+function wrapBareLatexRuns(value: string): string {
+  const repaired = value.replace(/\$(\s*=\s*)\$/g, "$1");
+
+  return splitByDollarMath(repaired)
+    .map((part) => {
+      if (part.math) {
+        return part.text;
+      }
+
+      return part.text
+        .replace(/\\begin\{aligned\}([\s\S]*?)\\end\{aligned\}/g, (_match, inner: string) => {
+          const normalized = `\\begin{aligned}${inner}\\end{aligned}`;
+          return ` $${normalized}$ `;
+        })
+        .replace(BARE_LATEX_RUN_PATTERN, (match, prefix: string, rawRun: string) => {
+          const leading = rawRun.match(/^\s*/)?.[0] ?? "";
+          const trailing = rawRun.match(/\s*$/)?.[0] ?? "";
+          const run = rawRun.trim();
+
+          if (!run || !looksLikeAssistantMath(run)) {
+            return match;
+          }
+
+          return `${prefix}${leading}$${run}$${trailing}`;
+        });
+    })
+    .join("");
+}
+
 function normalizeAssistantInlineMath(line: string): string {
-  return line
+  const normalized = line
     .replace(/\\\(([\s\S]*?)\\\)/g, (_match, inner: string) => `$${inner.trim()}$`)
-    .replace(/\(([^()\n]+)\)/g, (match, inner: string) =>
-      looksLikeAssistantMath(inner) ? `$${inner.trim()}$` : match,
-    );
+    .replace(/\(([^()\n]+)\)/g, (match, inner: string, offset: number, source: string) => {
+      const before = source.slice(Math.max(0, offset - 6), offset);
+      const shouldKeepLiteral = /\\(?:left|right)$/.test(before);
+      const shouldWrap = looksLikeAssistantMath(inner) && /\\[a-zA-Z]+|[=^_]/.test(inner);
+      return !shouldKeepLiteral && shouldWrap ? `$${inner.trim()}$` : match;
+    });
+  return wrapBareLatexRuns(normalized);
 }
 
 function normalizeAssistantMarkdown(text: string): string {
