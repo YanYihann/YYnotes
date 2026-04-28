@@ -100,6 +100,9 @@ const ASSISTANT_MATH_RUN_CHAR_PATTERN = /[A-Za-z0-9\\{}()[\],.;+\-*/=^_&<>≤≥
 const ASSISTANT_CJK_OR_SENTENCE_PATTERN = /[\u4e00-\u9fff，。；：、！？]/;
 const ASSISTANT_LATEX_BLOCK_PATTERN = /\\begin\{(?:aligned|align|equation|cases|matrix|pmatrix|bmatrix|array)\}[\s\S]*?\\end\{(?:aligned|align|equation|cases|matrix|pmatrix|bmatrix|array)\}/g;
 const ASSISTANT_PROTECTED_SPAN_PATTERN = /(`+[^`]*`+|\${1,2}[^$]*?\${1,2})/g;
+const ASSISTANT_ESCAPED_DISPLAY_MATH_PATTERN = /\\\$\$([\s\S]*?)\\\$\$/g;
+const ASSISTANT_ESCAPED_INLINE_MATH_PATTERN = /\\\$([^$\n]*?(?:\\[a-zA-Z]+|[=^_≤≥≈])[^$\n]*?)\\\$/g;
+const ASSISTANT_HALF_ESCAPED_INLINE_MATH_PATTERN = /\\\$([^$\n]*?(?:\\[a-zA-Z]+|[=^_≤≥≈])[^$\n]*?)\$/g;
 
 function looksLikeAssistantMath(value: string): boolean {
   return ASSISTANT_MATH_HINT_PATTERN.test(value.trim());
@@ -168,6 +171,13 @@ function repairAssistantOrphanDollars(value: string): string {
     );
 }
 
+function repairEscapedAssistantMathDelimiters(value: string): string {
+  return value
+    .replace(ASSISTANT_ESCAPED_DISPLAY_MATH_PATTERN, (_match, inner: string) => `$$${inner.trim()}$$`)
+    .replace(ASSISTANT_ESCAPED_INLINE_MATH_PATTERN, (_match, inner: string) => `$${inner.trim()}$`)
+    .replace(ASSISTANT_HALF_ESCAPED_INLINE_MATH_PATTERN, (_match, inner: string) => `$${inner.trim()}$`);
+}
+
 function wrapBareLatexRuns(value: string): string {
   const repaired = repairAssistantOrphanDollars(value);
 
@@ -222,6 +232,11 @@ function normalizeAssistantInlineMath(line: string): string {
 function normalizeAssistantMarkdown(text: string): string {
   const lines = text
     .replace(/\r\n?/g, "\n")
+    .replace(ASSISTANT_ESCAPED_DISPLAY_MATH_PATTERN, (_match, inner: string) => `$$${inner.trim()}$$`)
+    .replace(ASSISTANT_ESCAPED_INLINE_MATH_PATTERN, (_match, inner: string) => `$${inner.trim()}$`)
+    .replace(ASSISTANT_HALF_ESCAPED_INLINE_MATH_PATTERN, (_match, inner: string) => `$${inner.trim()}$`)
+    .replace(/\\\$\$/g, "$$")
+    .replace(/\\\$/g, "$")
     .replace(/\\\[/g, "$$")
     .replace(/\\\]/g, "$$")
     .split("\n");
@@ -239,7 +254,7 @@ function normalizeAssistantMarkdown(text: string): string {
     if (/^\$[^$\n]+\$$/.test(trimmed)) {
       return `$$\n${trimmed.slice(1, -1).trim()}\n$$`;
     }
-    return normalizeAssistantInlineMath(line);
+    return normalizeAssistantInlineMath(repairEscapedAssistantMathDelimiters(line));
   });
 
   return transformed.join("\n");

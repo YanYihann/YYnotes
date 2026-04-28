@@ -86,6 +86,7 @@ export function buildAssistantSystemPrompt(): string {
     "When user asks Chinese, answer Chinese. When user asks English, answer English. When user asks bilingual, answer with Chinese first and English below.",
     "When possible, reference formulas, methods, assumptions, and common mistakes from the note.",
     "All mathematical notation must be valid Markdown math for remark-math and KaTeX: use `$...$` for inline formulas and `$$...$$` for display formulas.",
+    "Never escape math delimiters as `\\$`; output literal `$...$` or `$$...$$` only.",
     "Never output raw TeX commands outside math delimiters. Do not use bare `\\frac`, `\\sum`, `\\operatorname`, `\\left`, `\\right`, `\\begin{aligned}`, or trailing unmatched `$`/`$$` in prose or table cells.",
     "Do not present yourself as a general unrelated chatbot.",
   ].join("\n");
