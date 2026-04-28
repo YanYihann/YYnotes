@@ -3014,6 +3014,7 @@ function buildAssistantSystemPrompt() {
     "When possible, reference formulas, methods, assumptions, and common mistakes from the note.",
     "All mathematical notation must be valid Markdown math for remark-math and KaTeX: use `$...$` for inline formulas and `$$...$$` for display formulas.",
     "Never escape math delimiters as `\\$`; output literal `$...$` or `$$...$$` only.",
+    "For environments such as `cases` or `aligned`, wrap the whole environment in one `$$...$$` block; never wrap `\\begin{...}` or each row in separate `$...$` fragments.",
     "Never output raw TeX commands outside math delimiters. Do not use bare `\\frac`, `\\sum`, `\\operatorname`, `\\left`, `\\right`, `\\begin{aligned}`, or trailing unmatched `$`/`$$` in prose or table cells.",
     "Do not present yourself as a general unrelated chatbot.",
   ].join("\n");

@@ -96,7 +96,7 @@ function serializeHistory(messages: AssistantMessage[]): AssistantMessage[] {
 const ASSISTANT_MATH_HINT_PATTERN =
   /\\[a-zA-Z]+|[=^_]|[≤≥≈]|(?:\d|[a-zA-Z])\s*[+\-*/]\s*(?:\d|[a-zA-Z])/;
 
-const ASSISTANT_MATH_RUN_CHAR_PATTERN = /[A-Za-z0-9\\{}()[\],.;+\-*/=^_&<>≤≥≈πΠα-ωΑ-Ω\s]/;
+const ASSISTANT_MATH_RUN_CHAR_PATTERN = /[A-Za-z0-9\\{}()[\],.;'+\-*/=^_&<>≤≥≈πΠα-ωΑ-Ω\s]/;
 const ASSISTANT_CJK_OR_SENTENCE_PATTERN = /[\u4e00-\u9fff，。；：、！？]/;
 const ASSISTANT_LATEX_BLOCK_PATTERN = /\\begin\{(?:aligned|align|equation|cases|matrix|pmatrix|bmatrix|array)\}[\s\S]*?\\end\{(?:aligned|align|equation|cases|matrix|pmatrix|bmatrix|array)\}/g;
 const ASSISTANT_PROTECTED_SPAN_PATTERN = /(`+[^`]*`+|\${1,2}[^$]*?\${1,2})/g;
@@ -178,6 +178,33 @@ function repairEscapedAssistantMathDelimiters(value: string): string {
     .replace(ASSISTANT_HALF_ESCAPED_INLINE_MATH_PATTERN, (_match, inner: string) => `$${inner.trim()}$`);
 }
 
+function repairFragmentedAssistantMathEnvironments(value: string): string {
+  return value.replace(
+    /\$\\begin\{(cases|aligned|align|equation|matrix|pmatrix|bmatrix|array)\}\$([\s\S]*?)\$\\end\{\1\}\$/g,
+    (_match, environment: string, inner: string) => {
+      const fragments = Array.from(inner.matchAll(/\$([^$]+?)\$/g))
+        .map((match) => match[1].trim())
+        .map((fragment) => fragment.replace(/\\\s*$/, "\\\\"))
+        .filter(Boolean);
+      const body = (fragments.length ? fragments.join("\n") : inner.replace(/\$/g, "").trim()).trim();
+
+      if (!body) {
+        return "";
+      }
+
+      return `$$\n\\begin{${environment}}\n${body}\n\\end{${environment}}\n$$`;
+    },
+  );
+}
+
+function repairAdjacentAssistantMathFragments(value: string): string {
+  return value
+    .replace(/\$\s+\$/g, " ")
+    .replace(/\$([,;:])\$\s+\$/g, "$1 $")
+    .replace(/\$([.])\s*$/g, "$1")
+    .replace(/\$\s*([,;:.])/g, "$1");
+}
+
 function wrapBareLatexRuns(value: string): string {
   const repaired = repairAssistantOrphanDollars(value);
 
@@ -230,32 +257,54 @@ function normalizeAssistantInlineMath(line: string): string {
 }
 
 function normalizeAssistantMarkdown(text: string): string {
-  const lines = text
-    .replace(/\r\n?/g, "\n")
+  const normalized = repairFragmentedAssistantMathEnvironments(
+    text
+      .replace(/\r\n?/g, "\n")
+      .replace(/\$begin\{/g, "$\\begin{")
+      .replace(/\$end\{/g, "$\\end{"),
+  );
+  const lines = normalized
     .replace(ASSISTANT_ESCAPED_DISPLAY_MATH_PATTERN, (_match, inner: string) => `$$${inner.trim()}$$`)
     .replace(ASSISTANT_ESCAPED_INLINE_MATH_PATTERN, (_match, inner: string) => `$${inner.trim()}$`)
     .replace(ASSISTANT_HALF_ESCAPED_INLINE_MATH_PATTERN, (_match, inner: string) => `$${inner.trim()}$`)
     .replace(/\\\$\$/g, "$$")
-    .replace(/\\\$/g, "$")
+    .replace(/\\\$/g, "$");
+  const prepared = repairAdjacentAssistantMathFragments(lines)
     .replace(/\\\[/g, "$$")
     .replace(/\\\]/g, "$$")
     .split("\n");
 
-  const transformed = lines.map((line) => {
+  const transformed: string[] = [];
+  let insideDisplayMath = false;
+
+  for (const line of prepared) {
     const trimmed = line.trim();
+    if (trimmed === "$$") {
+      transformed.push(line);
+      insideDisplayMath = !insideDisplayMath;
+      continue;
+    }
+
+    if (insideDisplayMath) {
+      transformed.push(line);
+      continue;
+    }
+
     const parenthesizedMatch = trimmed.match(/^\(([\s\S]+)\)$/);
     if (parenthesizedMatch) {
       const inner = parenthesizedMatch[1].trim();
       // Many model outputs wrap a full equation line with "(" and ")" instead of "$$...$$".
       if (looksLikeAssistantMath(inner)) {
-        return `$$\n${inner}\n$$`;
+        transformed.push(`$$\n${inner}\n$$`);
+        continue;
       }
     }
     if (/^\$[^$\n]+\$$/.test(trimmed)) {
-      return `$$\n${trimmed.slice(1, -1).trim()}\n$$`;
+      transformed.push(`$$\n${trimmed.slice(1, -1).trim()}\n$$`);
+      continue;
     }
-    return normalizeAssistantInlineMath(repairEscapedAssistantMathDelimiters(line));
-  });
+    transformed.push(normalizeAssistantInlineMath(repairEscapedAssistantMathDelimiters(line)));
+  }
 
   return transformed.join("\n");
 }
