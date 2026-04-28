@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  memo,
   useMemo,
   useRef,
   useState,
@@ -744,35 +745,57 @@ function blocksToMarkdown(blocks: EditableBlock[], refs: Map<string, HTMLElement
     .trimEnd();
 }
 
+function syncBlockFromDom(block: EditableBlock, refs: Map<string, HTMLElement>): EditableBlock {
+  if (block.kind === "image") {
+    const img = refs.get(block.id)?.querySelector("img");
+    return {
+      ...block,
+      imageAlt: img?.getAttribute("alt") || block.imageAlt,
+      imageSrc: img?.getAttribute("src") || block.imageSrc,
+    };
+  }
+
+  if (block.kind === "code" || block.kind === "math" || block.kind === "table") {
+    const raw = normalizeNewlines(refs.get(block.id)?.innerText ?? block.raw).trimEnd();
+    return { ...block, raw };
+  }
+
+  const element = refs.get(block.id) ?? null;
+  const text =
+    element?.dataset.inlineEditor === "true"
+      ? serializeInlineEditor(element)
+      : normalizeNewlines(element?.innerText ?? block.text ?? block.lines?.join("\n") ?? "").trimEnd();
+  if (block.kind === "list") {
+    return { ...block, lines: serializeListItems(element, block) };
+  }
+  if (block.kind === "blockquote") {
+    return { ...block, lines: text.split("\n") };
+  }
+  return { ...block, text };
+}
+
 function syncBlocksFromDom(blocks: EditableBlock[], refs: Map<string, HTMLElement>): EditableBlock[] {
-  return blocks.map((block) => {
-    if (block.kind === "image") {
-      const img = refs.get(block.id)?.querySelector("img");
-      return {
-        ...block,
-        imageAlt: img?.getAttribute("alt") || block.imageAlt,
-        imageSrc: img?.getAttribute("src") || block.imageSrc,
-      };
-    }
+  return blocks.map((block) => syncBlockFromDom(block, refs));
+}
 
-    if (block.kind === "code" || block.kind === "math" || block.kind === "table") {
-      const raw = normalizeNewlines(refs.get(block.id)?.innerText ?? block.raw).trimEnd();
-      return { ...block, raw };
-    }
+function syncOneBlockFromDom(
+  blocks: EditableBlock[],
+  refs: Map<string, HTMLElement>,
+  blockId: string | null,
+): EditableBlock[] {
+  if (!blockId) {
+    return blocks;
+  }
 
-    const element = refs.get(block.id) ?? null;
-    const text =
-      element?.dataset.inlineEditor === "true"
-        ? serializeInlineEditor(element)
-        : normalizeNewlines(element?.innerText ?? block.text ?? block.lines?.join("\n") ?? "").trimEnd();
-    if (block.kind === "list") {
-      return { ...block, lines: serializeListItems(element, block) };
+  let changed = false;
+  const nextBlocks = blocks.map((block) => {
+    if (block.id !== blockId) {
+      return block;
     }
-    if (block.kind === "blockquote") {
-      return { ...block, lines: text.split("\n") };
-    }
-    return { ...block, text };
+    changed = true;
+    return syncBlockFromDom(block, refs);
   });
+  return changed ? nextBlocks : blocks;
 }
 
 function RenderedReadOnlyBlock({
@@ -801,7 +824,18 @@ function RenderedReadOnlyBlock({
   );
 }
 
-function EditableBlockView({
+type EditableBlockViewProps = {
+  block: EditableBlock;
+  setRef: (id: string, node: HTMLElement | null) => void;
+  active: boolean;
+  activeInlineId: string | null;
+  onActivate: (id: string) => void;
+  onActivateInline: (blockId: string, inlineId: string | null) => void;
+  onFocus: (id: string) => void;
+  onPaste: (event: ClipboardEvent<HTMLElement>, id: string) => void | Promise<void>;
+};
+
+function EditableBlockViewBase({
   block,
   setRef,
   active,
@@ -810,16 +844,7 @@ function EditableBlockView({
   onActivateInline,
   onFocus,
   onPaste,
-}: {
-  block: EditableBlock;
-  setRef: (id: string, node: HTMLElement | null) => void;
-  active: boolean;
-  activeInlineId: string | null;
-  onActivate: (id: string) => void;
-  onActivateInline: (blockId: string, inlineId: string | null) => void;
-  onFocus: (id: string) => void;
-  onPaste: (event: ClipboardEvent<HTMLElement>, id: string) => void;
-}) {
+}: EditableBlockViewProps) {
   const editableClass =
     "rounded-apple px-3 py-2 outline-none transition focus-visible:ring-2 focus-visible:ring-primary/35 hover:bg-primary/[0.04]";
 
@@ -870,6 +895,9 @@ function EditableBlockView({
     const ListTag = block.ordered ? "ol" : "ul";
     const lines = block.lines?.length ? block.lines : [""];
     const listSegments = lines.flatMap((line, index) => parseInlineSegments(line, `${block.id}-item-${index}`));
+    const listSource = lines
+      .map((line, index) => (block.ordered ? `${index + 1}. ${line}` : `- ${line}`))
+      .join("\n");
 
     if (!active) {
       return (
@@ -891,7 +919,7 @@ function EditableBlockView({
           }}
           className="my-5 rounded-apple px-2 py-1 transition hover:bg-primary/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
         >
-          <NoteMarkdown source={block.raw} />
+          <NoteMarkdown source={listSource || block.raw} />
         </div>
       );
     }
@@ -1052,6 +1080,19 @@ function EditableBlockView({
   );
 }
 
+const EditableBlockView = memo(
+  EditableBlockViewBase,
+  (previous, next) =>
+    previous.block === next.block &&
+    previous.active === next.active &&
+    previous.activeInlineId === next.activeInlineId &&
+    previous.setRef === next.setRef &&
+    previous.onActivate === next.onActivate &&
+    previous.onActivateInline === next.onActivateInline &&
+    previous.onFocus === next.onFocus &&
+    previous.onPaste === next.onPaste,
+);
+
 export function NoteEditorPanel({
   source,
   mode,
@@ -1091,7 +1132,10 @@ export function NoteEditorPanel({
   }, []);
 
   const activateFullBlock = useCallback((id: string) => {
-    setFullBlocks((current) => syncBlocksFromDom(current, fullBlockRefs.current));
+    const previousActiveBlockId = activeBlockIdRef.current;
+    if (previousActiveBlockId && previousActiveBlockId !== id) {
+      setFullBlocks((current) => syncOneBlockFromDom(current, fullBlockRefs.current, previousActiveBlockId));
+    }
     activeBlockIdRef.current = id;
     setActiveBlockId(id);
     setActiveInlineId(null);
@@ -1117,6 +1161,16 @@ export function NoteEditorPanel({
     activeBlockIdRef.current = nextBlock.id;
     setActiveBlockId(nextBlock.id);
     setActiveInlineId(null);
+  }, []);
+
+  const focusFullBlock = useCallback((id: string) => {
+    const previousActiveBlockId = activeBlockIdRef.current;
+    if (previousActiveBlockId && previousActiveBlockId !== id) {
+      setFullBlocks((current) => syncOneBlockFromDom(current, fullBlockRefs.current, previousActiveBlockId));
+      setActiveInlineId(null);
+    }
+    activeBlockIdRef.current = id;
+    setActiveBlockId((current) => (current === id ? current : id));
   }, []);
 
   const insertImagesAfterBlock = useCallback((blockId: string | null, images: ImageMarkdown[]) => {
@@ -1395,14 +1449,11 @@ export function NoteEditorPanel({
                 block={block}
                 setRef={setFullBlockRef}
                 active={activeBlockId === block.id}
-                activeInlineId={activeInlineId}
+                activeInlineId={activeBlockId === block.id ? activeInlineId : null}
                 onActivate={activateFullBlock}
                 onActivateInline={activateInline}
-                onFocus={(id) => {
-                  activeBlockIdRef.current = id;
-                  setActiveBlockId(id);
-                }}
-                onPaste={(event, id) => void handleFullPaste(event, id)}
+                onFocus={focusFullBlock}
+                onPaste={handleFullPaste}
               />
             ))
           ) : (
