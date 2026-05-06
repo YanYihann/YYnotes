@@ -1998,6 +1998,15 @@ function parseImportedCardMetadata(raw) {
           .replace(/\s+/g, " ")
           .trim()
           .slice(0, 180) || undefined,
+      tags: Array.isArray(parsed?.tags)
+        ? Array.from(
+            new Set(
+              parsed.tags
+                .map((item) => String(item ?? "").replace(/^#+/, "").replace(/\s+/g, " ").trim().slice(0, 24))
+                .filter(Boolean),
+            ),
+          ).slice(0, 6)
+        : [],
     };
   } catch {
     return {};
@@ -2019,13 +2028,14 @@ async function inferImportedCardMetadata({ env, title, topicInput, fileName, mar
           text: [
             "You generate metadata for imported Markdown note cards.",
             "Return JSON only. Do not return markdown or explanations.",
-            'Schema: {"topicZh":"...","topicEn":"...","subtitleZh":"...","subtitleEn":"..."}',
+            'Schema: {"topicZh":"...","topicEn":"...","subtitleZh":"...","subtitleEn":"...","tags":["..."]}',
             "Rules:",
             "- Do not rewrite the card title.",
             "- topicZh must be a concise Chinese knowledge domain, no more than 16 Chinese characters.",
             "- topicEn must be the aligned English topic, no more than 5 words.",
             "- subtitleZh must summarize what this note helps the student learn, no more than 48 Chinese characters.",
             "- subtitleEn must be the aligned English subtitle, no more than 90 English characters.",
+            "- tags must contain 3 to 6 concise Chinese or bilingual study tags, no leading #.",
           ].join("\n"),
         },
       ],
@@ -2109,6 +2119,7 @@ function buildImportedNoteMdx({ slug, title, topic, topicEn, body, description, 
     `topicZh: ${JSON.stringify(topicParts.topicZh)}`,
     `topicEn: ${JSON.stringify(topicParts.topicEn)}`,
     "tags: []",
+    `importMetadataStatus: "pending"`,
     `order: ${Date.now()}`,
     "---",
   ].join("\n");
@@ -2118,6 +2129,152 @@ function buildImportedNoteMdx({ slug, title, topic, topicEn, body, description, 
     description: resolvedDescription,
     descriptionEn: descriptionEn || resolvedDescription,
     mdxContent: `${frontmatter}\n\n${String(body ?? "").trimEnd()}\n`,
+  };
+}
+
+function buildCloudNoteMetadataPayload(row) {
+  return {
+    slug: String(row?.slug ?? ""),
+    weekLabelZh: String(row?.topic_zh ?? row?.topic ?? ""),
+    weekLabelEn: String(row?.topic_en ?? row?.topic ?? ""),
+    topicZh: String(row?.topic_zh ?? row?.topic ?? ""),
+    topicEn: String(row?.topic_en ?? row?.topic ?? ""),
+    zhTitle: String(row?.title ?? ""),
+    enTitle: String(row?.title ?? ""),
+    descriptionZh:
+      extractFrontmatterTextFromRaw(row?.mdx_content, "descriptionZh") ||
+      extractFrontmatterTextFromRaw(row?.mdx_content, "description") ||
+      `关于“${String(row?.title ?? "笔记")}”的学习笔记。`,
+    descriptionEn:
+      extractFrontmatterTextFromRaw(row?.mdx_content, "descriptionEn") ||
+      extractFrontmatterTextFromRaw(row?.mdx_content, "description") ||
+      `Study note on ${String(row?.title ?? "this note")}.`,
+    tags: parseTags(row?.tags),
+  };
+}
+
+async function refreshImportedNoteMetadata({ env, sql, userId, slug }) {
+  const rows = await sql`
+    SELECT slug, title, topic, topic_zh, topic_en, tags, mdx_content, source_text
+    FROM notes
+    WHERE user_id = ${userId} AND slug = ${slug} AND deleted_at IS NULL
+    LIMIT 1
+  `;
+
+  if (!rows.length) {
+    return { error: { status: 404, message: "Note not found." } };
+  }
+
+  const current = rows[0];
+  const status = extractFrontmatterTextFromRaw(current.mdx_content, "importMetadataStatus");
+  if (status !== "pending") {
+    return { updated: false, note: buildCloudNoteMetadataPayload(current) };
+  }
+
+  if (!env.OPENAI_API_KEY) {
+    const nextContent = upsertMdxFrontmatter(current.mdx_content, {
+      importMetadataStatus: "unavailable",
+    });
+    await sql`
+      UPDATE notes
+      SET mdx_content = ${nextContent}, updated_at = NOW()
+      WHERE user_id = ${userId} AND slug = ${slug}
+    `;
+    return { updated: false, note: buildCloudNoteMetadataPayload({ ...current, mdx_content: nextContent }) };
+  }
+
+  let importedMetadata = {};
+  try {
+    importedMetadata = await inferImportedCardMetadata({
+      env,
+      title: String(current.title ?? ""),
+      topicInput: String(current.topic_zh ?? current.topic ?? ""),
+      fileName: `${slug}.mdx`,
+      markdown: String(current.source_text || stripLeadingFrontmatter(current.mdx_content) || ""),
+    });
+  } catch {
+    importedMetadata = {};
+  }
+
+  const hasUsefulMetadata =
+    importedMetadata.topicZh ||
+    importedMetadata.topicEn ||
+    importedMetadata.descriptionZh ||
+    importedMetadata.descriptionEn ||
+    (Array.isArray(importedMetadata.tags) && importedMetadata.tags.length > 0);
+
+  if (!hasUsefulMetadata) {
+    const nextContent = upsertMdxFrontmatter(current.mdx_content, {
+      importMetadataStatus: "unavailable",
+    });
+    await sql`
+      UPDATE notes
+      SET mdx_content = ${nextContent}, updated_at = NOW()
+      WHERE user_id = ${userId} AND slug = ${slug}
+    `;
+    return { updated: false, note: buildCloudNoteMetadataPayload({ ...current, mdx_content: nextContent }) };
+  }
+
+  const nextTopicZh = String(importedMetadata.topicZh || current.topic_zh || current.topic || current.title)
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 64);
+  const nextTopicEn = String(importedMetadata.topicEn || current.topic_en || nextTopicZh)
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 64);
+  const nextTopic = `${nextTopicZh} / ${nextTopicEn}`;
+  const nextDescriptionZh = String(
+    importedMetadata.descriptionZh ||
+      extractFrontmatterTextFromRaw(current.mdx_content, "descriptionZh") ||
+      extractImportedDescription(current.source_text),
+  )
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 140);
+  const nextDescriptionEn = String(
+    importedMetadata.descriptionEn ||
+      extractFrontmatterTextFromRaw(current.mdx_content, "descriptionEn") ||
+      nextDescriptionZh,
+  )
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 180);
+  const metadataTags = parseTags(importedMetadata.tags).slice(0, 6);
+  const nextTags = metadataTags.length ? metadataTags : parseTags(current.tags).slice(0, 12);
+  const nextContent = upsertMdxFrontmatter(current.mdx_content, {
+    description: nextDescriptionZh,
+    descriptionZh: nextDescriptionZh,
+    descriptionEn: nextDescriptionEn,
+    topic: nextTopic,
+    topicZh: nextTopicZh,
+    topicEn: nextTopicEn,
+    tags: nextTags,
+    importMetadataStatus: "ready",
+  });
+
+  await sql`
+    UPDATE notes
+    SET
+      topic = ${nextTopic},
+      topic_zh = ${nextTopicZh},
+      topic_en = ${nextTopicEn},
+      tags = ${JSON.stringify(nextTags)},
+      mdx_content = ${nextContent},
+      updated_at = NOW()
+    WHERE user_id = ${userId} AND slug = ${slug}
+  `;
+
+  return {
+    updated: true,
+    note: buildCloudNoteMetadataPayload({
+      ...current,
+      topic: nextTopic,
+      topic_zh: nextTopicZh,
+      topic_en: nextTopicEn,
+      tags: nextTags,
+      mdx_content: nextContent,
+    }),
   };
 }
 
@@ -4061,26 +4218,11 @@ export default {
             AND (slug = ${baseSlug} OR slug LIKE ${`${baseSlug}-%`})
         `;
         const slug = resolveUniqueSlug(baseSlug, matchingSlugs.map((row) => row.slug));
-        let importedMetadata = {};
-        try {
-          importedMetadata = await inferImportedCardMetadata({
-            env,
-            title,
-            topicInput,
-            fileName,
-            markdown: noteBody,
-          });
-        } catch {
-          importedMetadata = {};
-        }
-        const resolvedTopic = topicInput || importedMetadata.topicZh || title;
+        const resolvedTopic = topicInput || title;
         const importedBase = buildImportedNoteMdx({
           slug,
           title,
           topic: resolvedTopic,
-          topicEn: importedMetadata.topicEn,
-          description: importedMetadata.descriptionZh,
-          descriptionEn: importedMetadata.descriptionEn,
           body: noteBody,
         });
         const demos = generateInteractiveDemo
@@ -4129,11 +4271,28 @@ export default {
               descriptionZh: importedBase.description,
               descriptionEn: importedBase.descriptionEn,
               topicZh: importedBase.topicParts.topicZh,
+              tags: [],
             },
           },
           201,
           corsOrigin,
         );
+      }
+
+      const importMetadataMatch = url.pathname.match(/^\/notes\/([^/]+)\/import-metadata$/);
+      if (request.method === "POST" && importMetadataMatch) {
+        const userId = Number(authenticatedUser?.id);
+        const slug = decodeURIComponent(importMetadataMatch[1] ?? "").trim();
+        if (!slug) {
+          return jsonResponse({ error: "Slug is required." }, 400, corsOrigin);
+        }
+
+        const refreshed = await refreshImportedNoteMetadata({ env, sql, userId, slug });
+        if (refreshed.error) {
+          return jsonResponse({ error: refreshed.error.message }, refreshed.error.status, corsOrigin);
+        }
+
+        return jsonResponse({ success: true, ...refreshed }, 200, corsOrigin);
       }
 
       if (request.method === "GET" && url.pathname.startsWith("/notes/")) {

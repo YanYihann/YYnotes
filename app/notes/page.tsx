@@ -18,6 +18,7 @@ export default async function NotesIndexPage() {
     descriptionZh: note.descriptionZh,
     descriptionEn: note.descriptionEn,
     topicZh: note.topicZh,
+    tags: note.tags,
     order: note.order,
   }));
 

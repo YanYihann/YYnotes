@@ -19,6 +19,7 @@ type NoteListItem = {
   descriptionZh: string;
   descriptionEn: string;
   topicZh: string;
+  tags: string[];
   order: number;
 };
 
@@ -39,6 +40,7 @@ type NoteUpdateResponse = {
     weekLabelZh?: string;
     weekLabelEn?: string;
     topicZh?: string;
+    tags?: string[];
   };
   error?: string;
 };
@@ -48,6 +50,10 @@ type NoteCreateResponse = {
   slug?: unknown;
   note?: {
     slug?: string;
+    descriptionZh?: string;
+    descriptionEn?: string;
+    topicZh?: string;
+    tags?: unknown;
   };
   error?: string;
 };
@@ -227,6 +233,7 @@ function toCloudNoteItem(row: CloudNoteRecord): NoteListItem | null {
     descriptionZh: normalized.descriptionZh,
     descriptionEn: normalized.descriptionEn,
     topicZh: normalized.topicZh,
+    tags: normalized.tags,
     order: normalized.order,
   };
 }
@@ -258,6 +265,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
             ...note,
             viewHref: `/notes/${note.slug}`,
             folderId: "",
+            tags: note.tags ?? [],
             order: Number.isFinite(note.order) ? note.order : index,
           })),
         ),
@@ -431,6 +439,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
             ...note,
             viewHref: `/notes/${note.slug}`,
             folderId: "",
+            tags: note.tags ?? [],
             order: Number.isFinite(note.order) ? note.order : index,
           }));
 
@@ -544,6 +553,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
         note.descriptionEn,
         note.weekLabelZh,
         note.weekLabelEn,
+        note.tags.join(" "),
         folderName,
       ]
         .join(" ")
@@ -1442,7 +1452,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                 enTitle={note.enTitle}
                 descriptionZh={note.descriptionZh}
                 descriptionEn={note.descriptionEn}
-                tags={[]}
+                tags={note.tags}
                 compact
                 showOpenLink={false}
                 headerRight={
@@ -1524,7 +1534,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                   enTitle={note.enTitle}
                   descriptionZh={note.descriptionZh}
                   descriptionEn={note.descriptionEn}
-                  tags={[]}
+                  tags={note.tags}
                   compact
                   showOpenLink={false}
                   footerAction={

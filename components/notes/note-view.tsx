@@ -82,6 +82,21 @@ type SaveNoteContentResponse = {
   error?: string;
 };
 
+type ImportMetadataResponse = {
+  success?: boolean;
+  updated?: boolean;
+  note?: Partial<{
+    weekLabelZh: string;
+    weekLabelEn: string;
+    topicZh: string;
+    topicEn: string;
+    descriptionZh: string;
+    descriptionEn: string;
+    tags: string[];
+  }>;
+  error?: string;
+};
+
 type TextNodeEntry = {
   node: Text;
   start: number;
@@ -379,6 +394,13 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
   const { showEnglish } = useLanguage();
   const { session } = useAuth();
   const authToken = session?.token ?? "";
+  const [noteMeta, setNoteMeta] = useState({
+    topicZh: note.topicZh,
+    topicEn: note.topicEn,
+    descriptionZh: note.descriptionZh,
+    descriptionEn: note.descriptionEn,
+    tags: note.tags,
+  });
   const [noteSource, setNoteSource] = useState(note.noteContent);
   const renderedSource = useMemo(() => {
     const prepared = prepareNoteMarkdown(noteSource, { showEnglish });
@@ -408,11 +430,63 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
   const [editError, setEditError] = useState("");
 
   useEffect(() => {
+    setNoteMeta({
+      topicZh: note.topicZh,
+      topicEn: note.topicEn,
+      descriptionZh: note.descriptionZh,
+      descriptionEn: note.descriptionEn,
+      tags: note.tags,
+    });
     setNoteSource(note.noteContent);
     setEditorOpen(false);
     setEditorMode(null);
     setEditError("");
-  }, [note.noteContent, note.slug]);
+  }, [note.descriptionEn, note.descriptionZh, note.noteContent, note.slug, note.tags, note.topicEn, note.topicZh]);
+
+  useEffect(() => {
+    if (!note.slug || (storageMode === "cloud" && (!CLOUD_API_BASE || !authToken))) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function refreshImportMetadata() {
+      try {
+        const response =
+          storageMode === "cloud"
+            ? await fetch(buildCloudApiUrl(`/notes/${encodeURIComponent(note.slug)}/import-metadata`), {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${authToken}`,
+                },
+              })
+            : await fetch(`/api/notes?slug=${encodeURIComponent(note.slug)}&action=refresh-import-metadata`, {
+                method: "POST",
+              });
+
+        const json = (await response.json().catch(() => null)) as ImportMetadataResponse | null;
+        if (!response.ok || !json?.success || !json.note || cancelled) {
+          return;
+        }
+
+        setNoteMeta((current) => ({
+          topicZh: String(json.note?.topicZh ?? json.note?.weekLabelZh ?? current.topicZh),
+          topicEn: String(json.note?.topicEn ?? json.note?.weekLabelEn ?? current.topicEn),
+          descriptionZh: String(json.note?.descriptionZh ?? current.descriptionZh),
+          descriptionEn: String(json.note?.descriptionEn ?? current.descriptionEn),
+          tags: Array.isArray(json.note?.tags) ? json.note.tags : current.tags,
+        }));
+      } catch {
+        // Metadata refresh is opportunistic; opening and reading the note should not depend on it.
+      }
+    }
+
+    void refreshImportMetadata();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken, note.slug, storageMode]);
 
   const saveNoteContent = useCallback(
     async (nextSource: string) => {
@@ -795,8 +869,8 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
       headings={headings}
       noteContext={{
         slug: note.slug,
-        weekLabelZh: note.topicZh,
-        weekLabelEn: note.topicEn,
+        weekLabelZh: noteMeta.topicZh,
+        weekLabelEn: noteMeta.topicEn,
         zhTitle: note.zhTitle,
         enTitle: note.enTitle,
         noteContent: noteSource,
@@ -805,12 +879,12 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
       <article className="rounded-apple bg-card px-5 py-8 text-card-foreground shadow-card sm:px-8 md:px-10">
         <header className="mb-8 border-b border-border pb-6">
           <p className="font-text text-[12px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-            {note.topicZh}
-            <span className="ui-en ml-1">{note.topicEn} - Note</span>
+            {noteMeta.topicZh}
+            <span className="ui-en ml-1">{noteMeta.topicEn} - Note</span>
           </p>
-          {note.tags.length ? (
+          {noteMeta.tags.length ? (
             <div className="mt-3 flex flex-wrap gap-2">
-              {note.tags.map((tag) => (
+              {noteMeta.tags.map((tag) => (
                 <span
                   key={tag}
                   className="rounded-capsule border border-border px-2 py-0.5 font-text text-[12px] tracking-tightCaption text-muted-foreground"
@@ -827,8 +901,8 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
             </span>
           </h1>
           <p className="mt-3 font-text text-[17px] leading-[1.47] tracking-tightBody text-muted-foreground">
-            {note.descriptionZh}
-            <span className="ui-en mt-1 block text-muted-foreground">{note.descriptionEn}</span>
+            {noteMeta.descriptionZh}
+            <span className="ui-en mt-1 block text-muted-foreground">{noteMeta.descriptionEn}</span>
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <button

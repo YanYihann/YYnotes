@@ -20,6 +20,7 @@ type ImportedCardMetadata = {
   topicEn?: string;
   descriptionZh?: string;
   descriptionEn?: string;
+  tags?: string[];
 };
 
 async function materializeLocalDynamicDemos(source: string): Promise<string> {
@@ -190,12 +191,22 @@ function parseImportedCardMetadata(raw: string): ImportedCardMetadata {
     const topicEn = String(parsed.topicEn ?? "").replace(/\s+/g, " ").trim().slice(0, 64);
     const descriptionZh = String(parsed.subtitleZh ?? parsed.descriptionZh ?? parsed.subtitle ?? "").replace(/\s+/g, " ").trim().slice(0, 140);
     const descriptionEn = String(parsed.subtitleEn ?? parsed.descriptionEn ?? "").replace(/\s+/g, " ").trim().slice(0, 180);
+    const tags = Array.isArray(parsed.tags)
+      ? Array.from(
+          new Set(
+            parsed.tags
+              .map((item) => String(item ?? "").replace(/^#+/, "").replace(/\s+/g, " ").trim().slice(0, 24))
+              .filter(Boolean),
+          ),
+        ).slice(0, 6)
+      : [];
 
     return {
       topicZh: topicZh || undefined,
       topicEn: topicEn || undefined,
       descriptionZh: descriptionZh || undefined,
       descriptionEn: descriptionEn || undefined,
+      tags,
     };
   } catch {
     return {};
@@ -215,13 +226,14 @@ async function inferImportedCardMetadata(params: {
   const systemPrompt = [
     "You generate metadata for imported Markdown note cards.",
     "Return JSON only. Do not return markdown or explanations.",
-    'Schema: {"topicZh":"...","topicEn":"...","subtitleZh":"...","subtitleEn":"..."}',
+    'Schema: {"topicZh":"...","topicEn":"...","subtitleZh":"...","subtitleEn":"...","tags":["..."]}',
     "Rules:",
     "- Do not rewrite the card title.",
     "- topicZh must be a concise Chinese knowledge domain, no more than 16 Chinese characters.",
     "- topicEn must be the aligned English topic, no more than 5 words.",
     "- subtitleZh must summarize what this note helps the student learn, no more than 48 Chinese characters.",
     "- subtitleEn must be the aligned English subtitle, no more than 90 English characters.",
+    "- tags must contain 3 to 6 concise Chinese or bilingual study tags, no leading #.",
   ].join("\n");
   const userPrompt = [
     `Fixed card title: ${params.title}`,
@@ -301,9 +313,45 @@ function buildNoteListPayload(notes: Awaited<ReturnType<typeof getWeekNotes>>, t
     descriptionZh: note.descriptionZh,
     descriptionEn: note.descriptionEn,
     topicZh: note.topicZh,
+    tags: note.tags,
     order: note.order,
     trashed,
   }));
+}
+
+function normalizeTags(value: unknown, maxItems = 6): string[] {
+  const rawItems = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(/[\uFF0C,\u3001|]/)
+      : [];
+  return Array.from(
+    new Set(
+      rawItems
+        .map((item) => String(item ?? "").replace(/^#+/, "").replace(/\s+/g, " ").trim().slice(0, 24))
+        .filter(Boolean),
+    ),
+  ).slice(0, maxItems);
+}
+
+function buildLocalNotePayload(note: Awaited<ReturnType<typeof getWeekBySlug>>) {
+  if (!note) {
+    return null;
+  }
+
+  return {
+    slug: note.slug,
+    weekLabelZh: note.weekLabelZh,
+    weekLabelEn: note.weekLabelEn,
+    zhTitle: note.zhTitle,
+    enTitle: note.enTitle,
+    descriptionZh: note.descriptionZh,
+    descriptionEn: note.descriptionEn,
+    topicZh: note.topicZh,
+    topicEn: note.topicEn,
+    tags: note.tags,
+    order: note.order,
+  };
 }
 
 async function moveNoteBetweenDirs(params: {
@@ -367,14 +415,8 @@ async function createImportedNote(params: {
     throw new Error("Markdown content cannot be empty.");
   }
 
-  const inferredMetadata = await inferImportedCardMetadata({
-    title: normalizedTitle,
-    topicInput: normalizedTopicInput,
-    fileName: String(params.fileName ?? ""),
-    markdown: cleanedBody,
-  });
-  const normalizedTopic = normalizedTopicInput || normalizeEditableText(inferredMetadata.topicZh, 64) || normalizedTitle;
-  const normalizedTopicEn = normalizeEditableText(inferredMetadata.topicEn, 64) || normalizedTopic;
+  const normalizedTopic = normalizedTopicInput || normalizedTitle;
+  const normalizedTopicEn = normalizedTopic;
 
   if (params.generateInteractiveDemo) {
     const demos = selectInteractiveDemos({
@@ -397,8 +439,8 @@ async function createImportedNote(params: {
     slugifyTitle(normalizedTitle),
     [...existingNotes, ...trashedNotes].map((note) => note.slug),
   );
-  const description = normalizeEditableText(inferredMetadata.descriptionZh, 140) || extractDescriptionFromBody(cleanedBody);
-  const descriptionEn = normalizeEditableText(inferredMetadata.descriptionEn, 180) || description;
+  const description = extractDescriptionFromBody(cleanedBody);
+  const descriptionEn = description;
   const highestOrder = Math.max(
     0,
     ...existingNotes.map((note) => (Number.isFinite(note.order) ? note.order : 0)),
@@ -416,6 +458,7 @@ async function createImportedNote(params: {
     topicZh: normalizedTopic,
     topicEn: normalizedTopicEn,
     tags: [],
+    importMetadataStatus: "pending",
     order: highestOrder + 1,
   });
 
@@ -434,9 +477,61 @@ async function createImportedNote(params: {
       descriptionZh: description,
       descriptionEn,
       topicZh: normalizedTopic,
+      tags: [],
       order: highestOrder + 1,
     },
   };
+}
+
+async function refreshImportedNoteMetadata(slug: string) {
+  const note = await getWeekBySlug(slug);
+  if (!note) {
+    throw new Error("Note not found.");
+  }
+
+  if (!ensureInsideDir(note.filePath, NOTES_DIR_PATH)) {
+    throw new Error("Refusing to update file outside notes directory.");
+  }
+
+  const rawSource = await fs.readFile(note.filePath, "utf8");
+  const parsed = matter(rawSource);
+  const frontmatter = { ...(parsed.data as Record<string, unknown>) };
+
+  if (frontmatter.importMetadataStatus !== "pending") {
+    return { updated: false, note: buildLocalNotePayload(note) };
+  }
+
+  if (!process.env.OPENAI_API_KEY) {
+    frontmatter.importMetadataStatus = "unavailable";
+    await fs.writeFile(note.filePath, matter.stringify(parsed.content, frontmatter), "utf8");
+    return { updated: false, note: buildLocalNotePayload(note) };
+  }
+
+  const metadata = await inferImportedCardMetadata({
+    title: note.zhTitle,
+    topicInput: note.topicZh,
+    fileName: path.basename(note.filePath),
+    markdown: parsed.content,
+  });
+
+  const nextTopicZh = normalizeEditableText(metadata.topicZh, 64) || note.topicZh;
+  const nextTopicEn = normalizeEditableText(metadata.topicEn, 64) || note.topicEn || nextTopicZh;
+  const nextDescriptionZh = normalizeEditableText(metadata.descriptionZh, 140) || note.descriptionZh;
+  const nextDescriptionEn = normalizeEditableText(metadata.descriptionEn, 180) || note.descriptionEn || nextDescriptionZh;
+  const nextTags = normalizeTags(metadata.tags).length ? normalizeTags(metadata.tags) : note.tags;
+
+  frontmatter.description = nextDescriptionZh;
+  frontmatter.descriptionZh = nextDescriptionZh;
+  frontmatter.descriptionEn = nextDescriptionEn;
+  frontmatter.topic = nextTopicZh;
+  frontmatter.topicZh = nextTopicZh;
+  frontmatter.topicEn = nextTopicEn;
+  frontmatter.tags = nextTags;
+  frontmatter.importMetadataStatus = "ready";
+
+  await fs.writeFile(note.filePath, matter.stringify(parsed.content, frontmatter), "utf8");
+  const updatedNote = await getWeekBySlug(slug);
+  return { updated: true, note: buildLocalNotePayload(updatedNote) };
 }
 
 export async function GET(request: Request) {
@@ -480,6 +575,15 @@ export async function POST(request: Request) {
         restoredFrom: restored.previousSlug,
         fileName: restored.fileName,
       });
+    }
+
+    if (action === "refresh-import-metadata") {
+      if (!slug) {
+        return NextResponse.json({ error: "Missing slug." }, { status: 400 });
+      }
+
+      const refreshed = await refreshImportedNoteMetadata(slug);
+      return NextResponse.json({ success: true, ...refreshed });
     }
 
     const body = (await request.json().catch(() => null)) as {
