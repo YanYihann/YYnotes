@@ -39,7 +39,7 @@ type GenerationSourcePayload = {
 };
 
 type GeneratorMode = "direct" | "chatgpt" | "autogpt";
-type PromptPreset = "standard" | "detailed";
+type PromptPreset = "standard" | "detailed" | "custom";
 
 type ImportedNoteResult = {
   success?: boolean;
@@ -60,6 +60,11 @@ const PROMPT_PRESET_OPTIONS: Array<{ value: PromptPreset; label: string; descrip
     value: "detailed",
     label: "详细版",
     description: "使用 prompt2.md，适合更细致、更严格的排版与讲解。",
+  },
+  {
+    value: "custom",
+    label: "自定义",
+    description: "使用下方填写的自定义 Prompt 作为本次生成的基础规则。",
   },
 ];
 
@@ -791,7 +796,7 @@ function buildNoteViewHref(slug: string): string {
   return `/notes/${slug}`;
 }
 
-function resolvePromptTemplateFileName(preset: PromptPreset): string {
+function resolvePromptTemplateFileName(preset: Exclude<PromptPreset, "custom">): string {
   return preset === "detailed" ? "prompt2.md" : "prompt.md";
 }
 
@@ -826,7 +831,7 @@ function buildPromptCandidates(fileName: string): string[] {
   return Array.from(candidates);
 }
 
-async function loadPromptTemplateFromSite(preset: PromptPreset): Promise<string> {
+async function loadPromptTemplateFromSite(preset: Exclude<PromptPreset, "custom">): Promise<string> {
   const candidates = buildPromptCandidates(resolvePromptTemplateFileName(preset));
 
   for (const candidate of candidates) {
@@ -842,6 +847,18 @@ async function loadPromptTemplateFromSite(preset: PromptPreset): Promise<string>
   }
 
   throw new Error(`无法读取 prompt.md，请确认该文件已发布到站点根目录。已尝试路径：${candidates.join("，")}`);
+}
+
+async function resolvePromptTemplateForPreset(preset: PromptPreset, customPrompt: string): Promise<string> {
+  if (preset === "custom") {
+    const normalized = customPrompt.trim();
+    if (!normalized) {
+      throw new Error("请先填写自定义 Prompt，或切换到标准版/详细版预设。");
+    }
+    return normalized;
+  }
+
+  return loadPromptTemplateFromSite(preset);
 }
 
 function resolvePdfWorkerSrcFromCurrentOrigin(): string {
@@ -958,6 +975,7 @@ async function callLocalGenerator(params: {
   extraInstruction: string;
   model: string;
   promptPreset: PromptPreset;
+  customPromptTemplate: string;
   generateInteractiveDemo: boolean;
 }): Promise<GenerationResult> {
   const body = new FormData();
@@ -967,6 +985,9 @@ async function callLocalGenerator(params: {
   appendGenerationSource(body, params.source);
   body.append("model", params.model);
   body.append("promptPreset", params.promptPreset);
+  if (params.promptPreset === "custom") {
+    body.append("customPromptTemplate", params.customPromptTemplate);
+  }
   body.append("generateInteractiveDemo", String(params.generateInteractiveDemo));
   if (params.extraInstruction) {
     body.append("extraInstruction", params.extraInstruction);
@@ -998,10 +1019,11 @@ async function callCloudGenerator(params: {
   extraInstruction: string;
   model: string;
   promptPreset: PromptPreset;
+  customPromptTemplate: string;
   authToken: string;
   generateInteractiveDemo: boolean;
 }): Promise<GenerationResult> {
-  const promptTemplate = await loadPromptTemplateFromSite(params.promptPreset);
+  const promptTemplate = await resolvePromptTemplateForPreset(params.promptPreset, params.customPromptTemplate);
   const apiBase = normalizeApiBase(CLOUD_API_BASE);
   const body = new FormData();
   body.append("title", params.title);
@@ -1176,6 +1198,7 @@ export function WeekNoteGenerator() {
   const { session } = useAuth();
   const [mode, setMode] = useState<GeneratorMode>("direct");
   const [selectedPromptPreset, setSelectedPromptPreset] = useState<PromptPreset>("standard");
+  const [customPromptTemplate, setCustomPromptTemplate] = useState("");
   const [title, setTitle] = useState("");
   const [topic, setTopic] = useState("");
   const [tags, setTags] = useState("");
@@ -1237,6 +1260,7 @@ export function WeekNoteGenerator() {
         extraInstruction: extraInstruction.trim(),
         model: selectedModel,
         promptPreset: selectedPromptPreset,
+        customPromptTemplate: customPromptTemplate.trim(),
         authToken: session?.token || "",
         generateInteractiveDemo,
       };
@@ -1308,7 +1332,7 @@ export function WeekNoteGenerator() {
       throw new Error("请先上传原始资料文件。");
     }
 
-    const promptTemplate = await loadPromptTemplateFromSite(selectedPromptPreset);
+    const promptTemplate = await resolvePromptTemplateForPreset(selectedPromptPreset, customPromptTemplate);
     const derived = deriveMetadataFromFileName(sourceFile.name);
     const resolvedTitle = title.trim() || derived.title || "请根据上传资料自动生成标题";
     const resolvedTopic = topic.trim() || derived.topic || "请根据上传资料自动生成主题";
@@ -1559,6 +1583,18 @@ export function WeekNoteGenerator() {
         <p className="mt-2 font-text text-[12px] leading-[1.45] text-muted-foreground">
           {PROMPT_PRESET_OPTIONS.find((option) => option.value === selectedPromptPreset)?.description}
         </p>
+        {selectedPromptPreset === "custom" ? (
+          <label className="mt-3 block space-y-2">
+            <SectionLabel>自定义 Prompt</SectionLabel>
+            <TextArea
+              value={customPromptTemplate}
+              onChange={(event) => setCustomPromptTemplate(event.target.value)}
+              rows={8}
+              placeholder="粘贴或编写本次生成要遵守的完整 Prompt。它会替代 prompt.md / prompt2.md 的基础规则。"
+              className="font-mono text-[12px] leading-[1.5]"
+            />
+          </label>
+        ) : null}
       </div>
 
       {mode === "direct" ? (

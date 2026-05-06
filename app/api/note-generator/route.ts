@@ -37,6 +37,7 @@ const MAX_SOURCE_CHARS = 35_000;
 const MAX_STYLE_CONTEXT_CHARS = 16_000;
 const MAX_METADATA_SOURCE_CHARS = 8_000;
 const MAX_EXTRA_INSTRUCTION_CHARS = 1_500;
+const MAX_CUSTOM_PROMPT_TEMPLATE_CHARS = 60_000;
 const MAX_INTERACTIVE_DESIGN_RESPONSE_CHARS = 20_000;
 const SUPPORTED_TEXT_EXTENSIONS = new Set(["txt", "md", "markdown", "tex", "csv", "rst"]);
 
@@ -65,7 +66,8 @@ type GenerateOptions = {
   generateInteractiveDemo: boolean;
 };
 
-type PromptPreset = keyof typeof PROMPT_TEMPLATE_PATHS;
+type BundledPromptPreset = keyof typeof PROMPT_TEMPLATE_PATHS;
+type PromptPreset = BundledPromptPreset | "custom";
 
 async function materializeLocalDynamicDemos(source: string): Promise<string> {
   const specs = extractDynamicDemoSpecsFromContent(source);
@@ -993,10 +995,29 @@ function buildStyleContext(
 }
 
 function resolvePromptPreset(value: string): PromptPreset {
-  return value === "detailed" ? "detailed" : "standard";
+  if (value === "detailed" || value === "custom") {
+    return value;
+  }
+  return "standard";
 }
 
-async function loadPromptTemplate(preset: PromptPreset): Promise<string> {
+function isBundledPromptPreset(preset: PromptPreset): preset is BundledPromptPreset {
+  return preset === "standard" || preset === "detailed";
+}
+
+async function loadPromptTemplate(preset: PromptPreset, customPromptTemplate: string): Promise<string> {
+  if (preset === "custom") {
+    const normalizedCustomPrompt = clampText(customPromptTemplate, MAX_CUSTOM_PROMPT_TEMPLATE_CHARS);
+    if (!normalizedCustomPrompt) {
+      throw new Error("自定义 Prompt 为空，无法生成笔记。");
+    }
+    return normalizedCustomPrompt;
+  }
+
+  if (!isBundledPromptPreset(preset)) {
+    throw new Error("Prompt 预设无效。");
+  }
+
   const content = await fs.readFile(PROMPT_TEMPLATE_PATHS[preset], "utf8");
   const normalized = content.trim();
 
@@ -1871,6 +1892,7 @@ export async function POST(request: Request) {
     const extraInstruction = String(formData.get("extraInstruction") ?? "");
     const modelName = resolveModelName(String(formData.get("model") ?? ""));
     const promptPreset = resolvePromptPreset(String(formData.get("promptPreset") ?? ""));
+    const customPromptTemplate = String(formData.get("customPromptTemplate") ?? "");
     const generateInteractiveDemo = String(formData.get("generateInteractiveDemo") ?? "").trim() === "true";
 
     let extractedSource = "";
@@ -1912,7 +1934,7 @@ export async function POST(request: Request) {
     const topicParts = splitTopic(resolvedMeta.topic, title);
     const targetFilePath = path.join(NOTES_DIR_PATH, `${slug}.mdx`);
 
-    const promptTemplate = await loadPromptTemplate(promptPreset);
+    const promptTemplate = await loadPromptTemplate(promptPreset, customPromptTemplate);
     const styleContext = buildStyleContext(existingNotes);
 
     const messages: OpenAIInputItem[] = [
