@@ -270,6 +270,12 @@ YYnotes/
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
+## Privacy and Content Handling
+
+- Uploaded learning material and note context may be sent to the configured AI provider. Do not upload confidential, copyrighted, or personally identifiable material unless you are authorized to process it.
+- Keep `OPENAI_API_KEY`, database URLs, OAuth credentials, and authentication secrets out of Git and browser-delivered variables.
+- Local notes live under `笔记/`; cloud notes follow the retention and access rules of the configured Worker and database deployment.
+
 ## Roadmap
 
 - [x] Cloud auth (email/password + Google)
