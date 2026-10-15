@@ -12,6 +12,8 @@ import {
   type ReactNode,
 } from "react";
 import katex from "katex";
+import { useLanguage } from "@/components/language-provider";
+import { UiText } from "@/components/ui-text";
 import { NoteMarkdown } from "@/components/notes/note-markdown";
 import { cn } from "@/lib/utils";
 
@@ -1101,6 +1103,7 @@ export function NoteEditorPanel({
   onSave,
   onCancel,
 }: NoteEditorPanelProps) {
+  const { t } = useLanguage();
   const normalizedSource = useMemo(() => normalizeNewlines(source), [source]);
   const parsedBlocks = useMemo(() => parseMarkdownBlocks(normalizedSource), [normalizedSource]);
   const fullBlockRefs = useRef(new Map<string, HTMLElement>());
@@ -1251,28 +1254,27 @@ export function NoteEditorPanel({
         : blocksToMarkdown(fullBlocks, fullBlockRefs.current);
 
     if (!nextSource.trim()) {
-      setError("内容不能为空。");
+      setError(t("内容不能为空。","Enter note content."));
       return;
     }
 
     if (nextSource.trimEnd() === normalizedSource.trimEnd()) {
-      setError(mode === "annotation" ? "请先输入要插入的注释内容。" : "没有可保存的改动。");
+      setError(mode === "annotation" ? t("请先输入要插入的注释内容。","Enter an annotation.") : t("没有可保存的改动。","No changes to save."));
       return;
     }
 
     try {
       await onSave(`${nextSource.trimEnd()}\n`);
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "保存失败，请稍后重试。");
+      setError(saveError instanceof Error ? saveError.message : t("保存失败，请稍后重试。","Could not save. Retry."));
     }
-  }, [annotationInsertionIndex, fullBlocks, mode, normalizedSource, onSave, parsedBlocks]);
+  }, [annotationInsertionIndex, fullBlocks, mode, normalizedSource, onSave, parsedBlocks, t]);
 
   if (mode === null) {
     return (
       <section className="rounded-apple border border-primary/25 bg-primary/[0.04] p-4 shadow-card">
         <p className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-          选择编辑方式
-          <span className="ui-en ml-1">Choose Edit Mode</span>
+          <UiText zh="选择编辑方式" en="Choose Edit Mode" />
         </p>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <button
@@ -1281,12 +1283,9 @@ export function NoteEditorPanel({
             className="rounded-apple border border-primary/30 bg-card px-4 py-4 text-left shadow-card transition hover:-translate-y-0.5 hover:border-primary/70 hover:bg-primary/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <span className="block font-display text-[22px] font-semibold tracking-tightDisplay text-foreground">
-              笔记注释
-              <span className="ui-en ml-2 text-[0.65em] font-normal text-muted-foreground">Annotation</span>
+              <UiText zh="笔记注释" en="Annotation" />
             </span>
-            <span className="mt-2 block font-text text-[13px] leading-[1.5] text-muted-foreground">
-              原文保持只读；在渲染后的笔记中点击插入位置，然后直接写一个醒目的引用注释。
-            </span>
+            <span className="mt-2 block font-text text-[13px] leading-[1.5] text-muted-foreground"><UiText zh="原文保持只读；在渲染后的笔记中点击插入位置，然后直接写一个醒目的引用注释。" en="Insert a marked quote annotation while preserving the original note." /></span>
           </button>
           <button
             type="button"
@@ -1294,12 +1293,9 @@ export function NoteEditorPanel({
             className="rounded-apple border border-border bg-card px-4 py-4 text-left shadow-card transition hover:-translate-y-0.5 hover:border-primary/60 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <span className="block font-display text-[22px] font-semibold tracking-tightDisplay text-foreground">
-              全文编辑
-              <span className="ui-en ml-2 text-[0.65em] font-normal text-muted-foreground">Full Edit</span>
+              <UiText zh="全文编辑" en="Full Edit" />
             </span>
-            <span className="mt-2 block font-text text-[13px] leading-[1.5] text-muted-foreground">
-              像 Typora 一样在排版后的标题、段落、列表和图片上直接修改。
-            </span>
+            <span className="mt-2 block font-text text-[13px] leading-[1.5] text-muted-foreground"><UiText zh="像 Typora 一样在排版后的标题、段落、列表和图片上直接修改。" en="Edit the rendered note. Select a formula, table, or code block to edit its source." /></span>
           </button>
         </div>
         <button
@@ -1307,8 +1303,7 @@ export function NoteEditorPanel({
           onClick={onCancel}
           className="btn-apple-link mt-4 inline-flex px-3 py-1.5 font-text text-[14px] tracking-tightCaption transition focus-visible:outline-none"
         >
-          取消
-          <span className="ui-en ml-1">Cancel</span>
+          <UiText zh="取消" en="Cancel" />
         </button>
       </section>
     );
@@ -1319,13 +1314,12 @@ export function NoteEditorPanel({
       <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-            {mode === "annotation" ? "笔记注释模式" : "全文编辑模式"}
-            <span className="ui-en ml-1">{mode === "annotation" ? "Annotation Mode" : "Full Edit Mode"}</span>
+            <UiText zh={mode === "annotation" ? "笔记注释模式" : "全文编辑模式"} en={mode === "annotation" ? "Annotation Mode" : "Full Edit Mode"} />
           </p>
           <p className="mt-1 font-text text-[12px] leading-[1.45] text-muted-foreground">
             {mode === "annotation"
-              ? "点击正文中的块选择插入位置，然后在出现的引用块里直接编辑；粘贴图片会立即以图片形式显示。"
-              : "这里显示的是渲染后的笔记，不是 Markdown 代码框；点击任意块即可直接修改。"}
+              ? t("点击正文中的块选择插入位置，然后在出现的引用块里直接编辑；粘贴图片会立即以图片形式显示。", "Select a block to insert a quote annotation. Pasted images appear immediately.")
+              : t("点击任意块即可直接修改。", "Select any block to edit it. Formulas, code, and tables reveal their source when selected.")}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -1337,9 +1331,7 @@ export function NoteEditorPanel({
                 ? "border-primary bg-primary text-primary-foreground"
                 : "border-border bg-card text-muted-foreground hover:bg-accent"
             }`}
-          >
-            笔记注释
-          </button>
+          ><UiText zh="笔记注释" en="Annotation" /></button>
           <button
             type="button"
             onClick={() => onModeChange("full")}
@@ -1348,9 +1340,7 @@ export function NoteEditorPanel({
                 ? "border-primary bg-primary text-primary-foreground"
                 : "border-border bg-card text-muted-foreground hover:bg-accent"
             }`}
-          >
-            全文编辑
-          </button>
+          ><UiText zh="全文编辑" en="Full edit" /></button>
         </div>
       </header>
 
@@ -1361,10 +1351,7 @@ export function NoteEditorPanel({
           disabled={saving}
           className="btn-apple-primary inline-flex items-center rounded-apple px-5 py-2 font-text text-[14px] transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
         >
-          {saving ? "保存中..." : mode === "annotation" ? "保存注释" : "保存全文"}
-          <span className="ui-en ml-1">
-            {saving ? "Saving..." : mode === "annotation" ? "Save Annotation" : "Save Full Note"}
-          </span>
+          <UiText zh={saving ? t("保存中...","Saving…") : mode === "annotation" ? "保存注释" : "保存全文"} en={saving ? "Saving..." : mode === "annotation" ? "Save Annotation" : "Save Full Note"} />
         </button>
         <button
           type="button"
@@ -1372,8 +1359,7 @@ export function NoteEditorPanel({
           disabled={saving}
           className="btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
         >
-          取消
-          <span className="ui-en ml-1">Cancel</span>
+          <UiText zh="取消" en="Cancel" />
         </button>
         {mode === "full" ? (
           <button
@@ -1382,8 +1368,7 @@ export function NoteEditorPanel({
             disabled={saving}
             className="rounded-capsule border border-border px-3 py-1.5 font-text text-[13px] text-muted-foreground transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            添加段落
-            <span className="ui-en ml-1">Add paragraph</span>
+            <UiText zh="添加段落" en="Add paragraph" />
           </button>
         ) : null}
       </div>
@@ -1462,9 +1447,7 @@ export function NoteEditorPanel({
               contentEditable
               suppressContentEditableWarning
               className="my-5 min-h-[160px] rounded-apple px-3 py-2 font-text text-[17px] leading-[1.7] tracking-tightBody text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-            >
-              开始输入笔记内容...
-            </p>
+            ><UiText zh="开始输入笔记内容..." en="Enter note content…" /></p>
           )}
         </div>
       )}
@@ -1482,10 +1465,7 @@ export function NoteEditorPanel({
           disabled={saving}
           className="btn-apple-primary inline-flex items-center rounded-apple px-5 py-2 font-text text-[14px] transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
         >
-          {saving ? "保存中..." : mode === "annotation" ? "保存注释" : "保存全文"}
-          <span className="ui-en ml-1">
-            {saving ? "Saving..." : mode === "annotation" ? "Save Annotation" : "Save Full Note"}
-          </span>
+          <UiText zh={saving ? t("保存中...","Saving…") : mode === "annotation" ? "保存注释" : "保存全文"} en={saving ? "Saving..." : mode === "annotation" ? "Save Annotation" : "Save Full Note"} />
         </button>
         <button
           type="button"
@@ -1493,8 +1473,7 @@ export function NoteEditorPanel({
           disabled={saving}
           className="btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
         >
-          取消
-          <span className="ui-en ml-1">Cancel</span>
+          <UiText zh="取消" en="Cancel" />
         </button>
       </div>
     </section>

@@ -1,19 +1,7 @@
 "use client";
-
 import { useLanguage } from "@/components/language-provider";
 
 export function LanguageToggle() {
-  const { showEnglish, toggleShowEnglish } = useLanguage();
-
-  return (
-    <button
-      type="button"
-      onClick={toggleShowEnglish}
-      className="inline-flex h-9 items-center rounded-capsule border border-white/30 bg-transparent px-4 text-[14px] tracking-tightCaption text-white transition hover:border-white/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-[#000000]"
-      aria-label={showEnglish ? "Switch to Chinese only" : "Switch to bilingual"}
-    >
-      {showEnglish ? "中英" : "中文"}
-      <span className="ui-en ml-2 text-white/80">{showEnglish ? "Bilingual" : "Chinese"}</span>
-    </button>
-  );
+  const { locale, toggleShowEnglish, t } = useLanguage();
+  return <button type="button" onClick={toggleShowEnglish} className="header-language" aria-label={t("切换为英文", "Switch to Chinese")} title={t("切换为英文", "Switch to Chinese")}><span className={locale === "en" ? "language-active" : ""}>EN</span><span>/</span><span className={locale === "zh" ? "language-active" : ""}>中文</span></button>;
 }

@@ -1,6 +1,9 @@
 "use client";
 
+import { useLanguage } from "@/components/language-provider";
 import Link from "next/link";
+import { resolveGenerationSourcePayload, resolvePromptTemplateForPreset, submitNoteGeneration, type GenerationInput } from "@/lib/ai/note-generation-client";
+import { UiText } from "@/components/ui-text";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
@@ -30,12 +33,6 @@ type MetadataUpdateResult = {
   success: boolean;
   slug: string;
   note: (GeneratedNote & { tags?: string[] }) | null;
-};
-
-type GenerationSourcePayload = {
-  sourceFile?: File;
-  sourceText?: string;
-  fileName: string;
 };
 
 type GeneratorMode = "direct" | "chatgpt" | "autogpt";
@@ -70,14 +67,6 @@ const PROMPT_PRESET_OPTIONS: Array<{ value: PromptPreset; label: string; descrip
 
 function normalizeApiBase(input: string): string {
   return input.replace(/\/+$/, "");
-}
-
-function fileExtension(fileName: string): string {
-  const index = fileName.lastIndexOf(".");
-  if (index === -1) {
-    return "";
-  }
-  return fileName.slice(index + 1).toLowerCase();
 }
 
 function parseTagsInput(raw: string): string[] {
@@ -796,266 +785,11 @@ function buildNoteViewHref(slug: string): string {
   return `/notes/${slug}`;
 }
 
-function resolvePromptTemplateFileName(preset: Exclude<PromptPreset, "custom">): string {
-  return preset === "detailed" ? "prompt2.md" : "prompt.md";
+async function callLocalGenerator(params: GenerationInput): Promise<GenerationResult> {
+  return submitNoteGeneration(params, "local");
 }
-
-function buildPromptCandidates(fileName: string): string[] {
-  const candidates = new Set<string>([`./${fileName}`]);
-
-  if (typeof window !== "undefined") {
-    const { origin, pathname } = window.location;
-    const segments = pathname.split("/").filter(Boolean);
-    const repoSegment = segments[0];
-
-    if (repoSegment) {
-      candidates.add(`/${repoSegment}/${fileName}`);
-    }
-
-    const currentDir = pathname.endsWith("/") ? pathname : pathname.slice(0, pathname.lastIndexOf("/") + 1);
-    if (currentDir) {
-      candidates.add(`${currentDir}${fileName}`);
-    }
-
-    candidates.add(`/${fileName}`);
-
-    for (const candidate of Array.from(candidates)) {
-      try {
-        candidates.add(new URL(candidate, origin).toString());
-      } catch {
-        // Ignore malformed URL candidates.
-      }
-    }
-  }
-
-  return Array.from(candidates);
-}
-
-async function loadPromptTemplateFromSite(preset: Exclude<PromptPreset, "custom">): Promise<string> {
-  const candidates = buildPromptCandidates(resolvePromptTemplateFileName(preset));
-
-  for (const candidate of candidates) {
-    const response = await fetch(candidate, { cache: "no-store" });
-    if (!response.ok) {
-      continue;
-    }
-
-    const content = (await response.text()).trim();
-    if (content) {
-      return content;
-    }
-  }
-
-  throw new Error(`无法读取 prompt.md，请确认该文件已发布到站点根目录。已尝试路径：${candidates.join("，")}`);
-}
-
-async function resolvePromptTemplateForPreset(preset: PromptPreset, customPrompt: string): Promise<string> {
-  if (preset === "custom") {
-    const normalized = customPrompt.trim();
-    if (!normalized) {
-      throw new Error("请先填写自定义 Prompt，或切换到标准版/详细版预设。");
-    }
-    return normalized;
-  }
-
-  return loadPromptTemplateFromSite(preset);
-}
-
-function resolvePdfWorkerSrcFromCurrentOrigin(): string {
-  if (typeof window === "undefined") {
-    return "/pdf.worker.min.mjs";
-  }
-
-  const scriptEl = document.querySelector<HTMLScriptElement>('script[src*="/_next/"]');
-  let prefix = "";
-
-  if (scriptEl?.src) {
-    try {
-      const scriptUrl = new URL(scriptEl.src, window.location.origin);
-      const nextIndex = scriptUrl.pathname.indexOf("/_next/");
-      if (nextIndex > 0) {
-        prefix = scriptUrl.pathname.slice(0, nextIndex);
-      }
-    } catch {
-      prefix = "";
-    }
-  }
-
-  const normalized = `${prefix}/pdf.worker.min.mjs`.replace(/\/{2,}/g, "/");
-  return new URL(normalized, window.location.origin).toString();
-}
-
-async function extractPdfText(file: File): Promise<string> {
-  const pdfJs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const typedPdfJs = pdfJs as unknown as {
-    GlobalWorkerOptions: {
-      workerSrc: string;
-    };
-    getDocument: (options: unknown) => {
-      promise: Promise<{
-        numPages: number;
-        getPage: (pageNumber: number) => Promise<{
-          getTextContent: () => Promise<{ items: Array<{ str?: string }> }>;
-        }>;
-      }>;
-    };
-  };
-
-  typedPdfJs.GlobalWorkerOptions.workerSrc = resolvePdfWorkerSrcFromCurrentOrigin();
-
-  const sourceData = new Uint8Array(await file.arrayBuffer());
-  const pdf: {
-    numPages: number;
-    getPage: (pageNumber: number) => Promise<{
-      getTextContent: () => Promise<{ items: Array<{ str?: string }> }>;
-    }>;
-  } = await typedPdfJs.getDocument({
-    data: sourceData,
-    isEvalSupported: false,
-    useSystemFonts: true,
-  }).promise;
-
-  const pageTexts: string[] = [];
-
-  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-    const page = await pdf.getPage(pageNumber);
-    const content = await page.getTextContent();
-    const text = content.items
-      .map((item) => (typeof item?.str === "string" ? item.str : ""))
-      .filter(Boolean)
-      .join(" ")
-      .trim();
-    if (text) {
-      pageTexts.push(text);
-    }
-  }
-
-  return pageTexts.join("\n\n").trim();
-}
-
-async function resolveGenerationSourcePayload(sourceFile: File): Promise<GenerationSourcePayload> {
-  const extension = fileExtension(sourceFile.name);
-  if (extension === "doc" || extension === "ppt") {
-    throw new Error("暂不支持旧版 .doc / .ppt，请先另存为 .docx / .pptx 后再上传。");
-  }
-
-  if (extension !== "pdf") {
-    return {
-      sourceFile,
-      fileName: sourceFile.name,
-    };
-  }
-
-  const sourceText = (await extractPdfText(sourceFile)).trim();
-  if (!sourceText) {
-    throw new Error("PDF 文件可读内容过少，请更换文件或转成 DOCX / TXT 后重试。");
-  }
-
-  return {
-    sourceText,
-    fileName: sourceFile.name,
-  };
-}
-
-function appendGenerationSource(body: FormData, source: GenerationSourcePayload): void {
-  if (source.sourceFile instanceof File) {
-    body.append("sourceFile", source.sourceFile);
-  }
-  if (source.sourceText) {
-    body.append("sourceText", source.sourceText);
-  }
-  body.append("fileName", source.fileName);
-}
-
-async function callLocalGenerator(params: {
-  title: string;
-  topic: string;
-  tags: string;
-  source: GenerationSourcePayload;
-  extraInstruction: string;
-  model: string;
-  promptPreset: PromptPreset;
-  customPromptTemplate: string;
-  generateInteractiveDemo: boolean;
-}): Promise<GenerationResult> {
-  const body = new FormData();
-  body.append("title", params.title);
-  body.append("topic", params.topic);
-  body.append("tags", params.tags);
-  appendGenerationSource(body, params.source);
-  body.append("model", params.model);
-  body.append("promptPreset", params.promptPreset);
-  if (params.promptPreset === "custom") {
-    body.append("customPromptTemplate", params.customPromptTemplate);
-  }
-  body.append("generateInteractiveDemo", String(params.generateInteractiveDemo));
-  if (params.extraInstruction) {
-    body.append("extraInstruction", params.extraInstruction);
-  }
-
-  const response = await fetch("/api/note-generator", {
-    method: "POST",
-    body,
-  });
-
-  const json = (await response.json().catch(() => null)) as { error?: string } & Partial<GenerationResult> | null;
-
-  if (!response.ok || !json) {
-    throw new Error(json?.error || "生成失败，请稍后重试。");
-  }
-
-  if (!json.success || !json.slug) {
-    throw new Error("生成结果无效，请重试。");
-  }
-
-  return json as GenerationResult;
-}
-
-async function callCloudGenerator(params: {
-  title: string;
-  topic: string;
-  tags: string;
-  source: GenerationSourcePayload;
-  extraInstruction: string;
-  model: string;
-  promptPreset: PromptPreset;
-  customPromptTemplate: string;
-  authToken: string;
-  generateInteractiveDemo: boolean;
-}): Promise<GenerationResult> {
-  const promptTemplate = await resolvePromptTemplateForPreset(params.promptPreset, params.customPromptTemplate);
-  const apiBase = normalizeApiBase(CLOUD_API_BASE);
-  const body = new FormData();
-  body.append("title", params.title);
-  body.append("topic", params.topic);
-  body.append("tags", params.tags);
-  appendGenerationSource(body, params.source);
-  body.append("promptTemplate", promptTemplate);
-  body.append("model", params.model);
-  body.append("generateInteractiveDemo", String(params.generateInteractiveDemo));
-  if (params.extraInstruction) {
-    body.append("extraInstruction", params.extraInstruction);
-  }
-
-  const response = await fetch(`${apiBase}/notes/generate`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${params.authToken}`,
-    },
-    body,
-  });
-
-  const json = (await response.json().catch(() => null)) as { error?: string } & Partial<GenerationResult> | null;
-
-  if (!response.ok || !json) {
-    throw new Error(json?.error || "云端生成失败，请稍后重试。");
-  }
-
-  if (!json.success || !json.slug) {
-    throw new Error("云端返回了无效结果，请重试。");
-  }
-
-  return json as GenerationResult;
+async function callCloudGenerator(params: GenerationInput): Promise<GenerationResult> {
+  return submitNoteGeneration(params, "cloud");
 }
 
 async function callLocalMetadataUpdate(params: {
@@ -1194,6 +928,7 @@ function TextArea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
 }
 
 export function WeekNoteGenerator() {
+  const { t } = useLanguage();
   const router = useRouter();
   const { session } = useAuth();
   const [mode, setMode] = useState<GeneratorMode>("direct");
@@ -1203,7 +938,7 @@ export function WeekNoteGenerator() {
   const [topic, setTopic] = useState("");
   const [tags, setTags] = useState("");
   const [extraInstruction, setExtraInstruction] = useState("");
-  const [selectedModel, setSelectedModel] = useState("gpt-4.1-mini");
+  const [selectedModel, setSelectedModel] = useState("deepseek-v3.2");
   const [generateInteractiveDemo, setGenerateInteractiveDemo] = useState(false);
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -1237,12 +972,12 @@ export function WeekNoteGenerator() {
     event.preventDefault();
 
     if (!sourceFile) {
-      setError("请先上传原始资料文件。");
+      setError(t("请先上传原始资料文件。","Attach a source file."));
       return;
     }
 
     if (IS_CLOUD_MODE && !session?.token) {
-      setError("请先登录后再生成云端笔记。");
+      setError(t("请先登录后再生成云端笔记。","Sign in to generate notes."));
       return;
     }
 
@@ -1273,7 +1008,7 @@ export function WeekNoteGenerator() {
       setEditTags((generationResult.note?.tags ?? parseTagsInput(payload.tags)).join(", "));
       router.refresh();
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "生成失败，请稍后重试。");
+      setError(submitError instanceof Error ? submitError.message : t("生成失败，请稍后重试。","Generation failed. Retry."));
     } finally {
       setSubmitting(false);
     }
@@ -1285,7 +1020,7 @@ export function WeekNoteGenerator() {
     }
 
     if (IS_CLOUD_MODE && !session?.token) {
-      setError("登录状态已失效，请重新登录。");
+      setError(t("登录状态已失效，请重新登录。","Your session has expired. Sign in again."));
       return;
     }
 
@@ -1321,7 +1056,7 @@ export function WeekNoteGenerator() {
 
       router.refresh();
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "更新元信息失败，请稍后重试。");
+      setError(saveError instanceof Error ? saveError.message : t("更新元信息失败，请稍后重试。","Could not update metadata. Retry."));
     } finally {
       setSavingMeta(false);
     }
@@ -1329,7 +1064,7 @@ export function WeekNoteGenerator() {
 
   async function buildChatGptPromptText(): Promise<string> {
     if (!sourceFile) {
-      throw new Error("请先上传原始资料文件。");
+      throw new Error(t("请先上传原始资料文件。","Attach a source file."));
     }
 
     const promptTemplate = await resolvePromptTemplateForPreset(selectedPromptPreset, customPromptTemplate);
@@ -1358,7 +1093,7 @@ export function WeekNoteGenerator() {
 
   async function onBuildChatGptPrompt() {
     if (!sourceFile) {
-      setError("请先上传原始资料文件。");
+      setError(t("请先上传原始资料文件。","Attach a source file."));
       return;
     }
 
@@ -1370,7 +1105,7 @@ export function WeekNoteGenerator() {
       const prompt = await buildChatGptPromptText();
       setChatGptPrompt(prompt);
     } catch (promptError) {
-      setError(promptError instanceof Error ? promptError.message : "生成 ChatGPT Prompt 失败。");
+      setError(promptError instanceof Error ? promptError.message : t("生成 ChatGPT Prompt 失败。","Could not generate prompt."));
     } finally {
       setBuildingChatGptPrompt(false);
     }
@@ -1378,7 +1113,7 @@ export function WeekNoteGenerator() {
 
   async function onCopyChatGptPrompt() {
     if (!chatGptPrompt.trim()) {
-      setError("请先生成 ChatGPT Prompt。");
+      setError(t("请先生成 ChatGPT Prompt。","Generate a prompt first."));
       return;
     }
 
@@ -1386,7 +1121,7 @@ export function WeekNoteGenerator() {
       await navigator.clipboard.writeText(chatGptPrompt);
       setCopiedChatGptPrompt(true);
     } catch {
-      setError("复制 Prompt 失败，请手动复制。");
+      setError(t("复制 Prompt 失败，请手动复制。","Could not copy prompt. Select and copy it manually."));
     }
   }
 
@@ -1405,19 +1140,19 @@ export function WeekNoteGenerator() {
     const resolvedMarkdown = markdown.trim();
 
     if (!resolvedTitle) {
-      throw new Error("请先填写或确认笔记标题。");
+      throw new Error(t("请先填写或确认笔记标题。","Enter a title."));
     }
 
     if (!resolvedTopic) {
-      throw new Error("请先填写或确认笔记主题。");
+      throw new Error(t("请先填写或确认笔记主题。","Enter a topic."));
     }
 
     if (!resolvedMarkdown) {
-      throw new Error("请先提供 ChatGPT 生成的 Markdown / MDX。");
+      throw new Error(t("请先提供 ChatGPT 生成的 Markdown / MDX。","Paste the Markdown or MDX response."));
     }
 
     if (IS_CLOUD_MODE && !session?.token) {
-      throw new Error("请先登录后再保存云端笔记。");
+      throw new Error(t("请先登录后再保存云端笔记。","Sign in to save notes."));
     }
 
     const saved = IS_CLOUD_MODE
@@ -1436,7 +1171,7 @@ export function WeekNoteGenerator() {
         });
 
     if (!saved.slug) {
-      throw new Error("保存成功，但未返回笔记链接。");
+      throw new Error(t("保存成功，但未返回笔记链接。","The note was saved, but its link is unavailable."));
     }
 
     return saved.slug;
@@ -1451,7 +1186,7 @@ export function WeekNoteGenerator() {
       router.push(buildNoteViewHref(slug));
       router.refresh();
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "保存 ChatGPT 结果失败，请稍后重试。");
+      setError(saveError instanceof Error ? saveError.message : t("保存 ChatGPT 结果失败，请稍后重试。","Could not save response. Retry."));
     } finally {
       setSavingChatGptMarkdown(false);
     }
@@ -1464,7 +1199,7 @@ export function WeekNoteGenerator() {
     }
 
     if (!sourceFile) {
-      setError("请先上传原始资料文件。");
+      setError(t("请先上传原始资料文件。","Attach a source file."));
       return;
     }
 
@@ -1516,17 +1251,12 @@ export function WeekNoteGenerator() {
   return (
     <section className="mb-8 rounded-apple bg-card p-5 text-card-foreground shadow-card">
       <div className="mb-4">
-        <h3 className="font-display text-[28px] font-normal leading-[1.14] tracking-[0.196px] text-foreground">
-          上传资料并生成笔记
-        </h3>
+        <h3 className="font-display text-[28px] font-normal leading-[1.14] tracking-[0.196px] text-foreground"><UiText zh="上传资料并生成笔记" en="Advanced generation" /></h3>
         <p className="mt-2 max-w-[860px] font-text text-[14px] leading-[1.45] tracking-tightCaption text-muted-foreground">
-          按“标题 + 主题 + 标签”方式生成通用 MDX 笔记，适用于任意学科。
-          <span className="ui-en ml-1">Generate structured MDX notes using title, topic, and tags.</span>
+          <UiText zh="按“标题 + 主题 + 标签”方式生成通用 MDX 笔记，适用于任意学科。" en="Generate structured MDX notes using title, topic, and tags." />
         </p>
         {IS_CLOUD_MODE ? (
-          <p className="mt-2 rounded-apple border border-primary/35 bg-primary/10 px-3 py-2 font-text text-[12px] leading-[1.4] text-muted-foreground">
-            当前为云端模式：将请求远程笔记 API 并存储到 Neon 数据库，且只写入当前登录账号。
-          </p>
+          <p className="mt-2 rounded-apple border border-primary/35 bg-primary/10 px-3 py-2 font-text text-[12px] leading-[1.4] text-muted-foreground"><UiText zh="当前为云端模式：将请求远程笔记 API 并存储到 Neon 数据库，且只写入当前登录账号。" en="Generated notes are saved to your account." /></p>
         ) : null}
       </div>
 
@@ -1537,32 +1267,26 @@ export function WeekNoteGenerator() {
           className={`inline-flex items-center rounded-capsule px-4 py-2 font-text text-[13px] transition focus-visible:outline-none ${
             mode === "direct" ? "bg-primary text-primary-foreground" : "border border-input bg-background text-foreground"
           }`}
-        >
-          站内直接生成
-        </button>
+        ><UiText zh="站内直接生成" en="Generate here" /></button>
         <button
           type="button"
           onClick={() => setMode("chatgpt")}
           className={`inline-flex items-center rounded-capsule px-4 py-2 font-text text-[13px] transition focus-visible:outline-none ${
             mode === "chatgpt" ? "bg-primary text-primary-foreground" : "border border-input bg-background text-foreground"
           }`}
-        >
-          ChatGPT 辅助生成
-        </button>
-        <button
+        ><UiText zh="ChatGPT 辅助生成" en="Use ChatGPT" /></button>
+        {!CLOUD_API_BASE.startsWith("/") && <button
           type="button"
           onClick={() => setMode("autogpt")}
           className={`inline-flex items-center rounded-capsule px-4 py-2 font-text text-[13px] transition focus-visible:outline-none ${
             mode === "autogpt" ? "bg-primary text-primary-foreground" : "border border-input bg-background text-foreground"
           }`}
-        >
-          全自动 GPT 网页操控
-        </button>
+        ><UiText zh="全自动 GPT 网页操控" en="Local browser automation" /></button>}
       </div>
 
       <div className="mb-4 rounded-apple border border-input bg-background p-3">
         <div className="flex flex-wrap items-center gap-3">
-          <SectionLabel>Prompt 预设</SectionLabel>
+          <SectionLabel><UiText zh="Prompt 预设" en="Prompt preset" /></SectionLabel>
           <div className="flex flex-wrap gap-2">
             {PROMPT_PRESET_OPTIONS.map((option) => (
               <button
@@ -1575,22 +1299,22 @@ export function WeekNoteGenerator() {
                     : "border border-input bg-card text-foreground"
                 }`}
               >
-                {option.label}
+                {t(option.label, option.value === "standard" ? "Standard" : option.value === "detailed" ? "Detailed" : "Custom")}
               </button>
             ))}
           </div>
         </div>
         <p className="mt-2 font-text text-[12px] leading-[1.45] text-muted-foreground">
-          {PROMPT_PRESET_OPTIONS.find((option) => option.value === selectedPromptPreset)?.description}
+          {t(PROMPT_PRESET_OPTIONS.find((option) => option.value === selectedPromptPreset)?.description || "", selectedPromptPreset === "standard" ? "Structured bilingual notes." : selectedPromptPreset === "detailed" ? "Detailed explanations and worked examples." : "Use your custom instructions.")}
         </p>
         {selectedPromptPreset === "custom" ? (
           <label className="mt-3 block space-y-2">
-            <SectionLabel>自定义 Prompt</SectionLabel>
+            <SectionLabel><UiText zh="自定义 Prompt" en="Custom prompt" /></SectionLabel>
             <TextArea
               value={customPromptTemplate}
               onChange={(event) => setCustomPromptTemplate(event.target.value)}
               rows={8}
-              placeholder="粘贴或编写本次生成要遵守的完整 Prompt。它会替代 prompt.md / prompt2.md 的基础规则。"
+              placeholder={t("粘贴或编写本次生成要遵守的完整 Prompt。它会替代 prompt.md / prompt2.md 的基础规则。","Enter custom generation instructions to replace the selected preset.")}
               className="font-mono text-[12px] leading-[1.5]"
             />
           </label>
@@ -1618,23 +1342,23 @@ export function WeekNoteGenerator() {
             </div>
 
             <label className="space-y-2 md:col-span-2">
-              <SectionLabel>标题（可选，留空自动生成）</SectionLabel>
-              <TextInput value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：极限与连续性核心概念" />
-              <p className="font-text text-[12px] leading-[1.4] text-muted-foreground">留空时将自动生成标题、主题和标签。</p>
+              <SectionLabel><UiText zh="标题（可选，留空自动生成）" en="Title (optional)" /></SectionLabel>
+              <TextInput value={title} onChange={(event) => setTitle(event.target.value)} placeholder={t("例如：极限与连续性核心概念","e.g. Limits and continuity")} />
+              <p className="font-text text-[12px] leading-[1.4] text-muted-foreground"><UiText zh="留空时将自动生成标题、主题和标签。" en="Leave blank to generate metadata automatically." /></p>
             </label>
 
             <label className="space-y-2">
-              <SectionLabel>主题（可选）</SectionLabel>
-              <TextInput value={topic} onChange={(event) => setTopic(event.target.value)} placeholder="例如：微积分基础" />
+              <SectionLabel><UiText zh="主题（可选）" en="Topic (optional)" /></SectionLabel>
+              <TextInput value={topic} onChange={(event) => setTopic(event.target.value)} placeholder={t("例如：微积分基础","e.g. Calculus")} />
             </label>
 
             <label className="space-y-2">
-              <SectionLabel>标签（可选）</SectionLabel>
-              <TextInput value={tags} onChange={(event) => setTags(event.target.value)} placeholder="例如：定义, 定理, 证明" />
+              <SectionLabel><UiText zh="标签（可选）" en="Tags (optional)" /></SectionLabel>
+              <TextInput value={tags} onChange={(event) => setTags(event.target.value)} placeholder={t("例如：定义, 定理, 证明","e.g. definitions, theorems, proofs")} />
             </label>
 
             <label className="space-y-2 md:col-span-2">
-              <SectionLabel>原始资料文件</SectionLabel>
+              <SectionLabel><UiText zh="原始资料文件" en="Source file" /></SectionLabel>
               <TextInput
                 type="file"
                 accept=".txt,.md,.markdown,.doc,.docx,.ppt,.pptx,.pdf,.tex,.csv"
@@ -1644,12 +1368,12 @@ export function WeekNoteGenerator() {
             </label>
 
             <label className="space-y-2 md:col-span-2">
-              <SectionLabel>额外说明（可选）</SectionLabel>
+              <SectionLabel><UiText zh="额外说明（可选）" en="Instructions (optional)" /></SectionLabel>
               <TextArea
                 value={extraInstruction}
                 onChange={(event) => setExtraInstruction(event.target.value)}
                 rows={3}
-                placeholder="可填写特殊整理要求，如：强调考试易错点。"
+                placeholder={t("可填写特殊整理要求，如：强调考试易错点。","Specify scope, detail, or assessment requirements.")}
               />
             </label>
 
@@ -1661,8 +1385,7 @@ export function WeekNoteGenerator() {
                 className="mt-0.5 h-4 w-4 rounded border-input text-primary focus:ring-ring"
               />
               <span className="font-text text-[13px] leading-[1.45] text-muted-foreground">
-                生成交互 demo（可选）
-                <span className="ui-en ml-1">Add interactive demos if the note contains supported interactive concepts.</span>
+                <UiText zh="生成交互 demo（可选）" en="Add interactive demos if the note contains supported interactive concepts." />
               </span>
             </label>
 
@@ -1672,51 +1395,46 @@ export function WeekNoteGenerator() {
                 disabled={submitting || (IS_CLOUD_MODE && !session?.token)}
                 className="btn-apple-primary inline-flex items-center rounded-apple px-5 py-2 font-text text-[15px] transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
               >
-                {submitting ? "生成中..." : IS_CLOUD_MODE && !session?.token ? "请先登录" : "生成并保存笔记"}
+                {submitting ? t("生成中...","Generating…") : IS_CLOUD_MODE && !session?.token ? t("请先登录","Sign in first") : t("生成并保存笔记","Generate and save")}
               </button>
 
               <Link
                 href="/notes"
                 className="btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition focus-visible:outline-none"
-              >
-                查看笔记列表
-              </Link>
+              ><UiText zh="查看笔记列表" en="Open library" /></Link>
             </div>
           </form>
 
           {result ? (
             <div className="mt-5 space-y-4">
               <div className="rounded-apple border border-primary/35 bg-primary/10 p-3">
-                <p className="font-text text-[13px] leading-[1.45] text-foreground">已保存 {result.fileName}。</p>
+                <p className="font-text text-[13px] leading-[1.45] text-foreground"><UiText zh="已保存" en="Saved" />{result.fileName}。</p>
                 <Link
                   href={buildNoteViewHref(result.slug)}
                   className="btn-apple-link mt-2 inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition focus-visible:outline-none"
-                >
-                  打开生成结果
-                  <span className="ml-1">&gt;</span>
+                ><UiText zh="打开生成结果" en="Open generated note" /><span className="ml-1">&gt;</span>
                 </Link>
               </div>
 
               <section className="rounded-apple border border-border bg-card p-4">
                 <p className="font-text text-[13px] font-semibold tracking-[0.06em] text-muted-foreground">
-                  生成后可修改元信息
-                  <span className="ui-en ml-1">Edit Metadata After Generation</span>
+                  <UiText zh="生成后可修改元信息" en="Edit Metadata After Generation" />
                 </p>
 
                 <div className="mt-3 grid gap-3 md:grid-cols-2">
                   <label className="space-y-1 md:col-span-2">
-                    <span className="font-text text-[12px] text-black/62 dark:text-white/66">标题</span>
-                    <TextInput value={editTitle} onChange={(event) => setEditTitle(event.target.value)} placeholder="留空将保留当前标题" className="text-[14px]" />
+                    <span className="font-text text-[12px] text-black/62 dark:text-white/66"><UiText zh="标题" en="Title" /></span>
+                    <TextInput value={editTitle} onChange={(event) => setEditTitle(event.target.value)} placeholder={t("留空将保留当前标题","Leave blank to keep the current title")} className="text-[14px]" />
                   </label>
 
                   <label className="space-y-1">
-                    <span className="font-text text-[12px] text-black/62 dark:text-white/66">主题</span>
-                    <TextInput value={editTopic} onChange={(event) => setEditTopic(event.target.value)} placeholder="留空将自动兜底生成主题" className="text-[14px]" />
+                    <span className="font-text text-[12px] text-black/62 dark:text-white/66"><UiText zh="主题" en="Topic" /></span>
+                    <TextInput value={editTopic} onChange={(event) => setEditTopic(event.target.value)} placeholder={t("留空将自动兜底生成主题","Leave blank to generate a topic")} className="text-[14px]" />
                   </label>
 
                   <label className="space-y-1">
-                    <span className="font-text text-[12px] text-black/62 dark:text-white/66">标签</span>
-                    <TextInput value={editTags} onChange={(event) => setEditTags(event.target.value)} placeholder="用逗号分隔，如：定义, 推导, 例题" className="text-[14px]" />
+                    <span className="font-text text-[12px] text-black/62 dark:text-white/66"><UiText zh="标签" en="Tags" /></span>
+                    <TextInput value={editTags} onChange={(event) => setEditTags(event.target.value)} placeholder={t("用逗号分隔，如：定义, 推导, 例题","Comma-separated tags")} className="text-[14px]" />
                   </label>
                 </div>
 
@@ -1727,7 +1445,7 @@ export function WeekNoteGenerator() {
                     onClick={onSaveMetadata}
                     className="btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
                   >
-                    {savingMeta ? "保存中..." : "保存元信息修改"}
+                    {savingMeta ? t("保存中...","Saving…") : t("保存元信息修改","Save metadata")}
                   </button>
                 </div>
               </section>
@@ -1747,9 +1465,7 @@ export function WeekNoteGenerator() {
               ) : null}
 
               <details className="rounded-apple border border-border bg-card px-4 py-3">
-                <summary className="cursor-pointer font-text text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                  预览前几行
-                </summary>
+                <summary className="cursor-pointer font-text text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"><UiText zh="预览前几行" en="Preview" /></summary>
                 <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded-apple bg-muted p-3 font-mono text-[12px] leading-[1.45] text-muted-foreground">
                   {result.preview}
                 </pre>
@@ -1761,28 +1477,27 @@ export function WeekNoteGenerator() {
         <div className="space-y-4">
           <section className="rounded-apple border border-border bg-background p-4">
             <p className="font-text text-[13px] font-semibold tracking-[0.06em] text-muted-foreground">
-              步骤 1：整理输入
-              <span className="ui-en ml-1">Prepare Inputs</span>
+              <UiText zh="步骤 1：整理输入" en="Prepare Inputs" />
             </p>
 
             <div className="mt-3 grid gap-3 md:grid-cols-2">
               <label className="space-y-2 md:col-span-2">
-                <SectionLabel>标题</SectionLabel>
-                <TextInput value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：死锁与资源分配图" />
+                <SectionLabel><UiText zh="标题" en="Title" /></SectionLabel>
+                <TextInput value={title} onChange={(event) => setTitle(event.target.value)} placeholder={t("例如：死锁与资源分配图","e.g. Deadlocks and resource allocation")} />
               </label>
 
               <label className="space-y-2">
-                <SectionLabel>主题</SectionLabel>
-                <TextInput value={topic} onChange={(event) => setTopic(event.target.value)} placeholder="例如：操作系统 / Operating Systems" />
+                <SectionLabel><UiText zh="主题" en="Topic" /></SectionLabel>
+                <TextInput value={topic} onChange={(event) => setTopic(event.target.value)} placeholder={t("例如：操作系统 / Operating Systems","e.g. Operating Systems")} />
               </label>
 
               <label className="space-y-2">
-                <SectionLabel>标签（可选）</SectionLabel>
-                <TextInput value={tags} onChange={(event) => setTags(event.target.value)} placeholder="例如：死锁, 资源分配图, 同步" />
+                <SectionLabel><UiText zh="标签（可选）" en="Tags (optional)" /></SectionLabel>
+                <TextInput value={tags} onChange={(event) => setTags(event.target.value)} placeholder={t("例如：死锁, 资源分配图, 同步","e.g. deadlocks, resources, synchronisation")} />
               </label>
 
               <label className="space-y-2 md:col-span-2">
-                <SectionLabel>原始资料文件</SectionLabel>
+                <SectionLabel><UiText zh="原始资料文件" en="Source file" /></SectionLabel>
                 <TextInput
                   type="file"
                   accept=".txt,.md,.markdown,.doc,.docx,.ppt,.pptx,.pdf,.tex,.csv"
@@ -1792,12 +1507,12 @@ export function WeekNoteGenerator() {
               </label>
 
               <label className="space-y-2 md:col-span-2">
-                <SectionLabel>额外说明（可选）</SectionLabel>
+                <SectionLabel><UiText zh="额外说明（可选）" en="Instructions (optional)" /></SectionLabel>
                 <TextArea
                   value={extraInstruction}
                   onChange={(event) => setExtraInstruction(event.target.value)}
                   rows={3}
-                  placeholder="可填写特殊整理要求，如：更适合考试复习，保留关键例题。"
+                  placeholder={t("可填写特殊整理要求，如：更适合考试复习，保留关键例题。","Specify requirements, such as retaining worked examples.")}
                 />
               </label>
 
@@ -1809,8 +1524,7 @@ export function WeekNoteGenerator() {
                   className="mt-0.5 h-4 w-4 rounded border-input text-primary focus:ring-ring"
                 />
                 <span className="font-text text-[13px] leading-[1.45] text-muted-foreground">
-                  生成交互 demo（可选）
-                  <span className="ui-en ml-1">The generated prompt will ask ChatGPT to include interactive demo content when applicable.</span>
+                  <UiText zh="生成交互 demo（可选）" en="The generated prompt will ask ChatGPT to include interactive demo content when applicable." />
                 </span>
               </label>
             </div>
@@ -1822,26 +1536,23 @@ export function WeekNoteGenerator() {
                 disabled={buildingChatGptPrompt}
                 className="btn-apple-primary inline-flex items-center rounded-apple px-5 py-2 font-text text-[15px] transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
               >
-                {buildingChatGptPrompt ? "生成 Prompt 中..." : "生成 ChatGPT Prompt"}
+                {buildingChatGptPrompt ? t("生成 Prompt 中...","Generating prompt…") : t("生成 ChatGPT Prompt","Generate ChatGPT prompt")}
               </button>
             </div>
           </section>
 
           <section className="rounded-apple border border-border bg-background p-4">
             <p className="font-text text-[13px] font-semibold tracking-[0.06em] text-muted-foreground">
-              步骤 2：发送到 ChatGPT
-              <span className="ui-en ml-1">Send to ChatGPT</span>
+              <UiText zh="步骤 2：发送到 ChatGPT" en="Send to ChatGPT" />
             </p>
 
-            <p className="mt-3 font-text text-[13px] leading-[1.45] text-muted-foreground">
-              推荐流程：打开 ChatGPT，选择 GPT-5.4，上传同一份原始资料文件，再粘贴下面的 Prompt。
-            </p>
+            <p className="mt-3 font-text text-[13px] leading-[1.45] text-muted-foreground"><UiText zh="推荐流程：打开 ChatGPT，选择 GPT-5.4，上传同一份原始资料文件，再粘贴下面的 Prompt。" en="Open ChatGPT, upload your source file, and paste this prompt." /></p>
 
             <TextArea
               value={chatGptPrompt}
               readOnly
               rows={12}
-              placeholder="点击上方“生成 ChatGPT Prompt”后，这里会出现完整 Prompt。"
+              placeholder={t("点击上方“生成 ChatGPT Prompt”后，这里会出现完整 Prompt。","Generate a prompt to preview it here.")}
               className="mt-3 font-mono text-[12px] leading-[1.5]"
             />
 
@@ -1852,30 +1563,27 @@ export function WeekNoteGenerator() {
                 disabled={!chatGptPrompt.trim()}
                 className="btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
               >
-                {copiedChatGptPrompt ? "已复制 Prompt" : "复制 Prompt"}
+                {copiedChatGptPrompt ? t("已复制 Prompt","Prompt copied") : t("复制 Prompt","Copy prompt")}
               </button>
 
               <button
                 type="button"
                 onClick={onOpenChatGpt}
                 className="btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition focus-visible:outline-none"
-              >
-                打开 ChatGPT
-              </button>
+              ><UiText zh="打开 ChatGPT" en="Open ChatGPT" /></button>
             </div>
           </section>
 
           <section className="rounded-apple border border-border bg-background p-4">
             <p className="font-text text-[13px] font-semibold tracking-[0.06em] text-muted-foreground">
-              步骤 3：粘贴结果并保存
-              <span className="ui-en ml-1">Paste Result and Save</span>
+              <UiText zh="步骤 3：粘贴结果并保存" en="Paste Result and Save" />
             </p>
 
             <TextArea
               value={chatGptMarkdown}
               onChange={(event) => setChatGptMarkdown(event.target.value)}
               rows={14}
-              placeholder="把 ChatGPT 返回的 Markdown / MDX 结果粘贴到这里，然后保存为笔记。"
+              placeholder={t("把 ChatGPT 返回的 Markdown / MDX 结果粘贴到这里，然后保存为笔记。","Paste the Markdown or MDX response, then save it as a note.")}
               className="mt-3 font-mono text-[12px] leading-[1.5]"
             />
 
@@ -1886,15 +1594,13 @@ export function WeekNoteGenerator() {
                 disabled={savingChatGptMarkdown}
                 className="btn-apple-primary inline-flex items-center rounded-apple px-5 py-2 font-text text-[15px] transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
               >
-                {savingChatGptMarkdown ? "保存中..." : "保存为笔记"}
+                {savingChatGptMarkdown ? t("保存中...","Saving…") : t("保存为笔记","Save note")}
               </button>
 
               <Link
                 href="/notes"
                 className="btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition focus-visible:outline-none"
-              >
-                查看笔记列表
-              </Link>
+              ><UiText zh="查看笔记列表" en="Open library" /></Link>
             </div>
           </section>
         </div>
@@ -1902,28 +1608,27 @@ export function WeekNoteGenerator() {
         <div className="space-y-4">
           <section className="rounded-apple border border-border bg-background p-4">
             <p className="font-text text-[13px] font-semibold tracking-[0.06em] text-muted-foreground">
-              步骤 1：整理输入
-              <span className="ui-en ml-1">Prepare Inputs</span>
+              <UiText zh="步骤 1：整理输入" en="Prepare Inputs" />
             </p>
 
             <div className="mt-3 grid gap-3 md:grid-cols-2">
               <label className="space-y-2 md:col-span-2">
-                <SectionLabel>标题</SectionLabel>
-                <TextInput value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：死锁与资源分配图" />
+                <SectionLabel><UiText zh="标题" en="Title" /></SectionLabel>
+                <TextInput value={title} onChange={(event) => setTitle(event.target.value)} placeholder={t("例如：死锁与资源分配图","e.g. Deadlocks and resource allocation")} />
               </label>
 
               <label className="space-y-2">
-                <SectionLabel>主题</SectionLabel>
-                <TextInput value={topic} onChange={(event) => setTopic(event.target.value)} placeholder="例如：操作系统 / Operating Systems" />
+                <SectionLabel><UiText zh="主题" en="Topic" /></SectionLabel>
+                <TextInput value={topic} onChange={(event) => setTopic(event.target.value)} placeholder={t("例如：操作系统 / Operating Systems","e.g. Operating Systems")} />
               </label>
 
               <label className="space-y-2">
-                <SectionLabel>标签（可选）</SectionLabel>
-                <TextInput value={tags} onChange={(event) => setTags(event.target.value)} placeholder="例如：死锁, 资源分配图, 同步" />
+                <SectionLabel><UiText zh="标签（可选）" en="Tags (optional)" /></SectionLabel>
+                <TextInput value={tags} onChange={(event) => setTags(event.target.value)} placeholder={t("例如：死锁, 资源分配图, 同步","e.g. deadlocks, resources, synchronisation")} />
               </label>
 
               <label className="space-y-2 md:col-span-2">
-                <SectionLabel>原始资料文件</SectionLabel>
+                <SectionLabel><UiText zh="原始资料文件" en="Source file" /></SectionLabel>
                 <TextInput
                   type="file"
                   accept=".txt,.md,.markdown,.doc,.docx,.ppt,.pptx,.pdf,.tex,.csv"
@@ -1933,12 +1638,12 @@ export function WeekNoteGenerator() {
               </label>
 
               <label className="space-y-2 md:col-span-2">
-                <SectionLabel>额外说明（可选）</SectionLabel>
+                <SectionLabel><UiText zh="额外说明（可选）" en="Instructions (optional)" /></SectionLabel>
                 <TextArea
                   value={extraInstruction}
                   onChange={(event) => setExtraInstruction(event.target.value)}
                   rows={3}
-                  placeholder="可填写特殊整理要求，如：更适合考试复习，保留关键例题。"
+                  placeholder={t("可填写特殊整理要求，如：更适合考试复习，保留关键例题。","Specify requirements, such as retaining worked examples.")}
                 />
               </label>
 
@@ -1950,8 +1655,7 @@ export function WeekNoteGenerator() {
                   className="mt-0.5 h-4 w-4 rounded border-input text-primary focus:ring-ring"
                 />
                 <span className="font-text text-[13px] leading-[1.45] text-muted-foreground">
-                  生成交互 demo（可选）
-                  <span className="ui-en ml-1">Automation mode will still append the interactive-demo prompt when this is checked.</span>
+                  <UiText zh="生成交互 demo（可选）" en="Automation mode will still append the interactive-demo prompt when this is checked." />
                 </span>
               </label>
             </div>
@@ -1959,14 +1663,13 @@ export function WeekNoteGenerator() {
 
           <section className="rounded-apple border border-border bg-background p-4">
             <p className="font-text text-[13px] font-semibold tracking-[0.06em] text-muted-foreground">
-              步骤 2：启动本机自动化
-              <span className="ui-en ml-1">Run Local Browser Automation</span>
+              <UiText zh="步骤 2：启动本机自动化" en="Run Local Browser Automation" />
             </p>
 
             <div className="mt-3 rounded-apple border border-primary/25 bg-primary/10 px-3 py-3 font-text text-[13px] leading-[1.5] text-muted-foreground">
-              <p>这个模式会在你的本机启动浏览器，自动打开 ChatGPT、上传资料、提交 Prompt、抓取 Markdown 结果并直接保存回 YYNotes。</p>
-              <p className="mt-2">首次使用时，你可能需要在自动化启动的浏览器里手动登录 ChatGPT 一次；之后会复用同一个本地浏览器资料目录。</p>
-              <p className="mt-2">云端模式下会保存到当前登录账号的 Neon 数据库；浏览器操控仍需要本机运行的 Next 服务来执行。</p>
+              <p><UiText zh="这个模式会在你的本机启动浏览器，自动打开 ChatGPT、上传资料、提交 Prompt、抓取 Markdown 结果并直接保存回 YYNotes。" en="Run a local browser to submit sources to ChatGPT and save the result." /></p>
+              <p className="mt-2"><UiText zh="首次使用时，你可能需要在自动化启动的浏览器里手动登录 ChatGPT 一次；之后会复用同一个本地浏览器资料目录。" en="Sign in to ChatGPT in the automation browser before the first run." /></p>
+              <p className="mt-2"><UiText zh="云端模式下会保存到当前登录账号的 Neon 数据库；浏览器操控仍需要本机运行的 Next 服务来执行。" en="Browser automation requires a local server." /></p>
             </div>
 
             <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -1976,7 +1679,7 @@ export function WeekNoteGenerator() {
                 disabled={runningAutoChatGpt || (IS_CLOUD_MODE && !session?.token)}
                 className="btn-apple-primary inline-flex items-center rounded-apple px-5 py-2 font-text text-[15px] transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
               >
-                {runningAutoChatGpt ? "自动执行中..." : IS_CLOUD_MODE && !session?.token ? "请先登录" : "启动全自动生成并保存"}
+                {runningAutoChatGpt ? "自动执行中..." : IS_CLOUD_MODE && !session?.token ? t("请先登录","Sign in first") : "启动全自动生成并保存"}
               </button>
 
               <button
@@ -1985,7 +1688,7 @@ export function WeekNoteGenerator() {
                 disabled={buildingChatGptPrompt || runningAutoChatGpt}
                 className="btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
               >
-                {buildingChatGptPrompt ? "生成 Prompt 中..." : "预览自动化 Prompt"}
+                {buildingChatGptPrompt ? t("生成 Prompt 中...","Generating prompt…") : t("预览自动化 Prompt","Preview automation prompt")}
               </button>
             </div>
 
@@ -1997,9 +1700,7 @@ export function WeekNoteGenerator() {
 
             {autoChatGptWarnings.length > 0 ? (
               <div className="mt-3 rounded-apple border border-amber-400/35 bg-amber-500/10 px-3 py-3">
-                <p className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-amber-800 dark:text-amber-200">
-                  自动化提示
-                </p>
+                <p className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-amber-800 dark:text-amber-200"><UiText zh="自动化提示" en="Automation status" /></p>
                 <ul className="mt-2 space-y-1 font-text text-[13px] leading-[1.45] text-amber-900/90 dark:text-amber-100">
                   {autoChatGptWarnings.map((warning) => (
                     <li key={warning}>- {warning}</li>
@@ -2011,30 +1712,28 @@ export function WeekNoteGenerator() {
 
           <section className="rounded-apple border border-border bg-background p-4">
             <p className="font-text text-[13px] font-semibold tracking-[0.06em] text-muted-foreground">
-              自动化 Prompt 预览
-              <span className="ui-en ml-1">Prompt Preview</span>
+              <UiText zh="自动化 Prompt 预览" en="Prompt Preview" />
             </p>
 
             <TextArea
               value={chatGptPrompt}
               readOnly
               rows={10}
-              placeholder="点击“预览自动化 Prompt”或直接启动自动化后，这里会出现最终发送给 ChatGPT 的 Prompt。"
+              placeholder={t("点击“预览自动化 Prompt”或直接启动自动化后，这里会出现最终发送给 ChatGPT 的 Prompt。","Preview the prompt before starting automation.")}
               className="mt-3 font-mono text-[12px] leading-[1.5]"
             />
           </section>
 
           <section className="rounded-apple border border-border bg-background p-4">
             <p className="font-text text-[13px] font-semibold tracking-[0.06em] text-muted-foreground">
-              自动抓取结果
-              <span className="ui-en ml-1">Captured Markdown</span>
+              <UiText zh="自动抓取结果" en="Captured Markdown" />
             </p>
 
             <TextArea
               value={chatGptMarkdown}
               onChange={(event) => setChatGptMarkdown(event.target.value)}
               rows={12}
-              placeholder="自动化成功后，这里会显示从 ChatGPT 网页抓取到的 Markdown / MDX；如果自动保存失败，你也可以直接手动点保存。"
+              placeholder={t("自动化成功后，这里会显示从 ChatGPT 网页抓取到的 Markdown / MDX；如果自动保存失败，你也可以直接手动点保存。","Captured Markdown appears here. Save manually if automatic saving fails.")}
               className="mt-3 font-mono text-[12px] leading-[1.5]"
             />
 
@@ -2045,15 +1744,13 @@ export function WeekNoteGenerator() {
                 disabled={savingChatGptMarkdown || runningAutoChatGpt || !chatGptMarkdown.trim()}
                 className="btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
               >
-                {savingChatGptMarkdown ? "保存中..." : "手动保存当前结果"}
+                {savingChatGptMarkdown ? t("保存中...","Saving…") : t("手动保存当前结果","Save current result")}
               </button>
 
               <Link
                 href="/notes"
                 className="btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition focus-visible:outline-none"
-              >
-                查看笔记列表
-              </Link>
+              ><UiText zh="查看笔记列表" en="Open library" /></Link>
             </div>
           </section>
         </div>

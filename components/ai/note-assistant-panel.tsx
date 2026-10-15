@@ -1,6 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { createPortal } from "react-dom";
+import { History, Maximize, Minimize, PanelRightClose, X } from "lucide-react";
+import { UiText } from "@/components/ui-text";
 import rehypeKatex from "rehype-katex";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -12,6 +15,7 @@ import { PromptBox, type PromptAttachment, type PromptSubmitPayload } from "@/co
 import { ASSISTANT_MODEL_OPTIONS, DEFAULT_ASSISTANT_MODEL } from "@/components/ui/animated-ai-input";
 
 type NoteAssistantPanelProps = {
+  onClose?: () => void;
   noteContext: {
     slug: string;
     weekLabelZh: string;
@@ -41,7 +45,7 @@ const STARTER_MESSAGE_EN = "Hi, I am your note-aware assistant for this page. Yo
 const HISTORY_STORAGE_KEY = "na_ai_question_history_v1";
 const MAX_SAVED_RECORDS = 160;
 const FONT_SIZE_STORAGE_KEY = "na_ai_font_size_v1";
-const DEFAULT_FONT_SIZE = 12;
+const DEFAULT_FONT_SIZE = 14;
 const MIN_FONT_SIZE = 12;
 const MAX_FONT_SIZE = 20;
 const MAX_ATTACHMENT_SNIPPET_CHARS = 1200;
@@ -57,7 +61,7 @@ function clampFontSize(value: number): number {
 function buildStarterMessage(showEnglish: boolean): AssistantMessage {
   return {
     role: "assistant",
-    content: showEnglish ? `${STARTER_MESSAGE_ZH}\n\n${STARTER_MESSAGE_EN}` : STARTER_MESSAGE_ZH,
+    content: showEnglish ? STARTER_MESSAGE_EN : STARTER_MESSAGE_ZH,
   };
 }
 
@@ -417,8 +421,8 @@ async function buildQuestionWithAttachments(question: string, attachments: Promp
   return `${baseQuestion}\n\n【用户上传内容】\n${attachmentLines.join("\n")}\n\n请结合上述上传内容与当前笔记上下文回答。`;
 }
 
-export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
-  const { showEnglish } = useLanguage();
+export function NoteAssistantPanel({ noteContext, onClose }: NoteAssistantPanelProps) {
+  const { showEnglish, t } = useLanguage();
   const [messages, setMessages] = useState<AssistantMessage[]>(() => [buildStarterMessage(showEnglish)]);
   const [input, setInput] = useState("");
   const [selectedText, setSelectedText] = useState("");
@@ -438,6 +442,32 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
   const fullscreenMessagesRef = useRef<HTMLDivElement>(null);
   const streamBufferRef = useRef("");
   const streamFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!historyOpen && !desktopFullscreen && !mobileOpen) return;
+    const kind = historyOpen ? "history" : desktopFullscreen ? "fullscreen" : "mobile";
+    const dialog = document.querySelector<HTMLElement>(`[data-assistant-dialog="${kind}"]`);
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const controls = () => Array.from(dialog?.querySelectorAll<HTMLElement>('button:not(:disabled), input, textarea, select, a[href], [tabindex="0"]') || []).filter((element) => element.getClientRects().length > 0);
+    controls()[0]?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (historyOpen) setHistoryOpen(false);
+        else if (desktopFullscreen) setDesktopFullscreen(false);
+        else setMobileOpen(false);
+      } else if (event.key === "Tab") {
+        const items = controls(); const first = items[0]; const last = items.at(-1);
+        if (!first || !last) return;
+        if (event.shiftKey && (document.activeElement === first || !dialog?.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && (document.activeElement === last || !dialog?.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => { document.removeEventListener("keydown", onKeyDown); document.body.style.overflow = previousOverflow; if (previousFocus?.isConnected) previousFocus.focus(); };
+  }, [historyOpen, desktopFullscreen, mobileOpen]);
 
   const noteRecords = useMemo(() => savedRecords.filter((record) => record.noteSlug === noteContext.slug), [savedRecords, noteContext.slug]);
 
@@ -764,8 +794,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
           ))}
           {loading ? (
             <p className="font-text text-[13px] leading-[1.45] text-muted-foreground">
-              正在整理当前页面上下文并生成回答...
-              <span className="ui-en ml-1">Thinking with current note context...</span>
+              <UiText zh="正在整理当前页面上下文并生成回答..." en="Thinking with current note context..." />
             </p>
           ) : null}
         </div>
@@ -780,13 +809,12 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
           <label className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-            提问
-            <span className="ui-en ml-1">Ask a Question</span>
+            <UiText zh="提问" en="Ask a Question" />
           </label>
           {selectedText ? (
             <div className="inline-flex max-w-[70%] items-center gap-1 rounded-capsule border border-primary/35 bg-primary/10 px-2 py-0.5">
               <span className="shrink-0 font-text text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                已选文本
+                Selected text
               </span>
               <span className="min-w-0 truncate font-text text-[10px] leading-[1.2] text-muted-foreground">
                 {summarizeSelectionTextInline(selectedText)}
@@ -796,8 +824,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
                 onClick={() => setSelectedText("")}
                 className="shrink-0 rounded-capsule border border-border px-1.5 py-[1px] text-[10px] tracking-tightCaption text-muted-foreground transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                清除
-                <span className="ui-en ml-1">Clear</span>
+                <UiText zh="清除" en="Clear" />
               </button>
             </div>
           ) : null}
@@ -811,7 +838,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
           modelOptions={ASSISTANT_MODEL_OPTIONS}
           selectedModel={selectedModel}
           onSelectedModelChange={setSelectedModel}
-          placeholder="例如：比较本页里的两种方法，并说明误差差异。"
+          placeholder={t("比较本页中的两种方法，并解释差异。", "Compare two methods in this note and explain their differences.")}
           textareaStyle={messageTextStyle}
           className="rounded-apple"
         />
@@ -821,82 +848,72 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
 
   return (
     <>
-      <section className="sticky top-20 hidden h-[calc(100dvh-5.75rem)] self-start rounded-apple bg-card/95 p-5 text-card-foreground shadow-card backdrop-blur-sm lg:flex lg:flex-col">
-        <header className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <p className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-              AI 学习助手
-              <span className="ui-en ml-1">Study Assistant</span>
+      <section className="assistant-panel hidden min-h-0 self-start rounded-apple bg-card/95 p-5 text-card-foreground shadow-card backdrop-blur-sm lg:flex lg:flex-col">
+        <header className="assistant-header">
+          <div className="assistant-heading">
+            <p className="font-text text-[14px] font-semibold text-foreground">
+              <UiText zh="AI 学习助手" en="Study Assistant" />
             </p>
-            <p className="mt-1 font-text text-[13px] leading-[1.35] text-muted-foreground">
-              当前页面：{noteContext.weekLabelZh}
-              <span className="ui-en ml-1">{noteContext.weekLabelEn}</span>
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {renderFontSizeControls()}
+          <div className="assistant-actions">
             <button
               type="button"
               onClick={() => setHistoryOpen(true)}
-              className="rounded-capsule border border-border px-2.5 py-0.5 text-[11px] tracking-tightCaption text-muted-foreground transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="assistant-icon-button" aria-label={t("提问历史", "Question history")} title={t("提问历史", "Question history")}
             >
-              提问历史
-              <span className="ui-en ml-1">History</span>
+              <History size={16} />
             </button>
             <button
               type="button"
               onClick={() => setDesktopFullscreen(true)}
-              className="rounded-capsule border border-border px-2.5 py-0.5 text-[11px] tracking-tightCaption text-muted-foreground transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="assistant-icon-button" aria-label={t("全屏", "Fullscreen")} title={t("全屏", "Fullscreen")}
             >
-              全屏
-              <span className="ui-en ml-1">Fullscreen</span>
+              <Maximize size={16} />
             </button>
+            {onClose && <button type="button" onClick={onClose} className="assistant-icon-button" aria-label={t("收起助手", "Collapse assistant")} title={t("收起助手", "Collapse assistant")}><PanelRightClose size={16} /></button>}
           </div>
+          </div>
+          {renderFontSizeControls()}
         </header>
         <div className="flex min-h-0 flex-1 flex-col">{renderChatBody(desktopMessagesRef)}</div>
       </section>
 
-      {desktopFullscreen ? (
-        <div className="fixed inset-0 z-[90] hidden overflow-y-auto bg-black/60 backdrop-blur-[2px] lg:block">
-          <div className="mx-4 my-4 min-h-[calc(100dvh-2rem)] rounded-[12px] bg-background p-4 shadow-card">
-            <div className="flex min-h-[calc(100dvh-4rem)] flex-col">
+      {desktopFullscreen ? createPortal(
+        <div data-assistant-dialog="fullscreen" role="dialog" aria-modal="true" aria-label={t("AI 学习助手", "Study Assistant")} className="fixed inset-0 z-[90] hidden overflow-y-auto bg-black/60 backdrop-blur-[2px] lg:block">
+          <div className="mx-4 my-4 h-[calc(100dvh-2rem)] rounded-[12px] bg-background p-4 shadow-card">
+            <div className="flex h-full min-h-0 flex-col">
               <header className="mb-3 flex items-center justify-between gap-3">
                 <p className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px] text-foreground">
-                  AI 学习助手
-                  <span className="ui-en ml-2 text-[0.75em] font-normal text-muted-foreground">Fullscreen</span>
+                  <UiText zh="AI 学习助手" en="Study Assistant" />
                 </p>
                 {renderFontSizeControls()}
                 <button
                   type="button"
                   onClick={() => setDesktopFullscreen(false)}
-                  className="rounded-capsule border border-border px-3 py-1 text-[12px] tracking-tightCaption text-muted-foreground transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="assistant-icon-button" aria-label={t("退出全屏", "Exit fullscreen")} title={t("退出全屏", "Exit fullscreen")}
                 >
-                  退出全屏
-                  <span className="ui-en ml-1">Exit</span>
+                  <Minimize size={18} />
                 </button>
               </header>
-              <div className="min-h-0 flex-1">{renderChatBody(fullscreenMessagesRef)}</div>
+              <div className="flex min-h-0 flex-1 flex-col">{renderChatBody(fullscreenMessagesRef)}</div>
             </div>
           </div>
         </div>
-      ) : null}
+      , document.body) : null}
 
-      {historyOpen ? (
-        <div className="fixed inset-0 z-[95] bg-black/60 backdrop-blur-[2px]">
+      {historyOpen ? createPortal(
+        <div data-assistant-dialog="history" role="dialog" aria-modal="true" aria-label={t("提问历史", "Question History")} className="fixed inset-0 z-[95] bg-black/60 backdrop-blur-[2px]">
           <div className="absolute inset-3 rounded-[12px] bg-background p-3 shadow-card md:inset-6 md:p-4">
             <div className="flex h-full flex-col">
               <header className="mb-3 flex items-center justify-between gap-3">
                 <p className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px] text-foreground">
-                  提问历史
-                  <span className="ui-en ml-2 text-[0.75em] font-normal text-muted-foreground">Question History</span>
+                  <UiText zh="提问历史" en="Question History" />
                 </p>
                 <button
                   type="button"
                   onClick={() => setHistoryOpen(false)}
-                  className="rounded-capsule border border-border px-3 py-1 text-[12px] tracking-tightCaption text-muted-foreground transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="assistant-icon-button" aria-label={t("关闭历史", "Close history")} title={t("关闭历史", "Close history")}
                 >
-                  关闭
-                  <span className="ui-en ml-1">Close</span>
+                  <X size={18} />
                 </button>
               </header>
 
@@ -905,8 +922,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
                   <div className="space-y-2">
                     {noteRecords.length === 0 ? (
                       <p className="px-2 py-3 font-text text-[13px] leading-[1.45] text-muted-foreground">
-                        暂无提问记录。
-                        <span className="ui-en ml-1">No history yet.</span>
+                        <UiText zh="暂无提问记录。" en="No history yet." />
                       </p>
                     ) : (
                       noteRecords.map((record) => {
@@ -939,8 +955,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
                       <div>
                         <p className="font-display text-[19px] font-semibold leading-[1.2] text-foreground">{selectedRecord.title}</p>
                         <p className="mt-1 font-text text-[12px] leading-[1.4] text-muted-foreground">
-                          {selectedRecord.weekLabelZh}
-                          <span className="ui-en ml-1">{selectedRecord.weekLabelEn}</span>
+                          <UiText zh={selectedRecord.weekLabelZh} en={selectedRecord.weekLabelEn} />
                         </p>
                       </div>
 
@@ -958,8 +973,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
                     </div>
                   ) : (
                     <p className="font-text text-[14px] leading-[1.45] text-muted-foreground">
-                      请选择一条提问记录查看详情。
-                      <span className="ui-en ml-1">Select a history card to view details.</span>
+                      <UiText zh="请选择一条提问记录查看详情。" en="Select a history card to view details." />
                     </p>
                   )}
                 </section>
@@ -967,7 +981,7 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
             </div>
           </div>
         </div>
-      ) : null}
+      , document.body) : null}
 
       <div className="lg:hidden">
         <button
@@ -975,42 +989,38 @@ export function NoteAssistantPanel({ noteContext }: NoteAssistantPanelProps) {
           onClick={() => setMobileOpen(true)}
           className="btn-apple-primary fixed bottom-5 right-4 z-[60] inline-flex items-center rounded-capsule px-4 py-2 font-text text-[14px] shadow-card transition focus-visible:outline-none"
         >
-          AI 学习助手
-          <span className="ui-en ml-1">Ask AI</span>
+          <UiText zh="AI 学习助手" en="Ask AI" />
         </button>
 
-        {mobileOpen ? (
-          <div className="fixed inset-0 z-[70] bg-black/45 backdrop-blur-[1px]">
+        {mobileOpen ? createPortal(
+          <div data-assistant-dialog="mobile" role="dialog" aria-modal="true" aria-label={t("AI 学习助手", "Study Assistant")} className="fixed inset-0 z-[70] bg-black/45 backdrop-blur-[1px] lg:hidden">
             <div className="absolute inset-x-0 bottom-0 flex h-[min(88dvh,calc(100dvh-1rem))] flex-col rounded-t-[18px] bg-background p-4">
               <header className="mb-3 flex items-center justify-between">
                 <p className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px] text-foreground">
-                  AI 学习助手
-                  <span className="ui-en ml-2 text-[0.75em] font-normal text-muted-foreground">Study Assistant</span>
+                  <UiText zh="AI 学习助手" en="Study Assistant" />
                 </p>
                 <div className="flex items-center gap-2">
                   {renderFontSizeControls(true)}
                   <button
                     type="button"
                     onClick={() => setHistoryOpen(true)}
-                    className="rounded-capsule border border-border px-3 py-1 text-[12px] tracking-tightCaption text-muted-foreground transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="assistant-icon-button" aria-label={t("提问历史", "Question history")} title={t("提问历史", "Question history")}
                   >
-                    历史
-                    <span className="ui-en ml-1">History</span>
+                    <History size={17} />
                   </button>
                   <button
                     type="button"
                     onClick={() => setMobileOpen(false)}
-                    className="rounded-capsule border border-border px-3 py-1 text-[12px] tracking-tightCaption text-muted-foreground transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="assistant-icon-button" aria-label={t("收起助手", "Collapse assistant")} title={t("收起助手", "Collapse assistant")}
                   >
-                    关闭
-                    <span className="ui-en ml-1">Close</span>
+                    <X size={18} />
                   </button>
                 </div>
               </header>
               <div className="flex min-h-0 flex-1 flex-col">{renderChatBody(mobileMessagesRef)}</div>
             </div>
           </div>
-        ) : null}
+        , document.body) : null}
       </div>
     </>
   );

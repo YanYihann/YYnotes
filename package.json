@@ -9,7 +9,9 @@
     "build": "node scripts/build.mjs",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:generation": "node --test scripts/test-note-generation.cjs",
+    "test:provider": "node --test scripts/test-ai-provider.cjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",

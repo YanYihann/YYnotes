@@ -33,6 +33,7 @@ const markdownComponents = {
 
 type PrepareNoteMarkdownOptions = {
   showEnglish?: boolean;
+  language?: "en" | "zh";
 };
 
 function normalizeNewlines(source: string): string {
@@ -359,11 +360,13 @@ function dedupeAdjacentLines(source: string): string {
   return output.join("\n");
 }
 
-function composeRenderedSource(source: string, showEnglish: boolean): string {
+function composeRenderedSource(source: string, showEnglish: boolean, language?: "en" | "zh"): string {
   const sections = splitBilingualNoteSections(source);
   if (!sections.hasStructuredSections) {
     return source;
   }
+
+  if (language) return language === "en" ? sections.enBody || sections.zhBody : sections.zhBody;
 
   if (!showEnglish) {
     return sections.zhBody;
@@ -374,7 +377,7 @@ function composeRenderedSource(source: string, showEnglish: boolean): string {
 
 export function prepareNoteMarkdown(source: string, options: PrepareNoteMarkdownOptions = {}): string {
   const normalized = normalizeDynamicDemoMarkup(normalizeMathDelimiters(normalizeNewlines(source).trim()));
-  const rendered = composeRenderedSource(normalized, options.showEnglish !== false);
+  const rendered = composeRenderedSource(normalized, options.showEnglish !== false, options.language);
   const fixedMixedDisplayMath = normalizeMixedContentDisplayMath(rendered);
   return dedupeAdjacentLines(fixedMixedDisplayMath).trim();
 }

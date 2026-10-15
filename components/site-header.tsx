@@ -1,28 +1,28 @@
+"use client";
+
 import Link from "next/link";
+import Image from "next/image";
+import { usePathname } from "next/navigation";
+import { Menu, Plus } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { AuthNavControls } from "@/components/auth/auth-nav-controls";
 import { LanguageToggle } from "@/components/language-toggle";
-import { NavLinks } from "@/components/nav-links";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { CommandSearch } from "@/components/command-search";
+import type { WorkspaceNote } from "@/components/home/workspace-types";
+import { useLanguage } from "@/components/language-provider";
 
-export function SiteHeader() {
-  return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-black/80 backdrop-blur-[20px] backdrop-saturate-[180%]">
-      <div className="mx-auto flex h-12 max-w-[1100px] items-center justify-between px-4 sm:px-6">
-        <Link
-          href="/"
-          className="font-text text-[12px] font-medium tracking-[0.04em] text-white/95 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-black"
-        >
-          YYnotes
-          <span className="ui-en ml-1 text-white/80">YYNotes</span>
-        </Link>
-
-        <nav aria-label="Primary" className="flex items-center gap-4">
-          <NavLinks />
-          <AuthNavControls />
-          <LanguageToggle />
-          <ThemeToggle />
-        </nav>
-      </div>
-    </header>
-  );
+export function SiteHeader({ publicNotes }: { publicNotes: WorkspaceNote[] }) {
+  const pathname = usePathname();
+  const { t } = useLanguage();
+  const menu = useRef<HTMLDetailsElement>(null);
+  useEffect(() => { if (menu.current) menu.current.open = false; }, [pathname]);
+  return <header className="workspace-header">
+    <a href="#workspace-main" className="skip-link">{t("跳到主要内容", "Skip to content")}</a>
+    <div className="header-inner">
+      <Link href="/" className="brand" aria-label={t("YYNotes 首页", "YYNotes home")}><Image src="/icon.svg" alt="" width={28} height={28} unoptimized />YYNotes</Link>
+      <nav className="header-nav" aria-label={t("主导航", "Main navigation")}><Link href="/" aria-current={pathname === "/" ? "page" : undefined}>{t("首页", "Home")}</Link><Link href="/notes" aria-current={pathname.startsWith("/notes") ? "page" : undefined}>{t("笔记", "Notes")}</Link></nav>
+      <div className="header-actions"><CommandSearch publicNotes={publicNotes} /><div className="header-preferences"><LanguageToggle /><ThemeToggle /></div><AuthNavControls /><details ref={menu} className="mobile-nav"><summary aria-label={t("打开导航菜单", "Open navigation")}><Menu size={20} /></summary><div className="mobile-nav-content"><Link href="/" onClick={() => { if (menu.current) menu.current.open = false; }}>{t("首页", "Home")}</Link><Link href="/notes" onClick={() => { if (menu.current) menu.current.open = false; }}>{t("笔记", "Notes")}</Link><Link href="/#create" onClick={() => { if (menu.current) menu.current.open = false; }}><Plus size={15} />{t("生成笔记", "Generate notes")}</Link><div><LanguageToggle /><ThemeToggle /></div></div></details></div>
+    </div>
+  </header>;
 }

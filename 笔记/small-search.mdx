@@ -1,0 +1,109 @@
+---
+title: 写一个简单的笔记搜索
+slug: small-search
+topicZh: 代码与实践
+topicEn: Code and Practice
+descriptionZh: 用几行 JavaScript 完成关键词匹配，理解输入、处理与输出之间的关系。
+descriptionEn: Match keywords with a small JavaScript function and connect input, processing, and output.
+tags: [公开示例, JavaScript]
+order: 3
+---
+# Writing a Small Note Search
+
+## 中文版笔记
+
+## 学习目标
+
+- 用 `filter` 筛选笔记列表。
+- 理解去除首尾空格和统一大小写的作用。
+
+## 关键概念
+
+**筛选**保留满足条件的元素。**归一化**把输入转成一致形式，使比较不受不必要的格式差异影响。
+
+> 公开示例：以下笔记列表为代码演示数据。
+
+## 主要内容
+
+### 一个完整的小例子
+
+```javascript
+const notes = [
+  { title: "阅读中的问题", topic: "阅读" },
+  { title: "JavaScript 入门", topic: "代码" },
+  { title: "平均值", topic: "概念" },
+];
+
+function searchNotes(notes, query) {
+  const keyword = query.trim().toLowerCase();
+  return notes.filter((note) =>
+    `${note.title} ${note.topic}`.toLowerCase().includes(keyword)
+  );
+}
+
+console.log(searchNotes(notes, " javascript "));
+// [{ title: "JavaScript 入门", topic: "代码" }]
+```
+
+### 理解每一步
+
+1. `trim()` 去掉关键词首尾的空格。
+2. `toLowerCase()` 让英文大小写不影响匹配。
+3. 将标题与主题连起来，得到可搜索的文字。
+4. `includes()` 判断是否包含关键词，`filter()` 收集匹配的笔记。
+
+当关键词为空时，空字符串会匹配所有文字，因此返回全部笔记。这个实现适合简单的标题和主题搜索，不提供语义匹配或复杂排序。
+
+## 小结
+
+先明确搜索范围，再统一输入格式，最后筛选结果。用可解释的小步骤，完成一个可用的功能。
+
+---
+
+## English Version
+
+## Learning Objectives
+
+- Filter a list of notes with `filter`.
+- Understand why trimming and lowercasing help comparisons.
+
+## Key Concepts
+
+**Filtering** keeps elements that satisfy a condition. **Normalization** puts inputs into a consistent form so unnecessary formatting differences do not affect comparison.
+
+> Public example: the following note list is demonstration data.
+
+## Main Content
+
+### A Complete Small Example
+
+```javascript
+const notes = [
+  { title: "Questions from Reading", topic: "Reading" },
+  { title: "JavaScript Basics", topic: "Code" },
+  { title: "The Mean", topic: "Concepts" },
+];
+
+function searchNotes(notes, query) {
+  const keyword = query.trim().toLowerCase();
+  return notes.filter((note) =>
+    `${note.title} ${note.topic}`.toLowerCase().includes(keyword)
+  );
+}
+
+console.log(searchNotes(notes, " javascript "));
+// [{ title: "JavaScript Basics", topic: "Code" }]
+```
+
+### Understand Each Step
+
+1. `trim()` removes spaces at the beginning and end of the query.
+2. `toLowerCase()` makes matching case-insensitive for English text.
+3. Combining the title and topic creates the searchable text.
+4. `includes()` checks for a keyword, and `filter()` collects matching notes.
+
+An empty keyword matches all text, so the function returns all notes. This implementation supports simple title and topic search; it does not provide semantic matching or complex ranking.
+
+## Summary
+
+Define the search scope, normalize the input, and filter the results. Small, explainable steps can produce a usable feature.

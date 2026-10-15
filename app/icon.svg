@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <title>YYnotes</title>
+  <rect width="64" height="64" rx="14" fill="#111"/>
+  <path d="M11 18 21 31 31 18M21 31v15M33 18 43 31 53 18M43 31v15" fill="none" stroke="#fff" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

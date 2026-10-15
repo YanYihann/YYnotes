@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { LoginRequiredCard } from "@/components/auth/login-required-card";
+import { useLanguage } from "@/components/language-provider";
 import { useAuth } from "@/components/auth/auth-provider";
 import { NoteView } from "@/components/notes/note-view";
 import {
@@ -54,6 +55,7 @@ function CloudStateCard({ message, error = false }: { message: string; error?: b
 }
 
 export function CloudNoteViewer() {
+  const { t } = useLanguage();
   const { isReady, session } = useAuth();
   const authToken = session?.token ?? "";
   const searchParams = useSearchParams();
@@ -66,14 +68,14 @@ export function CloudNoteViewer() {
   useEffect(() => {
     async function loadNote() {
       if (!slug) {
-        setError("缺少 slug 参数，请从笔记列表重新打开。");
+        setError(t("缺少 slug 参数，请从笔记列表重新打开。","Open the note again from your library."));
         setNote(null);
         setAdjacentNav({});
         return;
       }
 
       if (!CLOUD_API_BASE) {
-        setError("未配置 NEXT_PUBLIC_NOTES_API_BASE，无法读取云端笔记。");
+        setError(t("未配置 NEXT_PUBLIC_NOTES_API_BASE，无法读取云端笔记。","Cloud notes are unavailable."));
         setNote(null);
         setAdjacentNav({});
         return;
@@ -102,7 +104,7 @@ export function CloudNoteViewer() {
 
         const noteJson = (await noteResponse.json().catch(() => null)) as CloudNoteResponse | null;
         if (!noteResponse.ok || !noteJson?.success || !noteJson.note) {
-          throw new Error(noteJson?.error || "加载云端笔记失败。");
+          throw new Error(noteJson?.error || t("加载云端笔记失败。","Could not load note."));
         }
 
         setNote(noteJson.note);
@@ -134,19 +136,19 @@ export function CloudNoteViewer() {
       } catch (loadError) {
         setNote(null);
         setAdjacentNav({});
-        setError(loadError instanceof Error ? loadError.message : "加载云端笔记失败。");
+        setError(loadError instanceof Error ? loadError.message : t("加载云端笔记失败。","Could not load note."));
       } finally {
         setLoading(false);
       }
     }
 
     loadNote();
-  }, [isReady, authToken, slug]);
+  }, [isReady, authToken, slug, t]);
 
   const normalizedNote = useMemo(() => normalizeCloudNote(note), [note]);
 
   if (!isReady) {
-    return <CloudStateCard message="正在检查登录状态..." />;
+    return <CloudStateCard message={t("正在检查登录状态...","Checking session…")} />;
   }
 
   if (!authToken) {
@@ -162,7 +164,7 @@ export function CloudNoteViewer() {
   }
 
   if (loading) {
-    return <CloudStateCard message="正在加载云端笔记..." />;
+    return <CloudStateCard message={t("正在加载云端笔记...","Loading note…")} />;
   }
 
   if (error) {
@@ -170,7 +172,7 @@ export function CloudNoteViewer() {
   }
 
   if (!normalizedNote.noteContent) {
-    return <CloudStateCard message="笔记内容为空。" />;
+    return <CloudStateCard message={t("笔记内容为空。","This note is empty.")} />;
   }
 
   return (

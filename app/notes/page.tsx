@@ -1,47 +1,13 @@
+import Link from "next/link";
+import { Plus } from "lucide-react";
+import { UiText } from "@/components/ui-text";
 import type { Metadata } from "next";
 import { NotesIndexClient } from "@/components/notes/notes-index-client";
 import { getWeekNotes } from "@/lib/content";
 
-export const metadata: Metadata = {
-  title: "My Notes",
-  description: "Browse all archived notes.",
-};
-
+export const metadata: Metadata = { title: "Notes · YYNotes", description: "Organize notes by folder and topic." };
 export default async function NotesIndexPage() {
   const notes = await getWeekNotes();
-  const initialNotes = notes.map((note) => ({
-    slug: note.slug,
-    weekLabelZh: note.weekLabelZh,
-    weekLabelEn: note.weekLabelEn,
-    zhTitle: note.zhTitle,
-    enTitle: note.enTitle,
-    descriptionZh: note.descriptionZh,
-    descriptionEn: note.descriptionEn,
-    topicZh: note.topicZh,
-    tags: note.tags,
-    order: note.order,
-  }));
-
-  return (
-    <div className="section-light min-h-[calc(100vh-3rem)] py-14">
-      <div className="mx-auto w-full max-w-[1100px] px-4 sm:px-6">
-        <header className="mb-10 max-w-[760px]">
-          <p className="font-text text-[12px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-            笔记索引
-            <span className="ui-en ml-1">Notes Index</span>
-          </p>
-          <h1 className="mt-3 font-display text-[clamp(2rem,5vw,3.5rem)] font-semibold leading-[1.07] tracking-tightDisplay text-foreground">
-            我的笔记
-            <span className="ui-en mt-1 block text-[0.52em] font-normal text-muted-foreground">My Notes</span>
-          </h1>
-          <p className="mt-4 font-text text-[17px] leading-[1.47] text-muted-foreground">
-            按文件夹与主题组织笔记内容，保留公式细节与完整推导。
-            <span className="ui-en ml-1">Organized by folders and topics with formula details and complete derivations.</span>
-          </p>
-        </header>
-
-        <NotesIndexClient initialNotes={initialNotes} />
-      </div>
-    </div>
-  );
+  const initialNotes = notes.map((note) => ({ slug: note.slug, weekLabelZh: note.weekLabelZh, weekLabelEn: note.weekLabelEn, zhTitle: note.zhTitle, enTitle: note.enTitle, descriptionZh: note.descriptionZh, descriptionEn: note.descriptionEn, topicZh: note.topicZh, tags: note.tags, order: note.order }));
+  return <div className="notes-page"><header className="notes-page-heading"><h1><UiText zh="笔记" en="Notes" /></h1><Link className="text-action" href="/#create"><Plus size={16} /><UiText zh="生成笔记" en="Generate notes" /></Link></header><NotesIndexClient initialNotes={initialNotes} /></div>;
 }

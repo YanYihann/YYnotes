@@ -2,41 +2,48 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
+export type InterfaceLanguage = "en" | "zh";
+
 type LanguageContextValue = {
+  locale: InterfaceLanguage;
+  t: (zh: string, en: string) => string;
   showEnglish: boolean;
   setShowEnglish: (value: boolean) => void;
   toggleShowEnglish: () => void;
 };
 
 const LanguageContext = createContext<LanguageContextValue | null>(null);
-const STORAGE_KEY = "na_show_english";
+const STORAGE_KEY = "yynotes.interface-language.v2";
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [showEnglish, setShowEnglish] = useState(false);
+  const [locale, setLocale] = useState<InterfaceLanguage>("en");
+  const showEnglish = locale === "en";
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw === "1") {
-      setShowEnglish(true);
-      return;
-    }
-    if (raw === "0") {
-      setShowEnglish(false);
-    }
+    try {
+      setLocale(window.localStorage.getItem(STORAGE_KEY) === "zh" ? "zh" : "en");
+    } catch { /* Browsers with storage disabled still support the language toggle. */ }
+    setReady(true);
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, showEnglish ? "1" : "0");
+    if (!ready) return;
+    try { window.localStorage.setItem(STORAGE_KEY, locale); } catch { /* Optional preference persistence. */ }
     document.documentElement.classList.toggle("hide-english", !showEnglish);
-  }, [showEnglish]);
+    document.documentElement.lang = locale === "en" ? "en" : "zh-CN";
+    document.documentElement.dataset.language = locale;
+  }, [showEnglish, locale, ready]);
 
   const value = useMemo<LanguageContextValue>(
     () => ({
+      locale,
+      t: (zh, en) => locale === "zh" ? zh : en,
       showEnglish,
-      setShowEnglish,
-      toggleShowEnglish: () => setShowEnglish((prev) => !prev),
+      setShowEnglish: (value) => setLocale(value ? "en" : "zh"),
+      toggleShowEnglish: () => setLocale((prev) => prev === "en" ? "zh" : "en"),
     }),
-    [showEnglish],
+    [showEnglish, locale],
   );
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;

@@ -160,6 +160,7 @@ const MODEL_ICONS: Record<string, ReactNode> = {
   "deepseek-v4-flash": <Bot className="h-4 w-4 text-[#2563eb]" />,
   "gpt-5.4-nano-2026-03-17": OPENAI_ICON,
   "gpt-4.1-mini": OPENAI_ICON,
+  "gpt-4o-mini": OPENAI_ICON,
   "gpt-4.1": OPENAI_ICON,
   "o3-mini": OPENAI_ICON,
   "gemini-3.1-flash-lite-preview": GEMINI_ICON,
@@ -167,36 +168,21 @@ const MODEL_ICONS: Record<string, ReactNode> = {
   "Claude 3.5 Sonnet": ANTHROPIC_ICON,
 };
 
-export const DEFAULT_ASSISTANT_MODEL = "deepseek-v4-flash";
+export const DEFAULT_ASSISTANT_MODEL = "deepseek-v3.2";
 
 export const ASSISTANT_MODEL_OPTIONS: AIModelOption[] = [
   {
     id: DEFAULT_ASSISTANT_MODEL,
-    label: "DeepSeek V4 Flash",
-    description: "Default fast study assistant",
-  },
-  {
-    id: "gpt-5.4-nano-2026-03-17",
-    label: "GPT-5.4 Nano",
-    description: "Fast lightweight assistant",
-  },
-  {
-    id: "gpt-4.1-mini",
-    label: "GPT-4.1 Mini",
-    description: "Stable note-aware fallback",
+    label: "DeepSeek V3.2",
+    description: "Stable note-aware default",
   },
 ];
 
 export const NOTE_GENERATION_MODEL_OPTIONS: AIModelOption[] = [
   {
-    id: "gpt-4.1-mini",
-    label: "GPT-4.1 Mini",
+    id: "deepseek-v3.2",
+    label: "DeepSeek V3.2",
     description: "Default stable note generation",
-  },
-  {
-    id: "qwen3.6-flash",
-    label: "Qwen3.6 Flash",
-    description: "Chinese-first long-context generation",
   },
 ];
 

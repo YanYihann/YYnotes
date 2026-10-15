@@ -19,12 +19,9 @@ import {
 
 export const runtime = "nodejs";
 
-const DEFAULT_MODEL_NAME = process.env.OPENAI_MODEL || "gpt-4.1-mini";
-const ALLOWED_MODEL_NAMES = new Set([
-  "qwen3.6-flash",
-  "gpt-4.1-mini",
-]);
-const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL?.trim().replace(/\/+$/, "") || "https://api.openai.com/v1";
+const DEFAULT_MODEL_NAME = process.env.OPENAI_MODEL || "deepseek-v3.2";
+const ALLOWED_MODEL_NAMES = new Set(["deepseek-v3.2"]);
+const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL?.trim().replace(/\/+$/, "") || "https://api.302.ai/v1";
 const RESPONSES_ENDPOINT = `${OPENAI_BASE_URL}/responses`;
 const CHAT_COMPLETIONS_ENDPOINT = `${OPENAI_BASE_URL}/chat/completions`;
 const PROMPT_TEMPLATE_PATHS = {
@@ -168,6 +165,7 @@ function extractChatCompletionsText(payload: unknown): string {
 }
 
 async function attemptResponses(input: OpenAIInputItem[], modelName: string, signal: AbortSignal): Promise<ProviderAttempt> {
+  if (new URL(OPENAI_BASE_URL).hostname === "api.302.ai") return { ok: false, provider: "responses", message: "Use chat completions for this provider." };
   const response = await fetch(RESPONSES_ENDPOINT, {
     method: "POST",
     headers: {

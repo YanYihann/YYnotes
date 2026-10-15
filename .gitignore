@@ -31,3 +31,17 @@ next-env.d.ts
 # local scratch/output files
 tmp-*.html
 err-page.html
+
+.vercel
+.env*
+!.env.example
+env.txt
+
+# Local browser sessions, design logs, and Worker secrets
+/.automation/
+/.hallmark/
+**/.dev.vars
+**/.dev.vars.*
+!**/.dev.vars.example
+/.tmp-static-export-app-api/
+/output/

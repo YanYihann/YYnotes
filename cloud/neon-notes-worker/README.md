@@ -1,85 +1,58 @@
-﻿# Neon Notes Worker
+# YYNotes Cloud API
 
-This worker is the backend for GitHub Pages note generation and storage.
+Cloudflare Worker backend for YYNotes, backed by Neon PostgreSQL. It serves both the Vercel frontend (through `/api/cloud`) and static frontends (through a direct API URL).
 
-## Features
+See the [deployment guide](../../docs/DEPLOYMENT.md) for database initialization, secrets, CORS, Google sign-in, and frontend configuration.
 
-- `POST /auth/register`: register with email/password and return auth token
-- `POST /auth/login`: login with email/password and return auth token
-- `POST /auth/google`: login/register with Google ID token and return auth token
-- `GET /auth/me`: verify token and return current user
-- `POST /notes/generate`: generate MDX via OpenAI and save to Neon
-- `GET /notes`: list latest notes (current user only)
-- `GET /notes/:slug`: get a single note (current user only)
-- `PATCH /notes/:slug`: update metadata (and supports `folderId` assignment)
-- `GET /folders`: list folders (current user only)
-- `POST /folders`: create folder (current user only)
-- `PATCH /folders/:id`: update folder name/order (current user only)
-- `DELETE /folders/:id`: delete folder and unassign related notes (current user only)
-- `DELETE /notes/:slug`: delete one note by slug (current user only)
-- `GET /health`: health check
+## Setup
 
-## 1) Prepare Neon
-
-Run `schema.sql` in your Neon SQL console.
-
-## 2) Configure Worker
+Run [schema.sql](schema.sql) in Neon first, then:
 
 ```bash
-cd cloud/neon-notes-worker
-npm install
-wrangler secret put DATABASE_URL
-wrangler secret put OPENAI_API_KEY
-wrangler secret put AUTH_SECRET
-wrangler secret put GOOGLE_CLIENT_ID
-```
-
-Edit `wrangler.toml` if needed:
-
-- `ALLOWED_ORIGIN`: set your Pages origin, e.g. `https://yanyihann.github.io`
-- `OPENAI_MODEL`: defaults to `gpt-4.1-mini`
-- `GOOGLE_CLIENT_ID`: Google OAuth Web Client ID for `POST /auth/google`
-
-All `/notes*` and `/assistant` endpoints require:
-
-`Authorization: Bearer <token>`
-
-## 3) Deploy
-
-```bash
+npm ci
+npx wrangler secret put DATABASE_URL
+npx wrangler secret put OPENAI_API_KEY
+npx wrangler secret put AUTH_SECRET
+# Optional, for Google sign-in:
+npx wrangler secret put GOOGLE_CLIENT_ID
 npm run deploy
 ```
 
-After deploy, copy the worker URL, for example:
+Review `wrangler.toml` before deploying. The current configuration uses `deepseek-v3.2` through `https://api.302.ai/v1`. Provider calls use Chat Completions, including SSE streaming for the assistant. A new model must be compatible with the generation allowlist, not just the environment configuration.
 
-`https://neon-notes-worker.<subdomain>.workers.dev`
+For local development, keep secrets in an ignored `.dev.vars` file and run `npm run dev`.
 
-## 4) Connect GitHub Pages front-end
+## API overview
 
-In GitHub repo settings:
+Paths below are relative to the Worker origin. Protected routes require `Authorization: Bearer <token>` and scope data to the authenticated user.
 
-- `Settings` -> `Secrets and variables` -> `Actions` -> `Variables`
-- Add variable `NEXT_PUBLIC_NOTES_API_BASE`
-- Value: your worker URL (without trailing slash)
-- Add variable `NEXT_PUBLIC_GOOGLE_CLIENT_ID`
-- Value: same Google OAuth Web Client ID used in worker `GOOGLE_CLIENT_ID`
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/health` | Basic reachability check |
+| `POST` | `/auth/register` | Email/password registration |
+| `POST` | `/auth/login` | Email/password sign-in |
+| `POST` | `/auth/google` | Google ID-token sign-in |
+| `GET` | `/auth/me` | Current authenticated user |
+| `POST` | `/assistant` | Contextual Q&A, optionally streamed |
+| `GET`, `POST` | `/notes` | List notes/Trash or import a note |
+| `GET`, `PATCH`, `DELETE` | `/notes/:slug` | Read, edit, move to Trash, or permanently delete |
+| `POST` | `/notes/generate` | Generate bilingual content and save it |
+| `POST` | `/notes/:slug/import-metadata` | Generate metadata for an imported note |
+| `POST` | `/notes/:slug/restore` | Restore a note from Trash |
+| `GET`, `POST`, `DELETE` | `/notes/:slug/highlights` | List/create/clear reading highlights |
+| `DELETE` | `/notes/:slug/highlights/:id` | Delete a highlight |
+| `GET`, `POST` | `/folders` | List/create folders |
+| `PATCH`, `DELETE` | `/folders/:id` | Rename/reorder/delete a folder |
 
-Re-run Pages workflow. Front-end generator will switch to cloud mode automatically.
+Check `src/index.js` for request fields and query options. The web client submits generation through `multipart/form-data`, including `sourceText` or `sourceFile`, `promptTemplate`, and optional metadata/instructions. The Vercel generation proxy enforces a 4 MiB file limit and a 35,000-character source limit.
 
-## 5) Request body for `POST /notes/generate`
+## Verification
 
-```json
-{
-  "title": "Limits and Continuity Core Concepts",
-  "topic": "Calculus Basics",
-  "tags": "definition, theorem, proof",
-  "sourceText": "...raw source text...",
-  "extraInstruction": "...optional...",
-  "overwrite": false,
-  "promptTemplate": "...content of prompt.md..."
-}
+From the repository root:
+
+```bash
+npm run test:provider
+npm run test:generation
 ```
 
-Auth endpoints return bearer tokens. Use them for all notes requests:
-
-`Authorization: Bearer <token>`
+These tests simulate database/provider behavior; they do not validate production credentials or create live notes.

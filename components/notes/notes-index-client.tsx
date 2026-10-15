@@ -1,6 +1,8 @@
 "use client";
 
+import { useLanguage } from "@/components/language-provider";
 import Link from "next/link";
+import { UiText } from "@/components/ui-text";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { LoginRequiredCard } from "@/components/auth/login-required-card";
@@ -253,6 +255,7 @@ function toFolderItem(row: CloudFolderRecord): FolderItem | null {
 }
 
 export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
+  const { t } = useLanguage();
   const router = useRouter();
   const { isReady, session } = useAuth();
   const authToken = session?.token ?? "";
@@ -353,16 +356,16 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
         const notesJson = (await notesResponse.json().catch(() => null)) as NotesApiResponse | null;
         if (!notesResponse.ok || !notesJson?.success || !Array.isArray(notesJson.notes)) {
-          throw new Error(notesJson?.error || "云端笔记列表加载失败。");
+          throw new Error(notesJson?.error || t("云端笔记列表加载失败。","Could not load notes."));
         }
 
         const foldersJson = (await foldersResponse.json().catch(() => null)) as FoldersApiResponse | null;
         if (!foldersResponse.ok || !foldersJson?.success || !Array.isArray(foldersJson.folders)) {
-          throw new Error(foldersJson?.error || "云端文件夹列表加载失败。");
+          throw new Error(foldersJson?.error || t("云端文件夹列表加载失败。","Could not load folders."));
         }
         const trashJson = (await trashResponse.json().catch(() => null)) as NotesApiResponse | null;
         if (!trashResponse.ok || !trashJson?.success || !Array.isArray(trashJson.notes)) {
-          throw new Error(trashJson?.error || "云端回收站加载失败。");
+          throw new Error(trashJson?.error || t("云端回收站加载失败。","Could not load Trash."));
         }
 
         const mappedNotes = notesJson.notes
@@ -390,7 +393,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
         }
       } catch (loadError) {
         if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : "云端数据加载失败。");
+          setError(loadError instanceof Error ? loadError.message : t("云端数据加载失败。","Could not load account data."));
         }
       } finally {
         if (!cancelled) {
@@ -404,7 +407,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     return () => {
       cancelled = true;
     };
-  }, [isReady, authToken]);
+  }, [isReady, authToken, t]);
 
   useEffect(() => {
     if (typeof window === "undefined" || IS_CLOUD_MODE) {
@@ -430,7 +433,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
         });
         const json = (await response.json().catch(() => null)) as NotesApiResponse | null;
         if (!response.ok || !json?.success || !Array.isArray(json.notes)) {
-          throw new Error(json?.error || "本地回收站加载失败。");
+          throw new Error(json?.error || t("本地回收站加载失败。","Could not load Trash."));
         }
 
         const rows = json.notes
@@ -448,7 +451,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
         }
       } catch (loadError) {
         if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : "本地回收站加载失败。");
+          setError(loadError instanceof Error ? loadError.message : t("本地回收站加载失败。","Could not load Trash."));
         }
       }
     }
@@ -458,7 +461,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     return () => {
       cancelled = true;
     };
-  }, [folderStorageKey]);
+  }, [folderStorageKey, t]);
 
   useEffect(() => {
     if (typeof window === "undefined" || IS_CLOUD_MODE) {
@@ -565,16 +568,16 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
   const activeFolderLabel = useMemo(() => {
     if (folderFilter === "all") {
-      return "全部笔记";
+      return t("全部笔记", "All notes");
     }
     if (folderFilter === "uncategorized") {
-      return "未归类";
+      return t("未归类","Uncategorised");
     }
     if (folderFilter.startsWith("folder:")) {
-      return folderById.get(folderFilter.slice("folder:".length))?.name ?? "文件夹";
+      return folderById.get(folderFilter.slice("folder:".length))?.name ?? t("文件夹", "Folder");
     }
-    return "全部笔记";
-  }, [folderFilter, folderById]);
+    return t("全部笔记", "All notes");
+  }, [folderFilter, folderById, t]);
 
   function updateLocalFolderMapping(noteSlug: string, folderId: string) {
     setNoteFolderMap((previous) => {
@@ -623,7 +626,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     }
 
     if (!authToken) {
-      setError("登录状态已失效，请重新登录。");
+      setError(t("登录状态已失效，请重新登录。","Your session has expired. Sign in again."));
       return;
     }
 
@@ -645,18 +648,18 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
       const json = (await response.json().catch(() => null)) as { success?: boolean; error?: string } | null;
       if (!response.ok || !json?.success) {
-        throw new Error(json?.error || "保存文件夹归类失败。");
+        throw new Error(json?.error || t("保存文件夹归类失败。","Could not move note to folder."));
       }
     } catch (assignError) {
       updateLocalFolderMapping(noteSlug, previousFolderId);
-      setError(assignError instanceof Error ? assignError.message : "保存文件夹归类失败。");
+      setError(assignError instanceof Error ? assignError.message : t("保存文件夹归类失败。","Could not move note to folder."));
     }
   }
 
   async function handleCreateFolder(rawName: string) {
     const name = sanitizeFolderName(rawName);
     if (!name) {
-      setError("请输入文件夹名称。");
+      setError(t("请输入文件夹名称。","Enter a folder name."));
       return;
     }
 
@@ -666,7 +669,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     }
 
     if (folders.some((folder) => folder.name.toLowerCase() === name.toLowerCase())) {
-      setError("该文件夹名称已存在。");
+      setError(t("该文件夹名称已存在。","A folder with this name already exists."));
       return;
     }
 
@@ -686,7 +689,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     }
 
     if (!authToken) {
-      setError("登录状态已失效，请重新登录。");
+      setError(t("登录状态已失效，请重新登录。","Your session has expired. Sign in again."));
       return;
     }
 
@@ -706,31 +709,31 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
       const json = (await response.json().catch(() => null)) as FoldersApiResponse | null;
       if (!response.ok || !json?.success) {
-        throw new Error(json?.error || "创建云端文件夹失败。");
+        throw new Error(json?.error || t("创建云端文件夹失败。","Could not create folder."));
       }
 
       const folder = toFolderItem((json.folder ?? null) as CloudFolderRecord);
       if (!folder) {
-        throw new Error("云端返回了无效的文件夹数据。");
+        throw new Error(t("云端返回了无效的文件夹数据。","Could not read the new folder."));
       }
 
       setFolders((previous) => sortFolders([...previous, folder]));
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "创建云端文件夹失败。");
+      setError(createError instanceof Error ? createError.message : t("创建云端文件夹失败。","Could not create folder."));
     } finally {
       setCreatingFolder(false);
     }
   }
 
   async function handleDeleteFolder(folder: FolderItem) {
-    const shouldDelete = window.confirm(`确认删除文件夹“${folder.name}”吗？该文件夹下笔记将变为未归类。`);
+    const shouldDelete = window.confirm(t(`确认删除文件夹“${folder.name}”吗？该文件夹下笔记将变为未归类。`, `Delete folder “${folder.name}”? Its notes will remain uncategorised.`));
     if (!shouldDelete) {
       return;
     }
 
     if (IS_CLOUD_MODE) {
       if (!authToken) {
-        setError("登录状态已失效，请重新登录。");
+        setError(t("登录状态已失效，请重新登录。","Your session has expired. Sign in again."));
         return;
       }
 
@@ -747,10 +750,10 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
         const json = (await response.json().catch(() => null)) as { success?: boolean; error?: string } | null;
         if (!response.ok || !json?.success) {
-          throw new Error(json?.error || "删除云端文件夹失败。");
+          throw new Error(json?.error || t("删除云端文件夹失败。","Could not delete folder."));
         }
       } catch (deleteError) {
-        setError(deleteError instanceof Error ? deleteError.message : "删除云端文件夹失败。");
+        setError(deleteError instanceof Error ? deleteError.message : t("删除云端文件夹失败。","Could not delete folder."));
         setDeletingFolderId("");
         return;
       } finally {
@@ -794,7 +797,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
       return;
     }
 
-    const combinedInput = window.prompt("请输入“标题 | 主题”", `${note.zhTitle} | ${note.topicZh || note.weekLabelZh}`);
+    const combinedInput = window.prompt(t("请输入“标题 | 主题”","Enter Title | Topic"), `${note.zhTitle} | ${note.topicZh || note.weekLabelZh}`);
     if (combinedInput === null) {
       return;
     }
@@ -802,13 +805,13 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     const [titlePart, ...topicParts] = combinedInput.split("|");
     const nextTitle = sanitizeEditableText(titlePart ?? "", 80);
     if (!nextTitle) {
-      setError("标题不能为空。");
+      setError(t("标题不能为空。","Enter a title."));
       return;
     }
 
     const nextTopic = sanitizeEditableText(topicParts.join("|"), 64);
     if (!nextTopic) {
-      setError("主题不能为空。");
+      setError(t("主题不能为空。","Enter a topic."));
       return;
     }
 
@@ -820,7 +823,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
       if (IS_CLOUD_MODE) {
         if (!authToken) {
-          throw new Error("登录状态已失效，请重新登录。");
+          throw new Error(t("登录状态已失效，请重新登录。","Your session has expired. Sign in again."));
         }
         const apiBase = normalizeApiBase(CLOUD_API_BASE);
         response = await fetch(`${apiBase}/notes/${encodeURIComponent(note.slug)}`, {
@@ -849,7 +852,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
       const json = (await response.json().catch(() => null)) as NoteUpdateResponse | null;
       if (!response.ok || !json?.success) {
-        throw new Error(json?.error || "保存笔记信息失败。");
+        throw new Error(json?.error || t("保存笔记信息失败。","Could not save metadata."));
       }
 
       const resolvedTitle = sanitizeEditableText(String(json.note?.zhTitle ?? nextTitle), 80) || nextTitle;
@@ -874,7 +877,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
         ),
       );
     } catch (updateError) {
-      setError(updateError instanceof Error ? updateError.message : "保存笔记信息失败。");
+      setError(updateError instanceof Error ? updateError.message : t("保存笔记信息失败。","Could not save metadata."));
     } finally {
       setUpdatingSlug("");
     }
@@ -885,7 +888,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
       return;
     }
 
-    const shouldDelete = window.confirm(`确认将笔记“${note.zhTitle}”移入回收站吗？之后仍可在回收站恢复。`);
+    const shouldDelete = window.confirm(t(`确认将笔记“${note.zhTitle}”移入回收站吗？之后仍可在回收站恢复。`, `Move “${note.enTitle || note.zhTitle}” to Trash? You can restore it later.`));
     if (!shouldDelete) {
       return;
     }
@@ -898,7 +901,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
       if (IS_CLOUD_MODE) {
         if (!authToken) {
-          throw new Error("登录状态已失效，请重新登录。");
+          throw new Error(t("登录状态已失效，请重新登录。","Your session has expired. Sign in again."));
         }
         const apiBase = normalizeApiBase(CLOUD_API_BASE);
         response = await fetch(`${apiBase}/notes/${encodeURIComponent(note.slug)}`, {
@@ -915,7 +918,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
       const json = (await response.json().catch(() => null)) as { success?: boolean; error?: string } | null;
       if (!response.ok || !json?.success) {
-        throw new Error(json?.error || "删除失败，请稍后重试。");
+        throw new Error(json?.error || t("删除失败，请稍后重试。","Could not delete note. Retry."));
       }
 
       const nextSlug = typeof (json as { slug?: unknown }).slug === "string" ? String((json as { slug?: string }).slug) : note.slug;
@@ -933,7 +936,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
       renameNoteFolderMapping(note.slug, nextSlug);
       setTrashOpen(true);
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "删除失败，请稍后重试。");
+      setError(deleteError instanceof Error ? deleteError.message : t("删除失败，请稍后重试。","Could not delete note. Retry."));
     } finally {
       setDeletingSlug("");
     }
@@ -952,7 +955,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
       if (IS_CLOUD_MODE) {
         if (!authToken) {
-          throw new Error("登录状态已失效，请重新登录。");
+          throw new Error(t("登录状态已失效，请重新登录。","Your session has expired. Sign in again."));
         }
 
         const apiBase = normalizeApiBase(CLOUD_API_BASE);
@@ -970,7 +973,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
       const json = (await response.json().catch(() => null)) as { success?: boolean; error?: string; slug?: string } | null;
       if (!response.ok || !json?.success) {
-        throw new Error(json?.error || "恢复失败，请稍后重试。");
+        throw new Error(json?.error || t("恢复失败，请稍后重试。","Could not restore note. Retry."));
       }
 
       const nextSlug = typeof json.slug === "string" && json.slug.trim() ? json.slug.trim() : note.slug;
@@ -987,7 +990,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
       );
       renameNoteFolderMapping(note.slug, nextSlug);
     } catch (restoreError) {
-      setError(restoreError instanceof Error ? restoreError.message : "恢复失败，请稍后重试。");
+      setError(restoreError instanceof Error ? restoreError.message : t("恢复失败，请稍后重试。","Could not restore note. Retry."));
     } finally {
       setRestoringSlug("");
     }
@@ -998,7 +1001,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
       return;
     }
 
-    const shouldDelete = window.confirm(`确认从回收站彻底删除“${note.zhTitle}”吗？该操作将无法恢复。`);
+    const shouldDelete = window.confirm(t(`确认从回收站彻底删除“${note.zhTitle}”吗？该操作将无法恢复。`, `Permanently delete “${note.enTitle || note.zhTitle}”? This cannot be undone.`));
     if (!shouldDelete) {
       return;
     }
@@ -1011,7 +1014,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
       if (IS_CLOUD_MODE) {
         if (!authToken) {
-          throw new Error("登录状态已失效，请重新登录。");
+          throw new Error(t("登录状态已失效，请重新登录。","Your session has expired. Sign in again."));
         }
         const apiBase = normalizeApiBase(CLOUD_API_BASE);
         response = await fetch(`${apiBase}/notes/${encodeURIComponent(note.slug)}?permanent=1`, {
@@ -1028,7 +1031,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
       const json = (await response.json().catch(() => null)) as { success?: boolean; error?: string } | null;
       if (!response.ok || !json?.success) {
-        throw new Error(json?.error || "彻底删除失败，请稍后重试。");
+        throw new Error(json?.error || t("彻底删除失败，请稍后重试。","Could not permanently delete note. Retry."));
       }
 
       setTrashNotes((previous) => previous.filter((item) => item.slug !== note.slug));
@@ -1041,7 +1044,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
         return next;
       });
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "彻底删除失败，请稍后重试。");
+      setError(deleteError instanceof Error ? deleteError.message : t("彻底删除失败，请稍后重试。","Could not permanently delete note. Retry."));
     } finally {
       setPermanentlyDeletingSlug("");
     }
@@ -1056,7 +1059,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
       return;
     }
 
-    const input = window.prompt(`请输入文件夹名称（最多 ${FOLDER_NAME_MAX_LENGTH} 个字符）`, "");
+    const input = window.prompt(t(`请输入文件夹名称（最多 ${FOLDER_NAME_MAX_LENGTH} 个字符）`, `Folder name (up to ${FOLDER_NAME_MAX_LENGTH} characters)`), "");
     if (input === null) {
       return;
     }
@@ -1087,7 +1090,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     }
 
     if (!importFile) {
-      setError("请先选择一个 Markdown 文件。");
+      setError(t("请先选择一个 Markdown 文件。","Select a Markdown file."));
       return;
     }
 
@@ -1096,13 +1099,13 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
     const nextTopic = sanitizeEditableText(importTopic, 64);
 
     if (!nextTitle) {
-      setError("请输入笔记标题。");
+      setError(t("请输入笔记标题。","Enter a note title."));
       return;
     }
 
     const lowerFileName = importFile.name.toLowerCase();
     if (!lowerFileName.endsWith(".md") && !lowerFileName.endsWith(".markdown") && !lowerFileName.endsWith(".mdx")) {
-      setError("目前仅支持导入 .md / .markdown / .mdx 文件。");
+      setError(t("目前仅支持导入 .md / .markdown / .mdx 文件。","Select a .md, .markdown, or .mdx file."));
       return;
     }
 
@@ -1115,7 +1118,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
       if (IS_CLOUD_MODE) {
         if (!authToken) {
-          throw new Error("登录状态已失效，请重新登录。");
+          throw new Error(t("登录状态已失效，请重新登录。","Your session has expired. Sign in again."));
         }
 
         const apiBase = normalizeApiBase(CLOUD_API_BASE);
@@ -1149,7 +1152,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
       const json = (await response.json().catch(() => null)) as NoteCreateResponse | null;
       if (!response.ok || !json?.success) {
-        throw new Error(json?.error || "导入 Markdown 笔记失败。");
+        throw new Error(json?.error || t("导入 Markdown 笔记失败。","Could not import note."));
       }
 
       const slug =
@@ -1160,7 +1163,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
             : "";
 
       if (!slug) {
-        throw new Error("导入成功，但没有收到可打开的笔记链接。");
+        throw new Error(t("导入成功，但没有收到可打开的笔记链接。","The note was imported, but its link is unavailable."));
       }
 
       setImportTitle("");
@@ -1169,7 +1172,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
 
       router.push(IS_CLOUD_MODE ? `/notes/cloud?slug=${encodeURIComponent(slug)}` : `/notes/${slug}`);
     } catch (importError) {
-      setError(importError instanceof Error ? importError.message : "导入 Markdown 笔记失败。");
+      setError(importError instanceof Error ? importError.message : t("导入 Markdown 笔记失败。","Could not import note."));
     } finally {
       setImportingNote(false);
     }
@@ -1178,7 +1181,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
   if (IS_CLOUD_MODE && !isReady) {
     return (
       <article className="rounded-apple bg-card p-6 text-card-foreground shadow-card">
-        <p className="font-text text-[15px] text-muted-foreground">正在检查登录状态...</p>
+        <p className="font-text text-[15px] text-muted-foreground"><UiText zh="正在检查登录状态..." en="Checking session…" /></p>
       </article>
     );
   }
@@ -1190,26 +1193,22 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
   return (
     <>
       <div className="mb-6 space-y-4">
-        <section className="rounded-apple bg-card p-4 text-card-foreground shadow-card">
+        <details className="archive-import rounded-apple bg-card p-4 text-card-foreground shadow-card">
+          <summary><UiText zh="导入已有笔记" en="Import notes" /><span>Markdown / MDX</span></summary>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="space-y-1">
-              <h2 className="font-display text-[22px] font-semibold tracking-tight text-foreground">导入 Markdown 笔记</h2>
-              <p className="font-text text-[13px] text-muted-foreground">
-                上传 `.md` / `.markdown` / `.mdx` 文件，填写标题和主题后会直接创建并打开这篇笔记。
-              </p>
+              <h2 className="font-display text-[22px] font-semibold tracking-tight text-foreground"><UiText zh="导入 Markdown 笔记" en="Import Markdown" /></h2>
+              <p className="font-text text-[13px] text-muted-foreground"><UiText zh="上传 `.md` / `.markdown` / `.mdx` 文件，填写标题和主题后会直接创建并打开这篇笔记。" en="Upload a Markdown or MDX file to create a note." /></p>
             </div>
             {importFile ? (
-              <span className="rounded-capsule border border-border px-3 py-1 font-text text-[12px] text-muted-foreground">
-                已选择：{importFile.name}
+              <span className="rounded-capsule border border-border px-3 py-1 font-text text-[12px] text-muted-foreground"><UiText zh="已选择：" en="Selected: " />{importFile.name}
               </span>
             ) : null}
           </div>
 
           <form className="mt-4 grid gap-3 md:grid-cols-2" onSubmit={handleImportMarkdownNote}>
             <label className="space-y-1 md:col-span-2">
-              <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                Markdown 文件
-              </span>
+              <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"><UiText zh="Markdown 文件" en="Markdown file" /></span>
               <input
                 type="file"
                 accept=".md,.markdown,.mdx,text/markdown,text/plain"
@@ -1219,23 +1218,23 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
             </label>
 
             <label className="space-y-1">
-              <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">标题</span>
+              <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"><UiText zh="标题" en="Title" /></span>
               <input
                 type="text"
                 value={importTitle}
                 onChange={(event) => setImportTitle(event.target.value)}
-                placeholder="例如：操作系统死锁总结"
+                placeholder={t("例如：操作系统死锁总结","e.g. Deadlocks and resource allocation")}
                 className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
               />
             </label>
 
             <label className="space-y-1">
-              <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">主题</span>
+              <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"><UiText zh="主题" en="Topic" /></span>
               <input
                 type="text"
                 value={importTopic}
                 onChange={(event) => setImportTopic(event.target.value)}
-                placeholder="例如：操作系统 / Operating Systems"
+                placeholder={t("例如：操作系统 / Operating Systems","e.g. Operating Systems")}
                 className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
               />
             </label>
@@ -1246,11 +1245,11 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                 disabled={importingNote}
                 className="btn-apple-primary inline-flex h-[42px] items-center px-5 font-text text-[14px] tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
               >
-                {importingNote ? "正在导入并打开..." : "导入并打开笔记"}
+                {importingNote ? t("正在导入并打开...","Importing…") : t("导入并打开笔记","Import note")}
               </button>
             </div>
           </form>
-        </section>
+        </details>
 
         <section className="rounded-apple bg-card p-4 text-card-foreground shadow-card">
           <div className="flex flex-wrap items-center gap-2">
@@ -1260,11 +1259,11 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
               onClick={handleCreateFolderButtonClick}
               className="btn-apple-link inline-flex h-[38px] items-center px-4 font-text text-[14px] tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
             >
-              {creatingFolder ? "创建中..." : "新建文件夹"}
+              {creatingFolder ? t("创建中...","Creating…") : t("新建文件夹","New folder")}
             </button>
-            <p className="font-text text-[13px] text-muted-foreground">当前笔记 {notes.length} 条</p>
-            <p className="font-text text-[13px] text-muted-foreground">回收站 {trashNotes.length} 条</p>
-            {loadingRemoteNotes ? <p className="font-text text-[13px] text-primary">正在加载云端数据...</p> : null}
+            <p className="font-text text-[13px] text-muted-foreground"><UiText zh="当前笔记" en="Notes: " />{notes.length}<UiText zh="条" en="" /></p>
+            <p className="font-text text-[13px] text-muted-foreground"><UiText zh="回收站" en="Trash: " />{trashNotes.length}<UiText zh="条" en="" /></p>
+            {loadingRemoteNotes ? <p className="font-text text-[13px] text-primary"><UiText zh="正在加载云端数据..." en="Loading notes…" /></p> : null}
           </div>
 
           {error ? (
@@ -1273,14 +1272,12 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
             </p>
           ) : null}
 
-          <p className="mt-3 font-text text-[13px] text-muted-foreground">
-            文件夹与筛选会固定在顶部导航下方；拖拽笔记卡片到文件夹可快速归类。
-          </p>
+          <p className="mt-3 font-text text-[13px] text-muted-foreground"><UiText zh="文件夹与筛选会固定在顶部导航下方；拖拽笔记卡片到文件夹可快速归类。" en="Drag notes to a folder to organise them." /></p>
 
         </section>
       </div>
 
-      <section className="sticky top-[calc(3rem+0.75rem)] z-30 mb-6 rounded-apple bg-card p-4 text-card-foreground shadow-card">
+      <section className="archive-folders sticky z-30 mb-6 rounded-apple bg-card p-4 text-card-foreground shadow-card">
           <div className="max-h-[42vh] overflow-y-auto pr-1">
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <div
@@ -1298,10 +1295,9 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                 }`}
               >
                 <p className="font-text text-[13px] font-semibold text-foreground">
-                  全部笔记
-                  <span className="ui-en ml-1 text-muted-foreground">All Notes</span>
+                  <UiText zh="全部笔记" en="All Notes" />
                 </p>
-                <p className="mt-1 font-text text-[12px] text-muted-foreground">{notes.length} 条笔记</p>
+                <p className="mt-1 font-text text-[12px] text-muted-foreground">{notes.length}<UiText zh="条笔记" en=" notes" /></p>
               </div>
 
               <div
@@ -1329,10 +1325,9 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                 }`}
               >
                 <p className="font-text text-[13px] font-semibold text-foreground">
-                  未归类
-                  <span className="ui-en ml-1 text-muted-foreground">Uncategorized</span>
+                  <UiText zh="未归类" en="Uncategorized" />
                 </p>
-                <p className="mt-1 font-text text-[12px] text-muted-foreground">{folderCounts.uncategorized ?? 0} 条笔记</p>
+                <p className="mt-1 font-text text-[12px] text-muted-foreground">{folderCounts.uncategorized ?? 0}<UiText zh="条笔记" en=" notes" /></p>
               </div>
 
               {folders.map((folder) => (
@@ -1372,10 +1367,10 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                       }}
                       className="inline-flex items-center rounded-capsule border border-[#b4232f]/35 px-2 py-0.5 font-text text-[11px] tracking-tightCaption text-[#8f1d27] transition hover:bg-[#b4232f]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b4232f] dark:border-[#ff6a77]/40 dark:text-[#ffc4cb] dark:hover:bg-[#ff6a77]/[0.12]"
                     >
-                      {deletingFolderId === folder.id ? "删除中..." : "删除"}
+                      {deletingFolderId === folder.id ? t("删除中...","Deleting…") : t("删除","Delete")}
                     </button>
                   </div>
-                  <p className="mt-1 font-text text-[12px] text-muted-foreground">{folderCounts[folder.id] ?? 0} 条笔记</p>
+                  <p className="mt-1 font-text text-[12px] text-muted-foreground">{folderCounts[folder.id] ?? 0}<UiText zh="条笔记" en=" notes" /></p>
                 </div>
               ))}
             </div>
@@ -1386,24 +1381,24 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
         <section className="rounded-apple bg-card p-4 text-card-foreground shadow-card">
           <div className="grid gap-3 md:grid-cols-3">
             <label className="space-y-1 md:col-span-2">
-              <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">关键词</span>
+              <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"><UiText zh="关键词" en="Search" /></span>
               <input
                 type="text"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="搜索标题或主题"
+                placeholder={t("搜索标题或主题","Search by title or topic")}
                 className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
               />
             </label>
 
             <label className="space-y-1">
-              <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">主题</span>
+              <span className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"><UiText zh="主题" en="Topic" /></span>
               <select
                 value={topicFilter}
                 onChange={(event) => setTopicFilter(event.target.value)}
                 className="w-full rounded-apple border border-input bg-background px-3 py-2 font-text text-[14px] text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <option value="">全部主题</option>
+                <option value=""><UiText zh="全部主题" en="All topics" /></option>
                 {topicOptions.map((topic) => (
                   <option key={topic} value={topic}>
                     {topic}
@@ -1414,9 +1409,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <p className="font-text text-[13px] text-muted-foreground">
-              当前范围：{activeFolderLabel}，匹配 {filteredNotes.length} 条
-            </p>
+            <p className="font-text text-[13px] text-muted-foreground"><UiText zh="当前范围：" en="Folder: " />{activeFolderLabel}<UiText zh="，匹配" en=" · Matches: " />{filteredNotes.length}<UiText zh="条" en="" /></p>
           </div>
         </section>
       </div>
@@ -1442,7 +1435,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                 setDragOverTarget("");
               }}
               className={`transition ${isDragging ? "opacity-60" : ""}`}
-              title="拖拽到上方文件夹可归类"
+              title={t("拖拽到上方文件夹可归类","Drag to a folder to organise")}
             >
               <WeekCard
                 href={note.viewHref}
@@ -1457,7 +1450,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                 showOpenLink={false}
                 headerRight={
                   <span className="font-text text-[11px] text-muted-foreground">
-                    {noteFolderName ? noteFolderName : "未归类"}
+                    {noteFolderName ? noteFolderName : t("未归类","Uncategorised")}
                   </span>
                 }
                 footerAction={
@@ -1469,7 +1462,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                         onClick={() => void handleEditNote(note)}
                         className="btn-apple-link inline-flex items-center px-3 py-1.5 font-text text-[12px] tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
                       >
-                        {updatingSlug === note.slug ? "保存中..." : "编辑标题/主题"}
+                        {updatingSlug === note.slug ? t("保存中...","Saving…") : t("编辑标题/主题","Edit metadata")}
                       </button>
                       <button
                         type="button"
@@ -1477,14 +1470,12 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                         onClick={() => void handleDeleteNote(note)}
                         className="inline-flex items-center rounded-capsule border border-[#b4232f]/30 px-3 py-1.5 font-text text-[12px] tracking-tightCaption text-[#8f1d27] transition hover:bg-[#b4232f]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b4232f] dark:border-[#ff6a77]/35 dark:text-[#ffc4cb] dark:hover:bg-[#ff6a77]/[0.12]"
                       >
-                        {deletingSlug === note.slug ? "移入中..." : "移入回收站"}
+                        {deletingSlug === note.slug ? t("移入中...","Moving…") : t("移入回收站","Move to Trash")}
                       </button>
                       <Link
                         href={note.viewHref}
                         className="btn-apple-link ml-auto inline-flex items-center px-3 py-1.5 font-text text-[13px] tracking-tightCaption transition focus-visible:outline-none"
-                      >
-                        打开笔记
-                        <span className="ml-1">&gt;</span>
+                      ><UiText zh="打开笔记" en="Open note" /><span className="ml-1">&gt;</span>
                       </Link>
                     </div>
                   </div>
@@ -1496,28 +1487,23 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
       </div>
 
       {!filteredNotes.length ? (
-        <p className="mt-6 rounded-apple border border-border bg-card px-4 py-3 font-text text-[14px] leading-[1.45] text-muted-foreground">
-          当前筛选下没有匹配的笔记，请调整关键词、主题或文件夹。
-        </p>
+        <p className="mt-6 rounded-apple border border-border bg-card px-4 py-3 font-text text-[14px] leading-[1.45] text-muted-foreground"><UiText zh="当前筛选下没有匹配的笔记，请调整关键词、主题或文件夹。" en="No matching notes. Adjust your search or filters." /></p>
       ) : null}
 
       <section className="mt-8 rounded-apple bg-card p-4 text-card-foreground shadow-card">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="font-text text-[13px] font-semibold tracking-[0.06em] text-muted-foreground">
-              回收站
-              <span className="ui-en ml-1">Recycle Bin</span>
+              <UiText zh="回收站" en="Recycle Bin" />
             </p>
-            <p className="mt-1 font-text text-[13px] text-muted-foreground">
-              已移入回收站的笔记可恢复；只有在这里删除后才会真正移除。
-            </p>
+            <p className="mt-1 font-text text-[13px] text-muted-foreground"><UiText zh="已移入回收站的笔记可恢复；只有在这里删除后才会真正移除。" en="Notes in Trash can be restored. Deleting them here is permanent." /></p>
           </div>
           <button
             type="button"
             onClick={() => setTrashOpen((value) => !value)}
             className="btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[13px] tracking-tightCaption transition focus-visible:outline-none"
           >
-            {trashOpen ? "收起回收站" : `展开回收站（${trashNotes.length}）`}
+            {trashOpen ? t("收起回收站","Hide Trash") : t(`展开回收站（${trashNotes.length}）`, `Show Trash (${trashNotes.length})`)}
           </button>
         </div>
 
@@ -1546,7 +1532,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                           onClick={() => void handleRestoreNote(note)}
                           className="btn-apple-link inline-flex items-center px-3 py-1.5 font-text text-[12px] tracking-tightCaption transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
                         >
-                          {restoringSlug === note.slug ? "恢复中..." : "恢复"}
+                          {restoringSlug === note.slug ? t("恢复中...","Restoring…") : t("恢复","Restore")}
                         </button>
                         <button
                           type="button"
@@ -1554,7 +1540,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
                           onClick={() => void handlePermanentDeleteNote(note)}
                           className="inline-flex items-center rounded-capsule border border-[#b4232f]/30 px-3 py-1.5 font-text text-[12px] tracking-tightCaption text-[#8f1d27] transition hover:bg-[#b4232f]/[0.08] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b4232f] dark:border-[#ff6a77]/35 dark:text-[#ffc4cb] dark:hover:bg-[#ff6a77]/[0.12]"
                         >
-                          {permanentlyDeletingSlug === note.slug ? "删除中..." : "彻底删除"}
+                          {permanentlyDeletingSlug === note.slug ? t("删除中...","Deleting…") : t("彻底删除","Delete permanently")}
                         </button>
                       </div>
                     </div>
@@ -1563,9 +1549,7 @@ export function NotesIndexClient({ initialNotes }: NotesIndexClientProps) {
               ))}
             </div>
           ) : (
-            <p className="mt-4 rounded-apple border border-border bg-muted/40 px-4 py-3 font-text text-[14px] leading-[1.45] text-muted-foreground">
-              回收站为空。
-            </p>
+            <p className="mt-4 rounded-apple border border-border bg-muted/40 px-4 py-3 font-text text-[14px] leading-[1.45] text-muted-foreground"><UiText zh="回收站为空。" en="Trash is empty." /></p>
           )
         ) : null}
       </section>

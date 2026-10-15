@@ -38,8 +38,8 @@ export async function generateMetadata({ params }: NotePageProps): Promise<Metad
   }
 
   return {
-    title: note.zhTitle,
-    description: note.descriptionZh || note.descriptionEn,
+    title: note.enTitle || note.zhTitle,
+    description: note.descriptionEn || note.descriptionZh,
   };
 }
 
@@ -73,6 +73,7 @@ export default async function LocalNotePage({ params }: NotePageProps) {
     <div className="section-light min-h-[calc(100vh-3rem)] py-8">
       <NoteView
         storageMode="local"
+        readOnly={Boolean(process.env.VERCEL)}
         headings={note.headings}
         note={{
           slug: note.slug,

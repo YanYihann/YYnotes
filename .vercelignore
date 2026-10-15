@@ -1,0 +1,12 @@
+.env*
+env.txt
+.automation
+.wrangler
+.next
+out
+tmp-*
+err-page.html
+tsconfig.tsbuildinfo
+cloud/**/node_modules
+cloud/**/.wrangler
+output

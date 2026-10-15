@@ -1,0 +1,111 @@
+---
+title: 理解平均值与加权平均
+slug: weighted-mean
+topicZh: 概念与方法
+topicEn: Concepts and Methods
+descriptionZh: 用一个简单例子理解权重如何影响结果，体验清晰的公式、表格与双语对照。
+descriptionEn: Understand how weights affect a result through a simple example with formulas, tables, and bilingual notes.
+tags: [公开示例, 公式]
+order: 2
+---
+# Understanding the Weighted Mean
+
+## 中文版笔记
+
+## 学习目标
+
+- 理解算术平均与加权平均的区别。
+- 检查权重之和，并解释计算结果。
+
+## 关键概念
+
+算术平均为每个数值分配相同权重。加权平均允许不同数值具有不同的重要程度。
+
+> 公开示例：数值仅用于演示笔记中的 KaTeX 公式与表格。
+
+## 主要内容
+
+### 从相同权重到不同权重
+
+两个数值 $80$ 和 $90$ 的算术平均为：
+
+$$
+\bar{x} = \frac{80 + 90}{2} = 85.
+$$
+
+若对应的权重分别为 $0.4$ 和 $0.6$，则加权平均为：
+
+$$
+\bar{x}_w = 0.4 \times 80 + 0.6 \times 90 = 86.
+$$
+
+| 数值 | 权重 | 对结果的贡献 |
+| --- | --- | --- |
+| 80 | 0.4 | 32 |
+| 90 | 0.6 | 54 |
+| 合计 | 1.0 | 86 |
+
+### 检查一般形式
+
+当权重尚未归一化时，应除以权重之和：
+
+$$
+\bar{x}_w = \frac{\sum_{i=1}^{n} w_i x_i}{\sum_{i=1}^{n} w_i}, \qquad \sum_{i=1}^{n} w_i \ne 0.
+$$
+
+对于非负且不全为零的权重，结果应位于输入数值的最小值与最大值之间。这里 $86$ 位于 $80$ 与 $90$ 之间，也更接近权重较大的 $90$。
+
+## 小结
+
+先明确每个权重代表什么，再检查是否需要归一化，最后解释结果。权重相同时，加权平均退化为算术平均。
+
+---
+
+## English Version
+
+## Learning Objectives
+
+- Understand the difference between the arithmetic mean and the weighted mean.
+- Check the sum of weights and interpret the result.
+
+## Key Concepts
+
+The arithmetic mean gives every value equal weight. The weighted mean allows values to have different levels of importance.
+
+> Public example: the numbers only demonstrate KaTeX formulas and tables in a note.
+
+## Main Content
+
+### From Equal to Unequal Weights
+
+The arithmetic mean of $80$ and $90$ is:
+
+$$
+\bar{x} = \frac{80 + 90}{2} = 85.
+$$
+
+With corresponding weights $0.4$ and $0.6$, the weighted mean becomes:
+
+$$
+\bar{x}_w = 0.4 \times 80 + 0.6 \times 90 = 86.
+$$
+
+| Value | Weight | Contribution |
+| --- | --- | --- |
+| 80 | 0.4 | 32 |
+| 90 | 0.6 | 54 |
+| Total | 1.0 | 86 |
+
+### Check the General Form
+
+If the weights have not been normalized, divide by their sum:
+
+$$
+\bar{x}_w = \frac{\sum_{i=1}^{n} w_i x_i}{\sum_{i=1}^{n} w_i}, \qquad \sum_{i=1}^{n} w_i \ne 0.
+$$
+
+For nonnegative weights that are not all zero, the result lies between the smallest and largest input values. Here, $86$ lies between $80$ and $90$ and is closer to the more heavily weighted $90$.
+
+## Summary
+
+Identify what each weight means, check whether normalization is needed, and interpret the result. Equal weights reduce the weighted mean to the arithmetic mean.

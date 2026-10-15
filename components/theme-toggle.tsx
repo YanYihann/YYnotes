@@ -1,31 +1,15 @@
 "use client";
-
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
+import { Moon, Sun } from "lucide-react";
+import { useLanguage } from "@/components/language-provider";
 
 export function ThemeToggle() {
+  const { t } = useLanguage();
   const [mounted, setMounted] = useState(false);
-  const { theme, setTheme } = useTheme();
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) {
-    return <span className="inline-flex h-9 w-[84px] rounded-capsule bg-white/10" aria-hidden />;
-  }
-
-  const isDark = theme === "dark";
-
-  return (
-    <button
-      type="button"
-      onClick={() => setTheme(isDark ? "light" : "dark")}
-      className="inline-flex h-9 items-center rounded-capsule border border-white/30 bg-transparent px-4 text-[14px] tracking-tightCaption text-white transition hover:border-white/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-[#000000]"
-      aria-label="Toggle theme"
-    >
-      {isDark ? "浅色" : "深色"}
-      <span className="ui-en ml-1 text-white/80">{isDark ? "Light" : "Dark"}</span>
-    </button>
-  );
+  const { resolvedTheme, setTheme } = useTheme();
+  useEffect(() => setMounted(true), []);
+  const isDark = mounted && resolvedTheme === "dark";
+  const label = isDark ? t("切换浅色主题", "Switch to light mode") : t("切换深色主题", "Switch to dark mode");
+  return <button type="button" className="header-icon-button" onClick={() => setTheme(isDark ? "light" : "dark")} disabled={!mounted} aria-label={label} title={label}>{isDark ? <Sun size={18} /> : <Moon size={18} />}</button>;
 }

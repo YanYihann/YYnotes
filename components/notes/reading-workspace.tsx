@@ -1,129 +1,80 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { NoteAssistantPanel } from "@/components/ai";
+import { BookOpen, List, Sparkles } from "lucide-react";
+import dynamic from "next/dynamic";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useLanguage } from "@/components/language-provider";
+import { UiText } from "@/components/ui-text";
 import { TableOfContents } from "@/components/toc";
 import type { Heading } from "@/lib/content";
 
+const NoteAssistantPanel = dynamic(() => import("@/components/ai/note-assistant-panel").then((module) => module.NoteAssistantPanel), {
+  loading: () => <p className="workspace-loading" role="status"><UiText zh="正在打开学习助手…" en="Loading assistant…" /></p>,
+});
+
 type ReadingWorkspaceProps = {
   headings: Heading[];
-  noteContext: {
-    slug: string;
-    weekLabelZh: string;
-    weekLabelEn: string;
-    zhTitle: string;
-    enTitle: string;
-    noteContent: string;
-  };
+  noteContext: { slug: string; weekLabelZh: string; weekLabelEn: string; zhTitle: string; enTitle: string; noteContent: string };
   children: React.ReactNode;
 };
-
-const MIN_AI_WIDTH = 380;
-const DEFAULT_AI_WIDTH = 420;
-const MAX_AI_WIDTH = 860;
+const MIN_WIDTH = 300;
+const MAX_WIDTH = 560;
 
 export function ReadingWorkspace({ headings, noteContext, children }: ReadingWorkspaceProps) {
-  const [tocCollapsed, setTocCollapsed] = useState(true);
-  const [aiWidth, setAiWidth] = useState(DEFAULT_AI_WIDTH);
-  const [dragging, setDragging] = useState(false);
-
-  const desktopGridRef = useRef<HTMLDivElement>(null);
-
-  const desktopGridTemplate = useMemo(() => {
-    if (tocCollapsed) {
-      return `minmax(0, 1fr) ${aiWidth}px`;
-    }
-    return `180px minmax(0, 1fr) ${aiWidth}px`;
-  }, [aiWidth, tocCollapsed]);
+  const { t, locale } = useLanguage();
+  const [visibleHeadings, setVisibleHeadings] = useState<Heading[]>(headings);
+  const [tocOpen, setTocOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [assistantVisited, setAssistantVisited] = useState(false);
+  const [aiWidth, setAiWidth] = useState(360);
+  const [maxWidth, setMaxWidth] = useState(MAX_WIDTH);
+  const grid = useRef<HTMLDivElement>(null);
+  const resizeFrame = useRef(0);
+  const dragging = useRef(false);
 
   useEffect(() => {
-    if (!dragging) {
-      return;
-    }
+    const wide = window.matchMedia("(min-width: 1280px)").matches;
+    setAssistantOpen(wide); setAssistantVisited(wide);
+    return () => cancelAnimationFrame(resizeFrame.current);
+  }, []);
 
-    const onMouseMove = (event: MouseEvent) => {
-      if (!desktopGridRef.current) {
-        return;
-      }
+  useEffect(() => {
+    if (!grid.current) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const available = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, entry.contentRect.width - (tocOpen ? 188 : 0) - 500 - 48));
+      setMaxWidth(available); setAiWidth((current) => Math.min(current, available));
+    });
+    observer.observe(grid.current);
+    return () => observer.disconnect();
+  }, [tocOpen]);
 
-      const rect = desktopGridRef.current.getBoundingClientRect();
-      const relativeAiWidth = rect.right - event.clientX;
-      const maxByContainer = Math.min(MAX_AI_WIDTH, rect.width * 0.62);
-      const nextWidth = Math.max(MIN_AI_WIDTH, Math.min(relativeAiWidth, maxByContainer));
-      setAiWidth(Math.round(nextWidth));
-    };
+  useEffect(() => {
+    const root = grid.current?.querySelector(".note-prose");
+    if (!root) return;
+    const readHeadings = () => setVisibleHeadings(Array.from(root.querySelectorAll<HTMLHeadingElement>("h2[id], h3[id]")).map((element) => ({
+      id: element.id,
+      title: Array.from(element.childNodes).filter((node) => !(node instanceof Element && node.classList.contains("anchor-link"))).map((node) => node.textContent || "").join("").trim(),
+      level: Number(element.tagName.slice(1)) as 2 | 3,
+    })));
+    readHeadings();
+    const observer = new MutationObserver(readHeadings);
+    observer.observe(root, { childList: true, subtree: true, characterData: true });
+    return () => observer.disconnect();
+  }, [locale, headings]);
 
-    const onMouseUp = () => {
-      setDragging(false);
-    };
+  function resize(clientX: number) {
+    cancelAnimationFrame(resizeFrame.current);
+    resizeFrame.current = requestAnimationFrame(() => {
+      if (grid.current) setAiWidth(Math.round(Math.max(MIN_WIDTH, Math.min(maxWidth, grid.current.getBoundingClientRect().right - clientX))));
+    });
+  }
 
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-    document.body.style.userSelect = "none";
-
-    return () => {
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-      document.body.style.userSelect = "";
-    };
-  }, [dragging]);
-
-  return (
-    <>
-      <div className="mx-auto w-full max-w-[1720px] px-4 sm:px-6 lg:hidden">
-        {children}
-        <NoteAssistantPanel noteContext={noteContext} />
-      </div>
-
-      <div className="mx-auto hidden w-full max-w-[1720px] px-4 sm:px-6 lg:block">
-        <div className="mb-3 flex items-center justify-between gap-4">
-          <button
-            type="button"
-            onClick={() => setTocCollapsed((value) => !value)}
-            className="inline-flex items-center rounded-capsule border border-border px-3 py-1.5 font-text text-[12px] tracking-tightCaption text-muted-foreground transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {tocCollapsed ? "展开目录" : "折叠目录"}
-            <span className="ui-en ml-1">{tocCollapsed ? "Show TOC" : "Hide TOC"}</span>
-          </button>
-
-          <div className="flex items-center gap-3 rounded-capsule border border-border bg-card px-3 py-1">
-            <label htmlFor="ai-width-slider" className="font-text text-[12px] tracking-tightCaption text-muted-foreground">
-              AI宽度
-              <span className="ui-en ml-1">AI Width</span>
-            </label>
-            <input
-              id="ai-width-slider"
-              type="range"
-              min={MIN_AI_WIDTH}
-              max={MAX_AI_WIDTH}
-              step={10}
-              value={aiWidth}
-              onChange={(event) => setAiWidth(Number(event.target.value))}
-              className="h-1 w-28 accent-primary"
-            />
-          </div>
-        </div>
-
-        <div ref={desktopGridRef} className="grid gap-6" style={{ gridTemplateColumns: desktopGridTemplate }}>
-          {!tocCollapsed ? (
-            <aside className="min-w-0">
-              <TableOfContents items={headings} />
-            </aside>
-          ) : null}
-
-          <div className="min-w-0">{children}</div>
-
-          <div className="relative min-w-0">
-            <button
-              type="button"
-              aria-label="Resize assistant width"
-              onMouseDown={() => setDragging(true)}
-              className="absolute -left-3 top-1/2 hidden h-14 w-2 -translate-y-1/2 cursor-col-resize rounded-capsule bg-border transition hover:bg-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring xl:block"
-            />
-            <NoteAssistantPanel noteContext={noteContext} />
-          </div>
-        </div>
-      </div>
-    </>
-  );
+  return <div className="reading-workspace">
+    <div className="reading-toolbar"><button type="button" aria-pressed={tocOpen} aria-controls="reading-contents" onClick={() => setTocOpen((value) => !value)}><List size={16} />{tocOpen ? t("收起目录", "Hide contents") : t("本页目录", "Contents")}</button><label className="reading-width-control">{t("助手宽度", "Panel width")}<input type="range" min={MIN_WIDTH} max={maxWidth} step={10} value={aiWidth} onChange={(event) => setAiWidth(Number(event.target.value))} aria-label={t("调整学习助手宽度", "Adjust assistant width")} /></label>{!assistantOpen && <button type="button" aria-pressed={assistantOpen} aria-controls="reading-assistant" onClick={() => { setAssistantOpen((value) => !value); setAssistantVisited(true); }}><Sparkles size={16} />{t("学习助手", "Study assistant")}</button>}</div>
+    <div ref={grid} className={`reading-grid ${tocOpen ? "has-toc" : ""} ${assistantOpen ? "has-assistant" : ""}`} style={{ "--assistant-width": `${aiWidth}px` } as CSSProperties}>
+      <aside id="reading-contents" hidden={!tocOpen} className="reading-contents">{visibleHeadings.length ? <TableOfContents items={visibleHeadings} /> : <p className="reading-no-headings"><BookOpen size={18} />{t("这篇笔记没有章节目录。", "No headings in this note.")}</p>}</aside>
+      <div className="reading-document">{children}</div>
+      <aside id="reading-assistant" hidden={!assistantOpen} className="reading-assistant"><button className="assistant-resize" type="button" aria-label={t("调整助手宽度，使用左右方向键", "Resize assistant using left and right arrow keys")} onPointerDown={(event) => { dragging.current = true; event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { if (dragging.current) resize(event.clientX); }} onPointerUp={() => { dragging.current = false; }} onPointerCancel={() => { dragging.current = false; }} onKeyDown={(event) => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); setAiWidth((value) => Math.max(MIN_WIDTH, Math.min(maxWidth, value + (event.key === "ArrowLeft" ? 20 : -20)))); } }} />{assistantVisited && <NoteAssistantPanel noteContext={noteContext} onClose={() => setAssistantOpen(false)} />}</aside>
+    </div>
+  </div>;
 }

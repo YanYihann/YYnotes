@@ -6,13 +6,12 @@ import { getTrashedWeekBySlug, getTrashedWeekNotes, getWeekBySlug, getWeekNotes 
 import { extractDynamicDemoSpecsFromContent, normalizeDynamicDemoMarkup } from "@/lib/dynamic-demo-components";
 import { materializeGeneratedDemoFiles } from "@/lib/generated-demo-files";
 import { injectInteractiveDemosIntoNoteContent, selectInteractiveDemos } from "@/lib/interactive-demos";
-import { extractResponseText } from "@/lib/ai/note-assistant";
 
 const NOTES_DIR_PATH = path.resolve(path.join(process.cwd(), "\u7B14\u8BB0"));
 const TRASH_DIR_PATH = path.resolve(path.join(process.cwd(), "\u7B14\u8BB0\u56DE\u6536\u7AD9"));
 const DEFAULT_DESCRIPTION_ZH = "\u5BFC\u5165\u7684 Markdown \u7B14\u8BB0\u3002";
-const IMPORT_METADATA_MODEL = "deepseek-v4-flash";
-const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL?.trim().replace(/\/+$/, "") || "https://api.openai.com/v1";
+const IMPORT_METADATA_MODEL = "deepseek-v3.2";
+const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL?.trim().replace(/\/+$/, "") || "https://api.302.ai/v1";
 const MAX_IMPORT_METADATA_SOURCE_CHARS = 8_000;
 
 type ImportedCardMetadata = {
@@ -247,37 +246,10 @@ async function inferImportedCardMetadata(params: {
     { role: "system", content: systemPrompt },
     { role: "user", content: userPrompt },
   ];
-  const input = messages.map((message) => ({
-    role: message.role,
-    content: [{ type: "input_text", text: message.content }],
-  }));
   const abortController = new AbortController();
   const timeout = setTimeout(() => abortController.abort(), 25_000);
 
   try {
-    const responsesResponse = await fetch(`${OPENAI_BASE_URL}/responses`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: IMPORT_METADATA_MODEL,
-        input,
-      }),
-      signal: abortController.signal,
-    });
-    const responsesJson = await responsesResponse.json().catch(() => null);
-    if (responsesResponse.ok) {
-      const text = extractResponseText(responsesJson);
-      if (text) {
-        const parsed = parseImportedCardMetadata(text);
-        if (parsed.topicZh || parsed.descriptionZh) {
-          return parsed;
-        }
-      }
-    }
-
     const chatResponse = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {

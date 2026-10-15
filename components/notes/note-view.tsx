@@ -1,16 +1,21 @@
 "use client";
 
 import Link from "next/link";
+import { UiText } from "@/components/ui-text";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { useLanguage } from "@/components/language-provider";
 import { ReadingWorkspace } from "@/components/notes/reading-workspace";
-import { NoteEditorPanel, type NoteEditorMode } from "@/components/notes/note-editor-panel";
+import type { NoteEditorMode } from "@/components/notes/note-editor-panel";
 import { NoteMarkdown } from "@/components/notes/note-markdown";
 import type { Heading } from "@/lib/content";
 import { prepareNoteMarkdown } from "@/lib/mdx";
 
 const CLOUD_API_BASE = process.env.NEXT_PUBLIC_NOTES_API_BASE?.trim() ?? "";
+const NoteEditorPanel = dynamic(() => import("@/components/notes/note-editor-panel").then((module) => module.NoteEditorPanel), {
+  loading: () => <p className="workspace-loading" role="status"><UiText zh="正在打开笔记编辑器…" en="Loading editor…" /></p>,
+});
 
 type NoteViewNavLink = {
   href: string;
@@ -38,6 +43,7 @@ type NoteViewProps = {
     right?: NoteViewNavLink;
   };
   storageMode?: "local" | "cloud";
+  readOnly?: boolean;
 };
 
 type NoteHighlight = {
@@ -383,15 +389,14 @@ function NoteNavLink({ link }: { link: NoteViewNavLink }) {
       className="btn-apple-link inline-flex px-4 py-1.5 text-[14px] tracking-tightCaption transition focus-visible:outline-none"
     >
       {link.leadingArrow ? <span className="mr-1">{"<"}</span> : null}
-      {link.labelZh}
-      <span className="ui-en ml-1">{link.labelEn}</span>
+      <UiText zh={link.labelZh} en={link.labelEn} />
       {link.trailingArrow ? <span className="ml-1">{">"}</span> : null}
     </Link>
   );
 }
 
-export function NoteView({ note, headings, nav, storageMode = "local" }: NoteViewProps) {
-  const { showEnglish } = useLanguage();
+export function NoteView({ note, headings, nav, storageMode = "local", readOnly = false }: NoteViewProps) {
+  const { locale, t } = useLanguage();
   const { session } = useAuth();
   const authToken = session?.token ?? "";
   const [noteMeta, setNoteMeta] = useState({
@@ -403,9 +408,9 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
   });
   const [noteSource, setNoteSource] = useState(note.noteContent);
   const renderedSource = useMemo(() => {
-    const prepared = prepareNoteMarkdown(noteSource, { showEnglish });
+    const prepared = prepareNoteMarkdown(noteSource, { language: locale });
     return prepared || noteSource.trim();
-  }, [noteSource, showEnglish]);
+  }, [noteSource, locale]);
   const canSyncHighlights = Boolean(note.slug && (storageMode === "local" || (CLOUD_API_BASE && authToken)));
   const noteContentRef = useRef<HTMLDivElement | null>(null);
   const [highlights, setHighlights] = useState<NoteHighlight[]>([]);
@@ -486,7 +491,7 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
     return () => {
       cancelled = true;
     };
-  }, [authToken, note.slug, storageMode]);
+  }, [authToken, note.slug, storageMode, t]);
 
   const saveNoteContent = useCallback(
     async (nextSource: string) => {
@@ -513,21 +518,21 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
 
         const json = (await response.json().catch(() => null)) as SaveNoteContentResponse | null;
         if (!response.ok || !json?.success) {
-          throw new Error(json?.error || "保存笔记失败。");
+          throw new Error(json?.error || t("保存笔记失败。","Could not save note."));
         }
 
         setNoteSource(nextSource);
         setEditorOpen(false);
         setEditorMode(null);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "保存笔记失败。";
+        const message = error instanceof Error ? error.message : t("保存笔记失败。","Could not save note.");
         setEditError(message);
         throw error;
       } finally {
         setSavingNote(false);
       }
     },
-    [authToken, note.slug, storageMode],
+    [authToken, note.slug, storageMode, t],
   );
 
   const fetchHighlights = useCallback(async () => {
@@ -555,7 +560,7 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
       });
       const json = (await response.json().catch(() => null)) as HighlightApiResponse | null;
       if (!response.ok || !json?.success || !Array.isArray(json.highlights)) {
-        throw new Error(json?.error || "加载高亮失败。");
+        throw new Error(json?.error || t("加载高亮失败。","Could not load highlights."));
       }
 
       const parsed = json.highlights
@@ -563,12 +568,12 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
         .filter((item): item is NoteHighlight => item !== null);
       setHighlights(sortHighlights(parsed));
     } catch (error) {
-      setHighlightError(error instanceof Error ? error.message : "加载高亮失败。");
+      setHighlightError(error instanceof Error ? error.message : t("加载高亮失败。","Could not load highlights."));
       setHighlights([]);
     } finally {
       setLoadingHighlights(false);
     }
-  }, [authToken, canSyncHighlights, note.slug, storageMode]);
+  }, [authToken, canSyncHighlights, note.slug, storageMode, t]);
 
   const clearSelection = useCallback(() => {
     setSelection(null);
@@ -583,7 +588,7 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
     }
 
     if (selectionOverlaps(highlights, selection)) {
-      setHighlightError("该选区与现有高亮重叠，请选择未高亮文本。");
+      setHighlightError(t("该选区与现有高亮重叠，请选择未高亮文本。","This selection overlaps an existing highlight."));
       return;
     }
 
@@ -625,17 +630,17 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
       const json = (await response.json().catch(() => null)) as HighlightApiResponse | null;
       const parsed = toNoteHighlight(json?.highlight);
       if (!response.ok || !json?.success || !parsed) {
-        throw new Error(json?.error || "保存高亮失败。");
+        throw new Error(json?.error || t("保存高亮失败。","Could not save highlight."));
       }
 
       setHighlights((current) => sortHighlights([...current.filter((item) => item.id !== parsed.id), parsed]));
       clearSelection();
     } catch (error) {
-      setHighlightError(error instanceof Error ? error.message : "保存高亮失败。");
+      setHighlightError(error instanceof Error ? error.message : t("保存高亮失败。","Could not save highlight."));
     } finally {
       setSavingHighlight(false);
     }
-  }, [authToken, canSyncHighlights, clearSelection, highlights, note.slug, savingHighlight, selection, storageMode]);
+  }, [authToken, canSyncHighlights, clearSelection, highlights, note.slug, savingHighlight, selection, storageMode, t]);
 
   const clearHighlights = useCallback(async () => {
     if (!canSyncHighlights || savingHighlight) {
@@ -660,17 +665,17 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
       });
       const json = (await response.json().catch(() => null)) as HighlightApiResponse | null;
       if (!response.ok || !json?.success) {
-        throw new Error(json?.error || "清空高亮失败。");
+        throw new Error(json?.error || t("清空高亮失败。","Could not clear highlights."));
       }
 
       setHighlights([]);
       clearSelection();
     } catch (error) {
-      setHighlightError(error instanceof Error ? error.message : "清空高亮失败。");
+      setHighlightError(error instanceof Error ? error.message : t("清空高亮失败。","Could not clear highlights."));
     } finally {
       setSavingHighlight(false);
     }
-  }, [authToken, canSyncHighlights, clearSelection, note.slug, savingHighlight, storageMode]);
+  }, [authToken, canSyncHighlights, clearSelection, note.slug, savingHighlight, storageMode, t]);
 
   const deleteSingleHighlight = useCallback(
     async (highlightId: number) => {
@@ -700,18 +705,18 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
         );
         const json = (await response.json().catch(() => null)) as HighlightApiResponse | null;
         if (!response.ok || !json?.success) {
-          throw new Error(json?.error || "删除高亮失败。");
+          throw new Error(json?.error || t("删除高亮失败。","Could not delete highlight."));
         }
 
         setHighlights((current) => current.filter((item) => item.id !== highlightId));
         setFloatingDeletePosition({ visible: false, top: 0, left: 0, highlightId: null });
       } catch (error) {
-        setHighlightError(error instanceof Error ? error.message : "删除高亮失败。");
+        setHighlightError(error instanceof Error ? error.message : t("删除高亮失败。","Could not delete highlight."));
       } finally {
         setSavingHighlight(false);
       }
     },
-    [authToken, canSyncHighlights, highlights, note.slug, savingHighlight, storageMode],
+    [authToken, canSyncHighlights, highlights, note.slug, savingHighlight, storageMode, t],
   );
 
   useEffect(() => {
@@ -879,8 +884,7 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
       <article className="rounded-apple bg-card px-5 py-8 text-card-foreground shadow-card sm:px-8 md:px-10">
         <header className="mb-8 border-b border-border pb-6">
           <p className="font-text text-[12px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-            {noteMeta.topicZh}
-            <span className="ui-en ml-1">{noteMeta.topicEn} - Note</span>
+            {locale === "en" ? noteMeta.topicEn || noteMeta.topicZh : noteMeta.topicZh}
           </p>
           {noteMeta.tags.length ? (
             <div className="mt-3 flex flex-wrap gap-2">
@@ -895,14 +899,10 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
             </div>
           ) : null}
           <h1 className="mt-3 font-display text-[clamp(2rem,5vw,3.5rem)] font-semibold leading-[1.07] tracking-tightDisplay text-foreground">
-            {note.zhTitle}
-            <span className="ui-en mt-1 block font-text text-[0.36em] font-normal leading-[1.35] tracking-tightBody text-muted-foreground">
-              {note.enTitle}
-            </span>
+            {locale === "en" ? note.enTitle || note.zhTitle : note.zhTitle}
           </h1>
           <p className="mt-3 font-text text-[17px] leading-[1.47] tracking-tightBody text-muted-foreground">
-            {noteMeta.descriptionZh}
-            <span className="ui-en mt-1 block text-muted-foreground">{noteMeta.descriptionEn}</span>
+            {locale === "en" ? noteMeta.descriptionEn || noteMeta.descriptionZh : noteMeta.descriptionZh}
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <button
@@ -918,16 +918,14 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
                 });
                 setEditError("");
               }}
-              disabled={storageMode === "cloud" && !authToken}
+              disabled={readOnly || (storageMode === "cloud" && !authToken)}
               className="btn-apple-primary inline-flex items-center rounded-apple px-4 py-1.5 font-text text-[13px] transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
             >
-              {editorOpen ? "关闭编辑" : "编辑笔记"}
-              <span className="ui-en ml-1">{editorOpen ? "Close Editor" : "Edit Note"}</span>
+              {readOnly ? t("公开示例 · 只读", "Read-only example") : editorOpen ? t("关闭编辑", "Close editor") : t("编辑笔记", "Edit note")}
             </button>
             {storageMode === "cloud" && !authToken ? (
               <p className="font-text text-[12px] text-muted-foreground">
-                登录后才能编辑云端笔记。
-                <span className="ui-en ml-1">Sign in to edit cloud notes.</span>
+                <UiText zh="登录后才能编辑云端笔记。" en="Sign in to edit cloud notes." />
               </p>
             ) : null}
           </div>
@@ -948,35 +946,30 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
               disabled={!canSyncHighlights || savingHighlight || highlights.length === 0}
               className="inline-flex items-center rounded-capsule border border-border px-3 py-1 text-[12px] tracking-tightCaption text-muted-foreground transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
             >
-              清空本页高亮
-              <span className="ui-en ml-1">Clear Highlights</span>
+              <UiText zh="清空本页高亮" en="Clear Highlights" />
             </button>
             <p className="font-text text-[12px] text-muted-foreground">
-              已高亮 {highlights.length} 处
+              {highlights.length} {t("处高亮", "highlights")}
               <span className="ui-en ml-1">{highlights.length} highlights</span>
             </p>
             {!canSyncHighlights ? (
               <p className="font-text text-[12px] text-muted-foreground">
-                需登录并连接云端后可同步高亮。
-                <span className="ui-en ml-1">Sign in with cloud mode to sync highlights.</span>
+                <UiText zh="需登录并连接云端后可同步高亮。" en="Sign in with cloud mode to sync highlights." />
               </p>
             ) : null}
             {loadingHighlights ? (
               <p className="font-text text-[12px] text-muted-foreground">
-                正在加载高亮...
-                <span className="ui-en ml-1">Loading highlights...</span>
+                <UiText zh="正在加载高亮..." en="Loading highlights..." />
               </p>
             ) : null}
           </div>
           {selection ? (
             <p className="mt-2 line-clamp-2 font-text text-[12px] leading-[1.4] text-muted-foreground">
-              已选中文本，点击浮动“荧光笔”即可高亮。
-              <span className="ui-en ml-1">Text selected. Use the floating highlighter button.</span>
+              <UiText zh="已选中文本，点击浮动“荧光笔”即可高亮。" en="Text selected. Use the floating highlighter button." />
             </p>
           ) : highlights.length > 0 ? (
             <p className="mt-2 line-clamp-2 font-text text-[12px] leading-[1.4] text-muted-foreground">
-              点击高亮文本可删除单条高亮。
-              <span className="ui-en ml-1">Click a highlight to remove it.</span>
+              <UiText zh="点击高亮文本可删除单条高亮。" en="Click a highlight to remove it." />
             </p>
           ) : null}
           {highlightError ? (
@@ -1021,8 +1014,7 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
               disabled={savingHighlight}
               className="btn-apple-primary inline-flex items-center rounded-capsule px-3 py-1 text-[12px] font-semibold tracking-tightCaption shadow-card transition disabled:cursor-not-allowed disabled:opacity-60"
             >
-              荧光笔
-              <span className="ui-en ml-1">Highlight</span>
+              <UiText zh="荧光笔" en="Highlight" />
             </button>
           </div>
         ) : null}
@@ -1043,8 +1035,7 @@ export function NoteView({ note, headings, nav, storageMode = "local" }: NoteVie
               disabled={savingHighlight}
               className="inline-flex items-center rounded-capsule border border-[#b4232f]/30 bg-card px-3 py-1 text-[12px] font-semibold tracking-tightCaption text-[#8f1d27] shadow-card transition hover:bg-[#b4232f]/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b4232f] disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#ff6a77]/35 dark:text-[#ffc4cb] dark:hover:bg-[#ff6a77]/[0.12]"
             >
-              删除高亮
-              <span className="ui-en ml-1">Delete Highlight</span>
+              <UiText zh="删除高亮" en="Delete Highlight" />
             </button>
           </div>
         ) : null}

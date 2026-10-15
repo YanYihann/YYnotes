@@ -63,7 +63,7 @@ const config: Config = {
         capsule: "980px",
       },
       boxShadow: {
-        card: "3px 5px 30px rgba(0, 0, 0, 0.22)",
+        card: "0 2px 10px hsl(var(--foreground) / 0.04)",
       },
       maxWidth: {
         content: "980px",
@@ -71,6 +71,7 @@ const config: Config = {
       },
       fontFamily: {
         display: [
+          "var(--font-display)",
           "SF Pro Display",
           "SF Pro Icons",
           "Helvetica Neue",
@@ -79,6 +80,7 @@ const config: Config = {
           "sans-serif",
         ],
         text: [
+          "var(--font-body)",
           "SF Pro Text",
           "SF Pro Icons",
           "Helvetica Neue",

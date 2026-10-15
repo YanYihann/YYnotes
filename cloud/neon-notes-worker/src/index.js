@@ -13,11 +13,11 @@ const MAX_HISTORY_ITEMS = 8;
 const MAX_HIGHLIGHT_TEXT_CHARS = 1_200;
 const MAX_HIGHLIGHTS_PER_NOTE = 1_500;
 const SUPPORTED_TEXT_EXTENSIONS = new Set(["txt", "md", "markdown", "tex", "csv", "rst"]);
-const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
-const DEFAULT_ASSISTANT_MODEL = "deepseek-v4-flash";
-const DEFAULT_IMPORT_METADATA_MODEL = "deepseek-v4-flash";
-const ALLOWED_ASSISTANT_MODELS = new Set([DEFAULT_ASSISTANT_MODEL, "gpt-5.4-nano-2026-03-17", "gpt-4.1-mini"]);
-const ALLOWED_NOTE_GENERATION_MODELS = new Set(["qwen3.6-flash", "gpt-4.1-mini"]);
+const DEFAULT_OPENAI_BASE_URL = "https://api.302.ai/v1";
+const DEFAULT_ASSISTANT_MODEL = "deepseek-v3.2";
+const DEFAULT_IMPORT_METADATA_MODEL = "deepseek-v3.2";
+const ALLOWED_ASSISTANT_MODELS = new Set([DEFAULT_ASSISTANT_MODEL]);
+const ALLOWED_NOTE_GENERATION_MODELS = new Set(["deepseek-v3.2"]);
 const SUPPORTED_HIGHLIGHT_COLORS = new Set(["yellow"]);
 let highlightSchemaEnsured = false;
 
@@ -1014,7 +1014,7 @@ function resolveModelName(env, requestedModel, allowedModels) {
   if (normalized && allowedModels.has(normalized)) {
     return normalized;
   }
-  return env.OPENAI_MODEL || "gpt-4.1-mini";
+  return ALLOWED_NOTE_GENERATION_MODELS.has(env.OPENAI_MODEL) ? env.OPENAI_MODEL : "deepseek-v3.2";
 }
 
 function clampText(value, max) {
@@ -1588,10 +1588,6 @@ function buildInteractiveDesignSpecsFromNote({ title, topic, source }) {
 }
 
 async function generateInteractiveDesignSpecsWithAI({ env, title, topic, tags, noteContent, modelName }) {
-  const openaiBaseUrl = normalizeApiBase(env.OPENAI_BASE_URL);
-  const responsesEndpoint = `${openaiBaseUrl}/responses`;
-  const chatCompletionsEndpoint = `${openaiBaseUrl}/chat/completions`;
-  const resolvedModelName = modelName || resolveModelName(env, "", ALLOWED_NOTE_GENERATION_MODELS);
   const input = [
     {
       role: "system",
@@ -1603,48 +1599,10 @@ async function generateInteractiveDesignSpecsWithAI({ env, title, topic, tags, n
     },
   ];
 
-  const response = await fetch(responsesEndpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: resolvedModelName,
-      input,
-    }),
-  });
-
-  const json = await response.json().catch(() => null);
-  if (response.ok) {
-    const text = extractResponsesText(json);
-    if (text) {
-      const parsed = parseInteractiveDesignResponse(text);
-      if (parsed.length) {
-        return parsed;
-      }
-    }
-  }
-
-  const chatResponse = await fetch(chatCompletionsEndpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: resolvedModelName,
-      messages: flattenInputMessages(input),
-    }),
-  });
-
-  const chatJson = await chatResponse.json().catch(() => null);
-  if (!chatResponse.ok) {
-    return [];
-  }
-
-  const chatText = extractChatCompletionsText(chatJson);
-  return chatText ? parseInteractiveDesignResponse(chatText) : [];
+  try {
+    const text = await requestChatCompletion(env, modelName || resolveModelName(env, "", ALLOWED_NOTE_GENERATION_MODELS), flattenInputMessages(input), 4096);
+    return parseInteractiveDesignResponse(text);
+  } catch { return []; }
 }
 
 function deriveTopicFromSource(sourceText) {
@@ -1695,11 +1653,6 @@ function deriveTopicFromTitleOrTags(title, tags) {
 }
 
 async function inferMissingMetadata({ env, sourceText, fileName, modelName }) {
-  const openaiBaseUrl = normalizeApiBase(env.OPENAI_BASE_URL);
-  const responsesEndpoint = `${openaiBaseUrl}/responses`;
-  const chatCompletionsEndpoint = `${openaiBaseUrl}/chat/completions`;
-  const resolvedModelName = modelName || resolveModelName(env, "", ALLOWED_NOTE_GENERATION_MODELS);
-
   const systemPrompt = [
     "你是学习笔记元信息生成器。",
     "必须返回 JSON，不要输出 markdown 和解释文字。",
@@ -1730,56 +1683,8 @@ async function inferMissingMetadata({ env, sourceText, fileName, modelName }) {
     },
   ];
 
-  const response = await fetch(responsesEndpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: resolvedModelName,
-      input,
-    }),
-  });
-
-  const json = await response.json().catch(() => null);
-  if (response.ok) {
-    const text = extractResponsesText(json);
-    if (text) {
-      const parsed = parseMetadataResponse(text);
-      if (parsed.title || parsed.topic || parsed.tags?.length) {
-        return parsed;
-      }
-    }
-  }
-
-  const chatResponse = await fetch(chatCompletionsEndpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: resolvedModelName,
-      messages: flattenInputMessages(input),
-    }),
-  });
-
-  const chatJson = await chatResponse.json().catch(() => null);
-  if (!chatResponse.ok) {
-    const responsesError = response.ok
-      ? "Responses API returned success but no readable text."
-      : `responses: HTTP ${response.status} - ${extractProviderMessage(json)}`;
-    const chatError = `chat_completions: HTTP ${chatResponse.status} - ${extractProviderMessage(chatJson)}`;
-    throw new Error(`AI provider returned an error. ${responsesError} | ${chatError}`);
-  }
-
-  const chatText = extractChatCompletionsText(chatJson);
-  if (!chatText) {
-    return {};
-  }
-
-  return parseMetadataResponse(chatText);
+  const text = await requestChatCompletion(env, modelName || resolveModelName(env, "", ALLOWED_NOTE_GENERATION_MODELS), flattenInputMessages(input), 1024);
+  return parseMetadataResponse(text);
 }
 
 async function resolveGenerationMetadata({ env, titleInput, topicInput, tagsInput, sourceText, fileName, modelName }) {
@@ -2018,7 +1923,6 @@ async function inferImportedCardMetadata({ env, title, topicInput, fileName, mar
     return {};
   }
 
-  const openaiBaseUrl = normalizeApiBase(env.OPENAI_BASE_URL);
   const input = [
     {
       role: "system",
@@ -2058,45 +1962,10 @@ async function inferImportedCardMetadata({ env, title, topicInput, fileName, mar
     },
   ];
 
-  const responsesResponse = await fetch(`${openaiBaseUrl}/responses`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: DEFAULT_IMPORT_METADATA_MODEL,
-      input,
-    }),
-  });
-  const responsesJson = await responsesResponse.json().catch(() => null);
-  if (responsesResponse.ok) {
-    const text = extractResponsesText(responsesJson);
-    if (text) {
-      const parsed = parseImportedCardMetadata(text);
-      if (parsed.topicZh || parsed.descriptionZh) {
-        return parsed;
-      }
-    }
-  }
-
-  const chatResponse = await fetch(`${openaiBaseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: DEFAULT_IMPORT_METADATA_MODEL,
-      messages: flattenInputMessages(input),
-    }),
-  });
-  const chatJson = await chatResponse.json().catch(() => null);
-  if (!chatResponse.ok) {
-    return {};
-  }
-
-  return parseImportedCardMetadata(extractChatCompletionsText(chatJson));
+  try {
+    const text = await requestChatCompletion(env, DEFAULT_IMPORT_METADATA_MODEL, flattenInputMessages(input), 1024);
+    return parseImportedCardMetadata(text);
+  } catch { return {}; }
 }
 
 function buildImportedNoteMdx({ slug, title, topic, topicEn, body, description, descriptionEn }) {
@@ -3075,46 +2944,7 @@ function extractProviderMessage(payload) {
   }
 }
 
-function extractResponsesText(payload) {
-  if (!payload || typeof payload !== "object") {
-    return "";
-  }
 
-  const direct = payload.output_text;
-  if (typeof direct === "string" && direct.trim()) {
-    return direct.trim();
-  }
-
-  const output = payload.output;
-  if (!Array.isArray(output)) {
-    return "";
-  }
-
-  const textParts = [];
-  for (const item of output) {
-    if (!item || typeof item !== "object") {
-      continue;
-    }
-
-    const content = item.content;
-    if (!Array.isArray(content)) {
-      continue;
-    }
-
-    for (const contentItem of content) {
-      if (!contentItem || typeof contentItem !== "object") {
-        continue;
-      }
-
-      const text = contentItem.text;
-      if (typeof text === "string" && text.trim()) {
-        textParts.push(text.trim());
-      }
-    }
-  }
-
-  return textParts.join("\n\n").trim();
-}
 
 function extractChatCompletionsText(payload) {
   if (!payload || typeof payload !== "object") {
@@ -3260,7 +3090,7 @@ async function generateAssistantAnswer(env, payload) {
   const chatCompletionsEndpoint = `${openaiBaseUrl}/chat/completions`;
   const modelName = payload.model && ALLOWED_ASSISTANT_MODELS.has(payload.model)
     ? payload.model
-    : String(env.OPENAI_ASSISTANT_MODEL ?? "").trim() || DEFAULT_ASSISTANT_MODEL;
+    : DEFAULT_ASSISTANT_MODEL;
 
   const input = [
     {
@@ -3339,7 +3169,7 @@ async function createAssistantStream(env, payload, corsOrigin) {
   const chatCompletionsEndpoint = `${openaiBaseUrl}/chat/completions`;
   const modelName = payload.model && ALLOWED_ASSISTANT_MODELS.has(payload.model)
     ? payload.model
-    : String(env.OPENAI_ASSISTANT_MODEL ?? "").trim() || DEFAULT_ASSISTANT_MODEL;
+    : DEFAULT_ASSISTANT_MODEL;
 
   const input = [
     {
@@ -3437,81 +3267,25 @@ async function createAssistantStream(env, payload, corsOrigin) {
   });
 }
 
-async function generateMdx({ env, title, topic, tags, sourceText, extraInstruction, promptTemplate, modelName, generateInteractiveDemo }) {
-  const openaiBaseUrl = normalizeApiBase(env.OPENAI_BASE_URL);
-  const responsesEndpoint = `${openaiBaseUrl}/responses`;
-  const chatCompletionsEndpoint = `${openaiBaseUrl}/chat/completions`;
-  const resolvedModelName = modelName || resolveModelName(env, "", ALLOWED_NOTE_GENERATION_MODELS);
-  const systemPrompt = buildSystemPrompt(promptTemplate);
-  const userPrompt = buildUserPrompt({ title, topic, tags, sourceText, extraInstruction, generateInteractiveDemo });
-
-  const response = await fetch(responsesEndpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: resolvedModelName,
-      input: [
-        {
-          role: "system",
-          content: [{ type: "input_text", text: systemPrompt }],
-        },
-        {
-          role: "user",
-          content: [
-            {
-              type: "input_text",
-              text: userPrompt,
-            },
-          ],
-        },
-      ],
-    }),
+async function requestChatCompletion(env, model, messages, maxTokens = 16384) {
+  const response = await fetch(`${normalizeApiBase(env.OPENAI_BASE_URL)}/chat/completions`, {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.OPENAI_API_KEY}` },
+    body: JSON.stringify({ model, messages, max_tokens: maxTokens, stream: false }),
+    signal: AbortSignal.timeout(240_000),
   });
-
   const json = await response.json().catch(() => null);
-  if (response.ok) {
-    const outputText = extractResponsesText(json);
-    if (outputText) {
-      return outputText;
-    }
-  }
+  if (!response.ok) throw new Error(`AI provider returned an error. chat_completions: HTTP ${response.status} - ${extractProviderMessage(json)}`);
+  if (json?.choices?.[0]?.finish_reason === "length") throw new Error("The generated note exceeded the output limit. Split the source material before generating again.");
+  const text = extractChatCompletionsText(json);
+  if (!text) throw new Error("AI provider returned no readable text.");
+  return text;
+}
 
-  const responsesError = response.ok
-    ? "Responses API returned success but no readable text."
-    : `responses: HTTP ${response.status} - ${extractProviderMessage(json)}`;
-
-  const chatResponse = await fetch(chatCompletionsEndpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: resolvedModelName,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-    }),
-  });
-
-  const chatJson = await chatResponse.json().catch(() => null);
-  if (!chatResponse.ok) {
-    const chatError = `chat_completions: HTTP ${chatResponse.status} - ${extractProviderMessage(chatJson)}`;
-    throw new Error(`AI provider returned an error. ${responsesError} | ${chatError}`);
-  }
-
-  const chatText = extractChatCompletionsText(chatJson);
-  if (!chatText) {
-    throw new Error(
-      `AI provider returned no readable text. ${responsesError} | chat_completions: empty text response.`,
-    );
-  }
-
-  return chatText;
+async function generateMdx({ env, title, topic, tags, sourceText, extraInstruction, promptTemplate, modelName, generateInteractiveDemo }) {
+  return requestChatCompletion(env, modelName || resolveModelName(env, "", ALLOWED_NOTE_GENERATION_MODELS), [
+    { role: "system", content: buildSystemPrompt(promptTemplate) },
+    { role: "user", content: buildUserPrompt({ title, topic, tags, sourceText, extraInstruction, generateInteractiveDemo }) },
+  ]);
 }
 
 function normalizeGeneratedMdx(raw, { title, slug, topic, topicZh, topicEn, tags, sourceText, generateInteractiveDemo, interactiveDesignSpecs }) {

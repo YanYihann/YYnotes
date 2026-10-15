@@ -6,13 +6,11 @@ import {
   type NoteAssistantRequest,
 } from "@/lib/ai/note-assistant";
 
-const DEFAULT_MODEL_NAME = process.env.OPENAI_ASSISTANT_MODEL || "deepseek-v4-flash";
-const ALLOWED_MODEL_NAMES = new Set([
-  "deepseek-v4-flash",
-  "gpt-5.4-nano-2026-03-17",
-  "gpt-4.1-mini",
-]);
-const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL?.trim().replace(/\/+$/, "") || "https://api.openai.com/v1";
+export const runtime = "nodejs";
+
+const DEFAULT_MODEL_NAME = process.env.OPENAI_ASSISTANT_MODEL || process.env.OPENAI_MODEL || "deepseek-v3.2";
+const ALLOWED_MODEL_NAMES = new Set(["deepseek-v3.2"]);
+const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL?.trim().replace(/\/+$/, "") || "https://api.302.ai/v1";
 const CHAT_COMPLETIONS_ENDPOINT = `${OPENAI_BASE_URL}/chat/completions`;
 
 type AssistantRole = "system" | "user" | "assistant";
@@ -120,6 +118,28 @@ function extractChatCompletionsDelta(payload: unknown): string {
 
 function sseData(payload: unknown): string {
   return `data: ${JSON.stringify(payload)}\n\n`;
+}
+
+function formatAssistantRouteError(error: unknown): { message: string; status: number } {
+  if (!(error instanceof Error)) {
+    return { message: "Unexpected assistant error.", status: 500 };
+  }
+
+  const normalized = error.message.toLowerCase();
+  if (
+    error.name === "AbortError" ||
+    normalized.includes("aborted") ||
+    normalized.includes("fetch failed") ||
+    normalized.includes("network")
+  ) {
+    return {
+      message:
+        "AI provider network request failed. Please check OPENAI_BASE_URL, the API proxy, and the selected model.",
+      status: 502,
+    };
+  }
+
+  return { message: error.message, status: 500 };
 }
 
 function streamChatResponse(providerResponse: Response, abortController: AbortController): Response {
@@ -233,12 +253,12 @@ export async function POST(request: Request) {
       { status: 502 },
     );
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unexpected assistant error.";
+    const { message, status } = formatAssistantRouteError(error);
     return NextResponse.json(
       {
         error: message,
       },
-      { status: 500 },
+      { status },
     );
   }
 }

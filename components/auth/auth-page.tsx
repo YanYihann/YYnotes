@@ -4,7 +4,8 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
-import { SignInPage, type SignInMode, type Testimonial } from "@/components/ui/sign-in";
+import { useLanguage } from "@/components/language-provider";
+import { SignInPage, type SignInMode } from "@/components/ui/sign-in";
 
 type GoogleCredentialResponse = {
   credential?: string;
@@ -95,28 +96,9 @@ function isValidEmail(value: string): boolean {
   return EMAIL_REGEX.test(value);
 }
 
-const authTestimonials: Testimonial[] = [
-  {
-    avatarSrc: "https://randomuser.me/api/portraits/women/57.jpg",
-    name: "Sarah Chen",
-    handle: "@sarahdigital",
-    text: "The bilingual note structure keeps my course review concise and fast.",
-  },
-  {
-    avatarSrc: "https://randomuser.me/api/portraits/men/64.jpg",
-    name: "Marcus Johnson",
-    handle: "@marcustech",
-    text: "I can switch between Chinese and English wording without losing key details.",
-  },
-  {
-    avatarSrc: "https://randomuser.me/api/portraits/men/32.jpg",
-    name: "David Martinez",
-    handle: "@davidcreates",
-    text: "Cloud sync and folder organization make long-term review much easier.",
-  },
-];
 
 export function AuthPage() {
+  const { t } = useLanguage();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { session, isReady, login, register, loginWithGoogle, logout } = useAuth();
@@ -153,15 +135,15 @@ export function AuthPage() {
     const confirmPassword = String(formData.get("confirmPassword") ?? "");
 
     if (!isValidEmail(email)) {
-      setError("请输入有效邮箱地址。");
+      setError(t("请输入有效邮箱地址。", "Enter a valid email address."));
       return;
     }
     if (password.length < 8) {
-      setError("密码至少需要 8 位。");
+      setError(t("密码至少需要 8 位。", "Password must contain at least 8 characters."));
       return;
     }
     if (mode === "register" && password !== confirmPassword) {
-      setError("两次输入的密码不一致。");
+      setError(t("两次输入的密码不一致。", "The passwords do not match."));
       return;
     }
 
@@ -184,7 +166,7 @@ export function AuthPage() {
       router.push(redirectTo);
       router.refresh();
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "认证失败，请稍后重试。");
+      setError(submitError instanceof Error ? submitError.message : t("认证失败，请稍后重试。", "Authentication failed. Please retry."));
     } finally {
       setSubmitting(false);
     }
@@ -195,7 +177,7 @@ export function AuthPage() {
       return;
     }
     if (!googleClientId) {
-      setError("未配置 Google 登录，请设置 NEXT_PUBLIC_GOOGLE_CLIENT_ID。");
+      setError(t("未配置 Google 登录，请设置 NEXT_PUBLIC_GOOGLE_CLIENT_ID。", "Google sign-in is unavailable."));
       return;
     }
 
@@ -206,7 +188,7 @@ export function AuthPage() {
       await loadGoogleIdentityScript();
       const googleApi = window.google?.accounts?.id;
       if (!googleApi) {
-        throw new Error("Google 登录初始化失败。");
+        throw new Error(t("Google 登录初始化失败。", "Google sign-in could not initialize."));
       }
 
       const idToken = await new Promise<string>((resolve, reject) => {
@@ -214,7 +196,7 @@ export function AuthPage() {
         const timeoutId = window.setTimeout(() => {
           if (!settled) {
             settled = true;
-            reject(new Error("Google 登录超时，请重试。"));
+            reject(new Error(t("Google 登录超时，请重试。", "Google sign-in timed out. Please retry.")));
           }
         }, 60000);
 
@@ -228,7 +210,7 @@ export function AuthPage() {
             window.clearTimeout(timeoutId);
             const credential = String(response?.credential ?? "").trim();
             if (!credential) {
-              reject(new Error("Google 登录未返回有效令牌。"));
+              reject(new Error(t("Google 登录未返回有效令牌。", "Google did not return a valid sign-in token.")));
               return;
             }
             resolve(credential);
@@ -263,118 +245,18 @@ export function AuthPage() {
   }
 
   if (session) {
-    return (
-      <div className="bg-background py-14">
-        <div className="mx-auto w-full max-w-[980px] px-4 sm:px-6">
-          <article className="rounded-apple border border-border bg-card p-6 text-card-foreground shadow-card sm:p-8">
-            <p className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-              YYNotes Account
-            </p>
-            <h1 className="mt-3 font-display text-[clamp(1.8rem,4.4vw,2.8rem)] font-semibold leading-[1.1] tracking-tightDisplay text-foreground">
-              已登录
-              <span className="ui-en mt-1 block text-[0.54em] font-normal text-muted-foreground">
-                You are signed in
-              </span>
-            </h1>
-            <p className="mt-4 font-text text-[15px] text-muted-foreground">
-              当前账号：{session.user.displayName || session.user.username}
-            </p>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Link
-                href={redirectTo}
-                className="btn-apple-primary inline-flex items-center rounded-apple px-5 py-2 font-text text-[15px] transition focus-visible:outline-none"
-              >
-                打开我的笔记
-                <span className="ui-en ml-1">Open Notes</span>
-              </Link>
-              <button
-                type="button"
-                onClick={logout}
-                className="inline-flex items-center rounded-capsule border border-border px-4 py-1.5 font-text text-[14px] tracking-tightCaption text-muted-foreground transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                切换账号
-                <span className="ui-en ml-1">Switch Account</span>
-              </button>
-            </div>
-          </article>
-        </div>
-      </div>
-    );
+    return <div className="auth-layout"><section><div className="w-full max-w-md"><h1>{t("账号", "Account")}</h1><p className="mt-5 text-muted-foreground">{session.user.displayName || session.user.username}</p><div className="mt-8 flex gap-5"><Link className="text-action" href={redirectTo}>{t("打开笔记", "Open notes")}</Link><button type="button" className="text-action" onClick={logout}>{t("退出登录", "Sign out")}</button></div></div></section></div>;
   }
-
-  return (
-    <div className="bg-background">
-      <SignInPage
-        mode={mode}
-        showModeToggle
-        loading={submitting || googleSubmitting || !isReady}
-        errorMessage={error}
-        usernameFieldName="email"
-        identifierInputType="email"
-        usernameLabel={
-          <>
-            邮箱
-            <span className="ui-en ml-1">Email</span>
-          </>
-        }
-        usernamePlaceholder="例如：name@example.com"
-        displayNameLabel={
-          <>
-            显示名称（可选）
-            <span className="ui-en ml-1">Display Name</span>
-          </>
-        }
-        displayNamePlaceholder="例如：Yanyihan"
-        passwordLabel={
-          <>
-            密码
-            <span className="ui-en ml-1">Password</span>
-          </>
-        }
-        passwordPlaceholder="至少 8 位"
-        confirmPasswordLabel={
-          <>
-            确认密码
-            <span className="ui-en ml-1">Confirm Password</span>
-          </>
-        }
-        confirmPasswordPlaceholder="再次输入密码"
-        rememberLabel={
-          <>
-            保持登录
-            <span className="ui-en ml-1">Keep me signed in</span>
-          </>
-        }
-        submitTextLogin={
-          <>
-            登录
-            <span className="ui-en ml-1">Sign In</span>
-          </>
-        }
-        submitTextRegister={
-          <>
-            注册并登录
-            <span className="ui-en ml-1">Create Account</span>
-          </>
-        }
-        showGoogleButton
-        onGoogleSignIn={() => void handleGoogleSignIn()}
-        onResetPassword={() => setError("当前版本暂不支持在线重置密码，请联系管理员。")}
-        onModeChange={(nextMode) => {
-          setError("");
-          setMode(nextMode);
-          router.replace(`/auth?mode=${nextMode}&redirect=${encodeURIComponent(redirectTo)}`);
-        }}
-        onSignIn={onSubmit}
-        title={
-          <span className="font-display text-[clamp(2.8rem,7vw,5.2rem)] font-extrabold leading-[1.02] tracking-[0.01em] text-white drop-shadow-[0_10px_32px_rgba(0,0,0,0.45)]">
-            Welcome Back
-          </span>
-        }
-        description={null}
-        heroImageSrc="https://images.unsplash.com/photo-1642615835477-d303d7dc9ee9?w=2160&q=80"
-        testimonials={authTestimonials}
-      />
-    </div>
-  );
+  return <SignInPage mode={mode} loading={submitting || googleSubmitting || !isReady} errorMessage={error}
+    usernameFieldName="email" identifierInputType="email" usernameLabel={t("邮箱", "Email")}
+    usernamePlaceholder="name@example.com" displayNameLabel={t("显示名称（可选）", "Display name (optional)")}
+    displayNamePlaceholder={t("姓名", "Name")} passwordLabel={t("密码", "Password")}
+    passwordPlaceholder={t("至少 8 位", "At least 8 characters")} confirmPasswordLabel={t("确认密码", "Confirm password")}
+    confirmPasswordPlaceholder={t("再次输入密码", "Re-enter your password")}
+    submitTextLogin={t("登录", "Sign in")} submitTextRegister={t("创建账号", "Create account")}
+    showGoogleButton={Boolean(googleClientId)} showRememberMe={false} showResetPasswordLink={false}
+    onGoogleSignIn={() => void handleGoogleSignIn()} onSignIn={onSubmit}
+    onModeChange={(nextMode) => { setError(""); setMode(nextMode); router.replace(`/auth?mode=${nextMode}&redirect=${encodeURIComponent(redirectTo)}`); }}
+    title={mode === "register" ? t("创建账号", "Create account") : t("登录", "Sign in")}
+    description={null} />;
 }

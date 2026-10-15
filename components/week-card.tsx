@@ -1,4 +1,7 @@
+"use client";
+import { useLanguage } from "@/components/language-provider";
 import Link from "next/link";
+import { UiText } from "@/components/ui-text";
 import type { ReactNode } from "react";
 import { summarizeCardDescription } from "@/lib/note-card-summary";
 import { cn } from "@/lib/utils";
@@ -34,6 +37,7 @@ export function WeekCard({
   showOpenLink = true,
   compact = false,
 }: WeekCardProps) {
+  const { locale } = useLanguage();
   const titleClass = compact
     ? "font-display text-[24px] font-semibold leading-[1.18] tracking-tightDisplay text-foreground"
     : "font-display text-[28px] font-normal leading-[1.14] tracking-[0.196px] text-foreground";
@@ -56,8 +60,7 @@ export function WeekCard({
       <div className={compact ? "space-y-2.5" : "space-y-3"}>
         <div className="flex items-start justify-between gap-2">
           <p className="font-text text-[12px] font-semibold tracking-[0.08em] text-muted-foreground">
-            {weekLabelZh}
-            <span className="ui-en ml-1 uppercase">{weekLabelEn}</span>
+            {locale === "en" ? weekLabelEn || weekLabelZh : weekLabelZh}
           </p>
           {headerRight ? <div className="shrink-0">{headerRight}</div> : null}
         </div>
@@ -75,7 +78,7 @@ export function WeekCard({
         ) : null}
         <h3 className={titleClass}>
           <span className={compact ? "block overflow-hidden [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]" : "block"}>
-            {zhTitle}
+            {locale === "en" ? enTitle || zhTitle : zhTitle}
           </span>
           <span
             className={cn(
@@ -88,7 +91,7 @@ export function WeekCard({
         </h3>
         <p className={descClass}>
           <span className={compact ? "block overflow-hidden [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]" : "block"}>
-            {conciseDescriptionZh}
+            {locale === "en" ? conciseDescriptionEn || conciseDescriptionZh : conciseDescriptionZh}
           </span>
           <span
             className={cn(
@@ -111,8 +114,7 @@ export function WeekCard({
                 : "btn-apple-link inline-flex items-center px-4 py-1.5 font-text text-[14px] tracking-tightCaption transition focus-visible:outline-none"
             }
           >
-            打开笔记
-            <span className="ui-en ml-1">Open Note</span>
+            <UiText zh="打开笔记" en="Open Note" />
             <span className="ml-1">&gt;</span>
           </Link>
         ) : null}

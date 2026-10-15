@@ -10,6 +10,7 @@ type NoteAssistantStreamOptions = {
 };
 
 const CLOUD_API_BASE = process.env.NEXT_PUBLIC_NOTES_API_BASE?.trim() ?? "";
+const LOCAL_ASSISTANT_ENDPOINT = "/api/notes-assistant";
 
 function normalizeApiBase(input: string): string {
   return input.replace(/\/+$/, "");
@@ -92,32 +93,62 @@ async function readAssistantStream(response: Response, onDelta?: (delta: string)
   return answer.trim();
 }
 
-export async function askNoteAssistant(
-  payload: NoteAssistantRequest,
-  options: NoteAssistantStreamOptions = {},
-): Promise<NoteAssistantResponse> {
-  const endpoint =
-    CLOUD_API_BASE.length > 0
-      ? `${normalizeApiBase(CLOUD_API_BASE)}/assistant`
-      : "/api/notes-assistant";
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Accept: "text/event-stream",
-  };
-
-  if (CLOUD_API_BASE.length > 0) {
-    const session = getStoredAuthSession();
-    if (session?.token) {
-      headers.Authorization = `Bearer ${session.token}`;
-    }
+function isFetchNetworkError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
   }
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(payload),
-  });
+  const message = error.message.toLowerCase();
+  return (
+    error.name === "TypeError" ||
+    message.includes("failed to fetch") ||
+    message.includes("networkerror") ||
+    message.includes("load failed")
+  );
+}
+
+function buildNetworkErrorMessage(endpoint: string): string {
+  const isCloudEndpoint = endpoint.startsWith("http://") || endpoint.startsWith("https://");
+  if (isCloudEndpoint) {
+    return "云端 AI 助手接口连接失败。已尝试连接远程 Notes API，但浏览器网络请求失败；请检查网络、代理或 Worker 是否可访问。";
+  }
+
+  return "本地 AI 助手接口连接失败。请确认 Next.js 开发服务正在运行，并且当前页面与服务地址一致。";
+}
+
+function shouldFallbackToLocal(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return (
+    error.message.startsWith("云端 AI 助手接口连接失败") ||
+    message.includes("ai provider returned an error") ||
+    message.includes("not allowed by this api key") ||
+    message.includes("openai_api_key is missing")
+  );
+}
+
+async function requestAssistantEndpoint(
+  endpoint: string,
+  payload: NoteAssistantRequest,
+  headers: Record<string, string>,
+  options: NoteAssistantStreamOptions,
+): Promise<NoteAssistantResponse> {
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    if (isFetchNetworkError(error)) {
+      throw new Error(buildNetworkErrorMessage(endpoint));
+    }
+    throw error;
+  }
 
   const contentType = response.headers.get("content-type") ?? "";
   if (response.ok && contentType.includes("text/event-stream")) {
@@ -133,11 +164,49 @@ export async function askNoteAssistant(
     | null;
 
   if (!response.ok || !json?.answer) {
-    const errorMessage = json?.error || "AI assistant request failed.";
+    const errorMessage = json?.error || `AI assistant request failed with HTTP ${response.status}.`;
     throw new Error(errorMessage);
   }
 
   return {
     answer: json.answer,
   };
+}
+
+export async function askNoteAssistant(
+  payload: NoteAssistantRequest,
+  options: NoteAssistantStreamOptions = {},
+): Promise<NoteAssistantResponse> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "text/event-stream",
+  };
+
+  if (CLOUD_API_BASE.length > 0) {
+    const session = getStoredAuthSession();
+    if (session?.token) {
+      headers.Authorization = `Bearer ${session.token}`;
+    }
+  }
+
+  if (!CLOUD_API_BASE.length) {
+    return requestAssistantEndpoint(LOCAL_ASSISTANT_ENDPOINT, payload, headers, options);
+  }
+
+  const cloudEndpoint = `${normalizeApiBase(CLOUD_API_BASE)}/assistant`;
+  try {
+    return await requestAssistantEndpoint(cloudEndpoint, payload, headers, options);
+  } catch (error) {
+    if (CLOUD_API_BASE.startsWith("/") || !shouldFallbackToLocal(error)) {
+      throw error;
+    }
+
+    try {
+      return await requestAssistantEndpoint(LOCAL_ASSISTANT_ENDPOINT, payload, headers, options);
+    } catch (fallbackError) {
+      const cloudMessage = error instanceof Error ? error.message : "云端 AI 助手请求失败。";
+      const localMessage = fallbackError instanceof Error ? fallbackError.message : "本地 AI 助手请求失败。";
+      throw new Error(`${cloudMessage} 本地回退也失败：${localMessage}`);
+    }
+  }
 }

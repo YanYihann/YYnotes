@@ -1,4 +1,7 @@
+"use client";
+import { useLanguage } from "@/components/language-provider";
 import Link from "next/link";
+import { UiText } from "@/components/ui-text";
 import type { MouseEvent } from "react";
 import type { Heading } from "@/lib/content";
 
@@ -55,6 +58,7 @@ function resolveHeadingElement(item: Heading): HTMLElement | null {
 }
 
 export function TableOfContents({ items, sticky = true }: TocProps) {
+  const { locale } = useLanguage();
   if (!items.length) {
     return null;
   }
@@ -78,8 +82,7 @@ export function TableOfContents({ items, sticky = true }: TocProps) {
       className={`${sticky ? "sticky top-24" : ""} rounded-apple bg-card/90 p-4 shadow-card`}
     >
       <p className="mb-3 font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-        本页目录
-        <span className="ui-en ml-1">On this page</span>
+        <UiText zh="本页目录" en="On this page" />
       </p>
       <ul className="space-y-2">
         {items.map((item) => (
@@ -91,8 +94,7 @@ export function TableOfContents({ items, sticky = true }: TocProps) {
                 item.level === 3 ? "pl-5" : "pl-2"
               }`}
             >
-              {item.title}
-              {item.enTitle ? <span className="ui-en ml-1 text-muted-foreground">{item.enTitle}</span> : null}
+              {locale === "en" ? item.enTitle || item.title : item.title}
             </Link>
           </li>
         ))}
